@@ -10,7 +10,7 @@ PHP 8.0+ (tested on 8.0 and 8.3), MySQL 8 / MariaDB 10.5+, no framework.
 ## How it works
 
 - Webhook: `public/webhook.php`. In groups the bot reacts only to slash commands, @mentions of the bot
-  and replies to its messages (privacy mode ON). Private chats are ignored for now.
+  and replies to its messages (privacy mode ON). In a private chat it answers any text, read-only (see «Private chat»).
 - Free text goes to the AI (`src/Ai`): the model calls functions, PHP executes them through the
   domain services (`src/Domain`) and checks all permissions itself. Replies to the bot continue
   the dialog for `CONVERSATION_TTL_MINUTES`.
@@ -177,7 +177,9 @@ Example:
 [2026-11-09 18:42:07 MSK] INFO update 912345678 message: ignored: wrong bot username in mention (@pop1balance_bot, expected @pop1_bot from TELEGRAM_BOT_USERNAME) {"type":"message","chat":-1001234567890,"chat_type":"supergroup","from":1234,"username":"@vasya","text":"@pop1balance_bot привет","bot":"@pop1_bot"}
 ```
 
-Decisions: `ignored: no mention/reply`, `ignored: wrong bot username in mention`, `ignored: private chat`,
+Decisions: `ignored: no mention/reply`, `ignored: wrong bot username in mention`,
+`private: help`, `private: levels`, `private: tournaments`, `private: ai`, `private: redirect to group (/x)`,
+`private: owner command (/level)`, `private: fallback text (AI off…)`,
 `ignored: command /x@other_bot is for another bot`, `handled: command /x`, `handled: ai`,
 `handled: fallback text (AI off…)`, `handled: callback …`, `edited: replied once`, `ignored: edited, …`.
 
@@ -209,6 +211,14 @@ Admins:
 - `/levels` — the six levels with points and synonyms and how the tournament level works (for everyone).
 - `/open [id]` — for a draft: shows the same card and publishes only after a clear confirmation (see below);
   for a closed tournament: reopens registration right away. `/close [id]`; `/cancel [id]`
+
+Private chat (no mention needed, read-only):
+- «помощь» / «справка» / `/help` / `/start` — help; «уровни» / `/levels` — levels; «турниры» / `/tournaments` — published
+  active tournaments of all groups the bot is in (drafts only to their organizer or the owner). With several groups each
+  group gets a header with its name, and numbers are that group's own short numbers.
+- Free text goes to the AI with read-only tools only (show the list / the levels help), prompt `config/prompts/private.md`.
+- Anything that changes data (commands `/new`, `/edit`, `/open`, `/close`, `/cancel`, …, joining, teams) gets
+  «Это делается в группе турнира — напиши там, упомянув меня.» The owner may use `/level` and `/balance` here too.
 
 Owner only (`BOT_OWNER_TG_ID`, shown in `/help` to the owner only):
 - `/level @user 4 [balance]`, `/balance [id]`, `/edit N баланс M`; in plain text: set a player's level, create/show scales,

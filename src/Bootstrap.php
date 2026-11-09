@@ -8,6 +8,7 @@ use P1Bot\Ai\AiClient;
 use P1Bot\Ai\Assistant;
 use P1Bot\Ai\Dispatcher;
 use P1Bot\Ai\OpenAiClient;
+use P1Bot\Ai\PrivateAssistant;
 use P1Bot\App\Announcer;
 use P1Bot\App\CronRunner;
 use P1Bot\App\DraftCards;
@@ -21,6 +22,7 @@ use P1Bot\Domain\TournamentService;
 use P1Bot\Handlers\AdminCommands;
 use P1Bot\Handlers\CallbackHandler;
 use P1Bot\Handlers\MessageHandler;
+use P1Bot\Handlers\PrivateChatHandler;
 use P1Bot\Handlers\UpdateRouter;
 use P1Bot\Http\CurlHttpClient;
 use P1Bot\Http\HttpClient;
@@ -242,6 +244,16 @@ class Bootstrap {
 			),
 			new EditedReplyRepository($db),
 			$this->logger,
+			new PrivateChatHandler(
+				$this->telegram,
+				$this->bot,
+				$this->chats,
+				$this->listing,
+				$commands,
+				$clock,
+				$this->logger,
+				$ai !== null ? new PrivateAssistant($ai, $this->logger, $this->privatePrompt()) : null,
+			),
 		);
 	}
 
@@ -278,6 +290,19 @@ class Bootstrap {
 			(int) ($openai['timeout'] ?? 30),
 			$this->logger,
 		);
+	}
+
+	/**
+		config/prompts/private.md next to the main prompt.
+	*/
+	protected function privatePrompt(): string {
+		$main = (string) ($this->config['paths']['prompt'] ?? dirname(__DIR__) . '/config/prompts/system.md');
+		$path = dirname($main) . '/private.md';
+		if (!is_file($path)) {
+			$path = dirname(__DIR__) . '/config/prompts/private.md';
+		}
+		$prompt = is_file($path) ? (string) file_get_contents($path) : '';
+		return str_replace('{bot_username}', $this->bot->username, $prompt);
 	}
 
 	protected function systemPrompt(): string {

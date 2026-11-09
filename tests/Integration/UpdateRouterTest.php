@@ -38,12 +38,15 @@ class UpdateRouterTest extends IntegrationTestCase {
 		self::assertCount(1, $this->http->sent('sendMessage'));
 	}
 
-	public function testPrivateChatIsIgnored(): void {
+	public function testPrivateHelpIsAnswered(): void {
 		$vasya = $this->player('vasya');
 		$raw = $this->groupMessage($vasya, '/help');
 		$raw['message']['chat'] = ['id' => $this->tgIdOf($vasya), 'type' => 'private'];
 		$this->dispatch($raw);
-		self::assertSame([], $this->http->requests);
+		self::assertCount(1, $this->http->sent('sendMessage'));
+		self::assertSame($this->tgIdOf($vasya), $this->http->sent('sendMessage')[0]['chat_id']);
+		self::assertStringContainsString('Что работает в личке', $this->http->lastText());
+		self::assertFalse($this->app->chats->exists($this->tgIdOf($vasya)), 'private chats are not stored as groups');
 	}
 
 	public function testUsernamePlaceholderIsAttachedWhenUserWrites(): void {

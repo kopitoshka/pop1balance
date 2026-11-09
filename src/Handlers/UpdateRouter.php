@@ -23,7 +23,8 @@ use P1Bot\View\Texts;
 
 /**
 	Entry point for every update. In groups the bot reacts only to slash commands,
-	@mentions of the bot and replies to its messages. Private chats are ignored for now.
+	@mentions of the bot and replies to its messages. In a private chat it answers any text,
+	read-only (see PrivateChatHandler).
 */
 class UpdateRouter {
 
@@ -40,6 +41,7 @@ class UpdateRouter {
 		protected CallbackHandler $callbacks,
 		protected ?EditedReplyRepository $edited_replies = null,
 		protected ?Logger $logger = null,
+		protected ?PrivateChatHandler $private_chat = null,
 	) {
 	}
 
@@ -108,12 +110,12 @@ class UpdateRouter {
 	}
 
 	protected function onMessage(Update $update, Message $message): void {
+		if ($message->chat_type === 'private') {
+			$this->onPrivateMessage($update, $message);
+			return;
+		}
 		if (!$message->isGroup()) {
-			$this->log(
-				$update,
-				$message,
-				$message->chat_type === 'private' ? 'ignored: private chat' : 'ignored: not a group (' . $message->chat_type . ')',
-			);
+			$this->log($update, $message, 'ignored: not a group (' . $message->chat_type . ')');
 			return;
 		}
 		if ($message->from === null || $message->from->is_bot) {
@@ -157,6 +159,41 @@ class UpdateRouter {
 			return;
 		}
 		$this->messages->handle($context);
+	}
+
+	/**
+		Private chat: any text, no mention needed. Logged as «private: <what>».
+	*/
+	protected function onPrivateMessage(Update $update, Message $message): void {
+		if ($message->from === null || $message->from->is_bot) {
+			$this->log($update, $message, 'ignored: private, from a bot or no sender');
+			return;
+		}
+		if ($this->private_chat === null) {
+			$this->log($update, $message, 'ignored: private chat (handler not configured)');
+			return;
+		}
+		$actor = $this->upsertPlayer($message->from);
+		$is_owner = $this->access->isOwner($actor->id);
+		$decision = $this->private_chat->decide($message, $is_owner);
+		$this->log($update, $message, 'private: ' . self::describePrivate($decision));
+		$this->private_chat->handle($message, $actor, $is_owner, $decision);
+	}
+
+	/**
+		@param array{kind: string, command: ?string} $decision
+	*/
+	protected static function describePrivate(array $decision): string {
+		$command = $decision['command'] !== null ? ' (/' . $decision['command'] . ')' : '';
+		switch ($decision['kind']) {
+			case PrivateChatHandler::REDIRECT:
+				return 'redirect to group' . $command;
+			case PrivateChatHandler::OWNER_COMMAND:
+				return 'owner command' . $command;
+			case PrivateChatHandler::FALLBACK:
+				return 'fallback text (AI off: OPENAI_API_KEY is empty)';
+		}
+		return $decision['kind'] . $command;
 	}
 
 	/**

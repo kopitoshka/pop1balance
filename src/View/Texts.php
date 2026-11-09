@@ -101,6 +101,35 @@ class Texts {
 	/**
 		Reply to a mention when the AI is not configured.
 	*/
+	/**
+		Help in a private chat: what works here and what is done in the group.
+	*/
+	public static function privateHelp(string $bot_username, bool $is_owner): string {
+		$bot = '@' . Html::e($bot_username);
+		$text = "Привет! Здесь можно спокойно посмотреть, что происходит с турнирами по Population: One.\n\n"
+			. "Что работает в личке:\n"
+			. "турниры или /tournaments — активные турниры и составы\n"
+			. "уровни или /levels — уровни игроков и как задаётся уровень турнира\n"
+			. "помощь или /help — эта подсказка\n"
+			. "А ещё можно просто спросить обычным языком, например: <i>когда ближайший турнир?</i>\n\n"
+			. "Записаться, собрать команду или создать турнир можно только в группе турнира: напиши там, упомянув {$bot}.";
+		if ($is_owner) {
+			// Owner only for now (see AccessPolicy::LEVELS_OWNER_ONLY).
+			$text .= "\n\nТолько для главного админа, работает и здесь:\n"
+				. "/level @user 4 — поставить уровень игроку\n"
+				. "/balance — уровни, которые поставлены игрокам";
+		}
+		return $text;
+	}
+
+	/**
+		Free text in a private chat while the AI is off.
+	*/
+	public static function privateFallback(): string {
+		return "Здесь я пока понимаю только простые запросы: турниры, уровни, помощь.\n"
+			. 'Записаться или создать турнир можно в группе турнира — напиши там, упомянув меня.';
+	}
+
 	public static function fallback(string $bot_username): string {
 		return "Я пока понимаю только команды. Посмотреть турниры: /tournaments, подсказка: /help.";
 	}

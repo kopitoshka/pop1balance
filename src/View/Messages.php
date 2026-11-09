@@ -15,6 +15,8 @@ class Messages {
 	/**
 		Reply to an edited message addressed to the bot: edits are not processed.
 	*/
+	public const PRIVATE_REDIRECT = 'Это делается в группе турнира — напиши там, упомянув меня.';
+
 	public const EDITED_MESSAGE = 'Исправленные сообщения я не вижу 🙈 Напиши, пожалуйста, заново новым сообщением';
 
 	/**

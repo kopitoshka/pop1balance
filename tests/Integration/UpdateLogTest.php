@@ -68,7 +68,7 @@ class UpdateLogTest extends IntegrationTestCase {
 		$this->dispatch($update);
 
 		$line = $this->lastUpdateLine();
-		self::assertStringContainsString('ignored: private chat', $line);
+		self::assertStringContainsString('private: ai', $line);
 		self::assertStringContainsString('"chat_type":"private"', $line);
 	}
 

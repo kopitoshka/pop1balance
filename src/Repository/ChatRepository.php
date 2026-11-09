@@ -30,6 +30,19 @@ class ChatRepository {
 		}
 	}
 
+	/**
+		Groups the bot is in (group ids are negative; private chats are never stored here).
+
+		@return array<int, string> chat_id => title
+	*/
+	public function listActiveGroups(): array {
+		$groups = [];
+		foreach ($this->db->fetchAll('SELECT id, title FROM chats WHERE is_active = 1 AND id < 0 ORDER BY title, id') as $row) {
+			$groups[(int) $row['id']] = (string) $row['title'];
+		}
+		return $groups;
+	}
+
 	public function exists(int $chat_id): bool {
 		return $this->db->fetchValue('SELECT 1 FROM chats WHERE id = :id', ['id' => $chat_id]) !== null;
 	}
