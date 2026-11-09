@@ -206,7 +206,7 @@ class CallbackHandler {
 				$this->announcer->refresh($t->id);
 				$placement = $this->tournaments->lineup($t->id)->placementOf($player->id);
 				$text = $placement === 'reserve'
-					? 'Записала тебя соло, но мест уже нет: ты в резерве. Если кто-то снимется, поднимешься сам.'
+					? 'Записала тебя соло, но мест уже нет: ты в запасе. Если кто-то снимется, поднимешься сам.'
 					: 'Записала тебя соло! Команду соберёте уже в игре.';
 				$this->done($query, $t, $player, $text);
 				return;

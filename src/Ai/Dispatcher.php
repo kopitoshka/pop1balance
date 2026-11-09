@@ -618,7 +618,7 @@ class Dispatcher {
 		$t = $this->tournaments->get($t->id);
 		$placement = null;
 		if ($entry->team->isRegistered()) {
-			$placement = $this->tournaments->lineup($t->id)->placementOf($entry->team->captain_id) === 'reserve' ? 'резерв' : 'основной состав';
+			$placement = $this->tournaments->lineup($t->id)->placementOf($entry->team->captain_id) === 'reserve' ? 'запас' : 'основной состав';
 		}
 		return [
 			'tournament_id' => $this->no($t),
@@ -713,7 +713,7 @@ class Dispatcher {
 
 	protected function placementLabel(Tournament $t, int $player_id): string {
 		$placement = $this->tournaments->lineup($t->id)->placementOf($player_id);
-		return $placement === 'reserve' ? 'резерв' : ($placement === 'forming' ? 'команда собирается' : 'основной состав');
+		return $placement === 'reserve' ? 'запас' : ($placement === 'forming' ? 'команда собирается' : 'основной состав');
 	}
 
 	/**

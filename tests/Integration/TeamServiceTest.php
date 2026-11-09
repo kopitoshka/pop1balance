@@ -257,7 +257,7 @@ class TeamServiceTest extends IntegrationTestCase {
 			[$teams['b']->id, $teams['c']->id],
 			array_map(static fn ($e): int => $e->team->id, $lineup->main_teams),
 		);
-		self::assertSame('занято 4/4, резерв 0', $lineup->summary());
+		self::assertSame('занято 4/4, запас 0', $lineup->summary());
 		self::assertSame(
 			0,
 			(int) $this->db->fetchValue(

@@ -104,7 +104,7 @@ Domain/ — бизнес-правила
     Levels.php
         Парсинг уровней 1–6 и уровня турнира
     Lineup.php
-        Основной состав / резерв
+        Основной состав / запас
     AccessPolicy.php
         Owner / admin / manage
     MoscowTime.php

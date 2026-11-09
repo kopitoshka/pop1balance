@@ -227,15 +227,15 @@ class TournamentServiceTest extends IntegrationTestCase {
 		$this->app->teams->joinSolo($t->id, $this->player('solo1')->id);
 
 		$lineup = $this->app->tournaments->lineup($t->id);
-		self::assertSame('занято 4/4, резерв 3', $lineup->summary());
+		self::assertSame('занято 4/4, запас 3', $lineup->summary());
 		self::assertSame(
-			'Субботний кубок — 14.11.2026 19:00 МСК, команды по 2, уровень: без ограничения по уровню, занято 4/4, резерв 3',
+			'Субботний кубок — 14.11.2026 19:00 МСК, команды по 2, уровень: без ограничения по уровню, занято 4/4, запас 3',
 			Messages::tournamentLine($t, $lineup),
 		);
 
 		// Raising the limit pulls reserve in automatically (nothing is stored).
 		$this->app->tournaments->setMaxPlayers($this->owner->id, $t->id, 7);
-		self::assertSame('занято 7/7, резерв 0', $this->app->tournaments->lineup($t->id)->summary());
+		self::assertSame('занято 7/7, запас 0', $this->app->tournaments->lineup($t->id)->summary());
 	}
 
 	public function testReminderWindow(): void {

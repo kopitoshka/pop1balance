@@ -31,19 +31,19 @@ class LineupTest extends TestCase {
 		self::assertSame(8, $lineup->occupied());
 		self::assertSame(4, $lineup->reserveCount());
 		self::assertSame(0, $lineup->freePlaces());
-		self::assertSame('занято 8/8, резерв 4', $lineup->summary());
+		self::assertSame('занято 8/8, запас 4', $lineup->summary());
 	}
 
 	public function testSmallerLaterTeamMayStillFit(): void {
 		$lineup = Lineup::compute(5, [$this->team(1, 3), $this->team(2, 3), $this->team(3, 2)], []);
 
 		self::assertSame([1, 3], array_map(static fn (TeamEntry $e): int => $e->team->id, $lineup->main_teams));
-		self::assertSame('занято 5/5, резерв 3', $lineup->summary());
+		self::assertSame('занято 5/5, запас 3', $lineup->summary());
 	}
 
 	public function testEmptyTournament(): void {
 		$lineup = Lineup::compute(24, [], []);
-		self::assertSame('занято 0/24, резерв 0', $lineup->summary());
+		self::assertSame('занято 0/24, запас 0', $lineup->summary());
 		self::assertSame(24, $lineup->freePlaces());
 	}
 

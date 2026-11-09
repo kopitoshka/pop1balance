@@ -163,7 +163,7 @@ class AdminCommandsTest extends IntegrationTestCase {
 		self::assertStringContainsString('<b>Кубок</b>', $announcement['text']);
 		self::assertStringContainsString('🗓 23.11.2026 ⏰ 20:00 МСК', $announcement['text']);
 		self::assertStringContainsString('средний (10 баллов на троих)', $announcement['text']);
-		self::assertStringContainsString('Занято 0/24 · резерв 0', $announcement['text']);
+		self::assertStringContainsString('Занято 0/24 · запас 0', $announcement['text']);
 		self::assertSame(
 			['text' => '💬 Записаться / вопросы в личке', 'url' => 'https://t.me/pop1_bot?start=t_1'],
 			$announcement['reply_markup']['inline_keyboard'][0][0],
@@ -370,7 +370,7 @@ class AdminCommandsTest extends IntegrationTestCase {
 		self::assertStringContainsString('🏆 <b>Кубок &lt;1&gt;</b> · №1', $text);
 		self::assertStringContainsString('👤 Организатор: @andrey', $text);
 		self::assertStringContainsString('🟢 Идёт регистрация', $text);
-		self::assertStringContainsString('🎟 Занято 3/24 · резерв 0', $text);
+		self::assertStringContainsString('🎟 Занято 3/24 · запас 0', $text);
 		self::assertStringContainsString("🛡 <b>Команды:</b>\n1. <b>Wolves &amp; Co</b> — 👑 @cap (кэп), @mate", $text);
 		self::assertStringContainsString("🙋 <b>Ищут команду:</b>\n@solo", $text);
 		self::assertStringNotContainsString('Черновой', $text, 'players do not see drafts');

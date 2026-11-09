@@ -106,7 +106,7 @@ class GroupRedirectTest extends IntegrationTestCase {
 
 		$kolya = $this->player('kolya');
 		$reply = $this->groupReply($kolya, '@pop1_bot запиши меня');
-		self::assertStringContainsString('ты в резерве, №1', $reply['text']);
+		self::assertStringContainsString('ты в запасе, №1', $reply['text']);
 
 		$reply = $this->groupReply($vasya, '@pop1_bot удали меня');
 		self::assertStringContainsString('Вычеркнула тебя из «Субботний кубок»', $reply['text']);

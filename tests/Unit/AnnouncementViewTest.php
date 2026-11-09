@@ -68,12 +68,12 @@ class AnnouncementViewTest extends TestCase {
 		self::assertStringContainsString('⚖️ Уровень: средний+ (7 баллов на двоих)', $text);
 		self::assertStringContainsString('👥 Команды по 2 игрока', $text);
 		self::assertStringContainsString('🟢 Идёт регистрация', $text);
-		self::assertStringContainsString('🎟 Занято 4/4 · резерв 3', $text);
+		self::assertStringContainsString('🎟 Занято 4/4 · запас 3', $text);
 		self::assertStringContainsString(
 			"🛡 <b>Команды:</b>\n1. <b>Wolves</b> — 👑 @p2 (кэп), @p3\n2. <b>Bears</b> — 👑 @p4 (кэп), @p5",
 			$text,
 		);
-		self::assertStringContainsString("⏳ <b>Резерв:</b>\n1. <b>Late</b> — 👑 @p6 (кэп), @p7\n🙋 Соло: @p8", $text);
+		self::assertStringContainsString("⏳ <b>Запас:</b>\n1. <b>Late</b> — 👑 @p6 (кэп), @p7\n🙋 Соло: @p8", $text);
 		self::assertStringContainsString("🧩 <b>Собираются:</b>\n• Forming — 👑 @p9 (кэп) (1/2)", $text);
 		self::assertDoesNotMatchRegularExpression('/средний \(3\)|\(3\)/u', $text, 'player levels are not shown');
 		self::assertStringContainsString('в личке у @pop1_bot', $text);

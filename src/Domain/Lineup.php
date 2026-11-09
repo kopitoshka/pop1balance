@@ -85,10 +85,10 @@ class Lineup {
 	}
 
 	/**
-		"занято 18/24, резерв 2"
+		"занято 18/24, запас 2"
 	*/
 	public function summary(): string {
-		return sprintf('занято %d/%d, резерв %d', $this->occupied(), $this->max_players, $this->reserveCount());
+		return sprintf('занято %d/%d, запас %d', $this->occupied(), $this->max_players, $this->reserveCount());
 	}
 
 	/**

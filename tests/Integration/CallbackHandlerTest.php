@@ -44,7 +44,7 @@ class CallbackHandlerTest extends IntegrationTestCase {
 
 		$this->dispatch($this->press($this->player('a'), 'psolo:' . $t->id));
 		$this->dispatch($this->press($this->player('b'), 'psolo:' . $t->id));
-		self::assertStringContainsString('ты в резерве', $this->lastAnswer());
+		self::assertStringContainsString('ты в запасе', $this->lastAnswer());
 
 		$this->dispatch($this->press($vasya, 'punsolo:' . $t->id));
 		self::assertStringContainsString('Сняла тебя', $this->lastAnswer());

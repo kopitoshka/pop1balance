@@ -71,7 +71,7 @@ class Messages {
 
 	public static function joinedReserve(string $title, int $reserve_no): string {
 		return sprintf(
-			'Записала тебя на «%s» ✅ Основа уже набрана, ты в резерве, №%d.',
+			'Записала тебя на «%s» ✅ Основа уже набрана, ты в запасе, №%d.',
 			$title,
 			$reserve_no,
 		);
@@ -106,7 +106,7 @@ class Messages {
 	}
 
 	/**
-		"Субботний кубок — 14.11.2026 19:00 МСК, команды по 3, уровень: средний (10 баллов на троих), занято 18/24, резерв 2"
+		"Субботний кубок — 14.11.2026 19:00 МСК, команды по 3, уровень: средний (10 баллов на троих), занято 18/24, запас 2"
 	*/
 	public static function tournamentLine(Tournament $t, Lineup $lineup): string {
 		return sprintf(

@@ -114,7 +114,7 @@ class AnnouncementView {
 			'⚖️ Уровень: ' . Html::e($t->levelLabel()),
 			'👥 Команды по ' . $t->team_size . ' ' . RuPlural::choose($t->team_size, ['игроку', 'игрока', 'игроков']),
 			(self::STATUS_ICONS[$status] ?? '📌') . ' ' . Html::e(self::ucfirst(TournamentStatus::label($status))),
-			'🎟 Занято ' . $lineup->occupied() . '/' . $lineup->max_players . ' · резерв ' . $lineup->reserveCount(),
+			'🎟 Занято ' . $lineup->occupied() . '/' . $lineup->max_players . ' · запас ' . $lineup->reserveCount(),
 		];
 		return implode("\n", $lines);
 	}
@@ -200,7 +200,7 @@ class AnnouncementView {
 			$sections[] = array_merge(['🙋 <b>Ищут команду:</b>'], $this->solos($lineup->main_solo));
 		}
 		if ($lineup->reserve_teams !== [] || $lineup->reserve_solo !== []) {
-			$reserve = ['⏳ <b>Резерв:</b>'];
+			$reserve = ['⏳ <b>Запас:</b>'];
 			$reserve = array_merge($reserve, $this->teams($lineup->reserve_teams));
 			foreach ($this->solos($lineup->reserve_solo) as $i => $line) {
 				$reserve[] = ($i === 0 ? '🙋 Соло: ' : '') . $line;

@@ -64,7 +64,7 @@ class OrganizerTeams {
 			$place = $lineup->placementOf($team->captain_id) ?? 'forming';
 			$status = match ($place) {
 				'main' => 'в сетке',
-				'reserve' => 'резерв',
+				'reserve' => 'запас',
 				default => 'собирается',
 			};
 			$pts = $t->hasLevelLimit()
