@@ -11,6 +11,7 @@ use P1Bot\Repository\ChatRepository;
 use P1Bot\Repository\EditedReplyRepository;
 use P1Bot\Repository\PlayerRepository;
 use P1Bot\Support\Clock;
+use P1Bot\Support\DialogLog;
 use P1Bot\Support\Logger;
 use P1Bot\Telegram\BotIdentity;
 use P1Bot\Telegram\ChatAdminSync;
@@ -50,10 +51,22 @@ class UpdateRouter {
 		protected ?Logger $logger = null,
 		protected ?PrivateChatHandler $private_chat = null,
 		protected ?GroupRedirect $redirect = null,
+		protected ?DialogLog $dialogs = null,
 	) {
 	}
 
 	public function handle(Update $update): void {
+		try {
+			$this->route($update);
+		} finally {
+			// Replies are written to the dialog log only while the interaction is open.
+			if ($this->dialogs !== null) {
+				$this->dialogs->end();
+			}
+		}
+	}
+
+	protected function route(Update $update): void {
 		$membership = $update->botMembershipChange();
 		if ($membership !== null) {
 			$this->log($update, null, sprintf('membership: chat %d (%s) %s', $membership['chat_id'], $membership['type'],
@@ -78,6 +91,17 @@ class UpdateRouter {
 				$query->chat_id < 0 ? $query->chat_title : $query->from->displayName(),
 			);
 			$player = $this->upsertPlayer($query->from);
+			if ($this->dialogs !== null) {
+				$this->dialogs->begin(
+					$query->from,
+					$query->chat_id,
+					$query->chat_id < 0 ? 'supergroup' : 'private',
+					$query->chat_title,
+					$query->message_id,
+					$query->id,
+				);
+				$this->dialogs->user('[кнопка] ' . ($query->button_text !== '' ? $query->button_text : $query->data));
+			}
 			$this->callbacks->handle($query, $player);
 			return;
 		}
@@ -119,6 +143,7 @@ class UpdateRouter {
 			return;
 		}
 		$this->log($update, $message, ($is_private ? 'private: ' : '') . 'edited: replied once');
+		$this->beginDialog($message, '[исправлено] ');
 		$this->api->sendMessage($message->chat_id, Html::e(Messages::EDITED_MESSAGE), $message->message_id);
 	}
 
@@ -155,6 +180,7 @@ class UpdateRouter {
 		$this->chats->ensure($message->chat_id, $message->chat_title);
 		$actor = $this->upsertPlayer($message->from);
 		$this->registerMentionedPlayers($message);
+		$this->beginDialog($message);
 
 		if ($is_our_command && $command !== null && in_array(
 			mb_strtolower($command['name']),
@@ -208,7 +234,25 @@ class UpdateRouter {
 		$this->registerMentionedPlayers($message);
 		$decision = $this->private_chat->decide($message, $actor);
 		$this->log($update, $message, 'private: ' . PrivateChatHandler::describe($decision));
+		$this->beginDialog($message);
 		$this->private_chat->handle($message, $actor, $decision);
+	}
+
+	/**
+		Opens the dialog-log interaction for a message the bot processes and writes the user's text.
+	*/
+	protected function beginDialog(Message $message, string $prefix = ''): void {
+		if ($this->dialogs === null || $message->from === null) {
+			return;
+		}
+		$this->dialogs->begin(
+			$message->from,
+			$message->chat_id,
+			$message->chat_type,
+			$message->chat_title,
+			$message->message_id,
+		);
+		$this->dialogs->user($prefix . ($message->text !== '' ? $message->text : '(без текста)'));
 	}
 
 	/**

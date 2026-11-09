@@ -61,6 +61,8 @@ return [
 	],
 	// debug | info | error (debug also logs every raw update)
 	'log_level' => Env::get('LOG_LEVEL', 'info'),
+	// Per-user dialog logs in storage/logs/dialogs (1/0)
+	'dialog_log' => Env::bool('DIALOG_LOG', true),
 	'paths' => [
 		'root'   => $root,
 		'logs'   => $root . '/storage/logs',

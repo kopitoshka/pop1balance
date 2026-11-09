@@ -188,6 +188,30 @@ Decisions: `ignored: no mention/reply`, `ignored: wrong bot username in mention`
 `private: ai`, `private: help` / `levels` / `tournaments` / `fallback text (AI off…)` (keywords, AI off),
 `private: button psolo:5`, `private: edited: replied once`, `edited: replied once`, `ignored: edited, …`.
 
+#### Dialog logs
+
+`storage/logs/dialogs/<username>.log` (lowercase, without `@`, only `a-z0-9_`), or `id<telegram id>.log` for users
+without a username: the readable history of one user with the bot. Logged: every message the bot processes (group
+mentions, replies and commands addressed to it, all private messages, edited messages it answers as `[исправлено] …`,
+buttons as `[кнопка] <label>`) and every reply to that interaction (messages, edits of private messages as
+`(исправил сообщение) …`, button popups as `(всплывающее) …`). Plain text, HTML stripped, continuation lines start with a tab:
+
+```
+[2026-11-09 18:42:07 MSK] группа «P1 турниры» @vasya: @pop1_bot запиши меня
+[2026-11-09 18:42:07 MSK] группа «P1 турниры» бот → @vasya: Давай в личке 👉
+[2026-11-09 18:42:15 MSK] личка @vasya: /start t_3
+[2026-11-09 18:42:15 MSK] личка бот → @vasya: Привет, Vasya! 👋 Вот этот турнир. Кнопки ниже — или просто напиши, что нужно.
+[2026-11-09 18:42:15 MSK] личка бот → @vasya: 🏆 Субботний кубок · №1
+	🗓 14.11.2026 ⏰ 19:00 МСК
+	…
+[2026-11-09 18:42:20 MSK] личка @vasya: [кнопка] 🙋 Записаться соло
+[2026-11-09 18:42:20 MSK] личка бот → @vasya: (всплывающее) Записал тебя соло! Команду соберёте уже в игре.
+```
+
+Announcements, their edits and cron reminders are broadcasts and are not written there; the AI's tool calls stay
+in the main log. `DIALOG_LOG=0` in `.env` turns it off (default 1). Same fallback as the main log: if the directory
+is not writable, lines go to the PHP `error_log` with a `[p1bot]` prefix.
+
 ### Diagnostics
 
 ```bash

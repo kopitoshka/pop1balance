@@ -39,10 +39,12 @@ use P1Bot\Repository\TeamRepository;
 use P1Bot\Repository\TournamentRepository;
 use P1Bot\Support\Clock;
 use P1Bot\Support\Database;
+use P1Bot\Support\DialogLog;
 use P1Bot\Support\Logger;
 use P1Bot\Telegram\BotApi;
 use P1Bot\Telegram\BotIdentity;
 use P1Bot\Telegram\ChatAdminSync;
+use P1Bot\Telegram\DialogLoggingApi;
 use P1Bot\Telegram\TelegramApi;
 
 /**
@@ -64,6 +66,7 @@ class Bootstrap {
 	public TeamService $teams;
 
 	public Logger $logger;
+	public DialogLog $dialogs;
 	public HttpClient $http;
 	public BotIdentity $bot;
 	public TelegramApi $telegram;
@@ -141,7 +144,9 @@ class Bootstrap {
 			(string) ($config['telegram']['username'] ?? ''),
 			$owner_tg_id,
 		);
-		$this->telegram = new BotApi($this->http, $token, 15, $this->logger);
+		$this->dialogs = new DialogLog($this->dialogDir(), $clock);
+		// Every reply during a user interaction also goes to that user's dialog log.
+		$this->telegram = new DialogLoggingApi(new BotApi($this->http, $token, 15, $this->logger), $this->dialogs);
 		$this->admin_sync = new ChatAdminSync(
 			$this->telegram,
 			$this->chats,
@@ -288,6 +293,7 @@ class Bootstrap {
 				$clock,
 			),
 			new GroupRedirect($this->bot, $this->tournaments, $this->tournament_resolver),
+			$this->dialogs,
 		);
 	}
 
@@ -324,6 +330,17 @@ class Bootstrap {
 			(int) ($openai['timeout'] ?? 30),
 			$this->logger,
 		);
+	}
+
+	/**
+		storage/logs/dialogs, or null (off) when DIALOG_LOG=0 or there is no logs path (tests).
+	*/
+	protected function dialogDir(): ?string {
+		$logs = (string) ($this->config['paths']['logs'] ?? '');
+		if ($logs === '' || !($this->config['dialog_log'] ?? true)) {
+			return null;
+		}
+		return (string) ($this->config['paths']['dialogs'] ?? $logs . '/dialogs');
 	}
 
 	protected function systemPrompt(): string {
