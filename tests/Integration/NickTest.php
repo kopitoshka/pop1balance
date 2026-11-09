@@ -17,7 +17,7 @@ class NickTest extends IntegrationTestCase {
 
 		$this->dispatch($this->privateMessage($vasya, '/nick'));
 		self::assertStringContainsString('Твой ник: <b>Zoloto on heat</b>', $this->http->lastText());
-		self::assertStringContainsString('/nick <ник в игре>', $this->http->lastText());
+		self::assertStringContainsString('<code>/nick игровой_ник</code>', $this->http->lastText());
 
 		$this->dispatch($this->privateMessage($vasya, '/nick Masta_Sega.Ekb'));
 		self::assertStringContainsString('Поставила тебе ник «Masta_Sega.Ekb»', $this->http->lastText());

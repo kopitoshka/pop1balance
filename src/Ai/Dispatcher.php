@@ -256,7 +256,7 @@ class Dispatcher {
 				$player = $ref === '' ? $actor : $this->resolvePlayer($ref, $actor, $ctx, 'show_nick', $a, 'player');
 				if (!$player->hasIgn()) {
 					$msg = $player->id === $actor->id
-						? 'Ник пока не привязан. Поставить: /nick <ник в игре> или скажи мне свой ник.'
+						? 'Ник пока не привязан. Поставить: <code>/nick игровой_ник</code> или скажи мне свой ник.'
 						: sprintf('У %s ник пока не привязан.', $player->mention());
 				} else {
 					$msg = $player->id === $actor->id

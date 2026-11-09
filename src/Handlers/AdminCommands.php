@@ -647,7 +647,7 @@ class AdminCommands {
 		$own = $player->id === $ctx->actor->id;
 		if (!$player->hasIgn()) {
 			$text = $own
-				? 'Ник пока не привязан. Поставить: /nick <ник в игре>'
+				? 'Ник пока не привязан. Поставить: <code>/nick игровой_ник</code>'
 				: sprintf('У %s ник пока не привязан.', Html::e($player->mention()));
 		} elseif ($own) {
 			$text = sprintf('Твой ник: <b>%s</b>', Html::e((string) $player->ign));
@@ -659,7 +659,7 @@ class AdminCommands {
 			);
 		}
 		if ($own) {
-			$text .= "\nСменить: /nick <ник в игре>";
+			$text .= "\nСменить: <code>/nick игровой_ник</code>";
 		}
 		if ($ctx->is_owner && $own) {
 			$text .= "\nПоставить другому: /nick @user НикВИгре";

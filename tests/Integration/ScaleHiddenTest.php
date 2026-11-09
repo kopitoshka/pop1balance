@@ -53,8 +53,8 @@ class ScaleHiddenTest extends IntegrationTestCase {
 		$this->dispatch($this->privateMessage($this->admin, '/help'));
 		$help = $this->http->lastText();
 		self::assertStringContainsString('/new', $help);
-		self::assertStringContainsString('/edit <id>', $help);
-		self::assertStringContainsString('/cancel <id>', $help);
+		self::assertStringContainsString('/edit <code>номер</code>', $help);
+		self::assertStringContainsString('/cancel <code>номер</code>', $help);
 		self::assertStringNotContainsString('/close', $help);
 		self::assertStringNotContainsString('/start —', $help);
 		foreach (['шкал', 'баланс', '/balance', '/level @user 4', 'главного админа'] as $hidden) {
@@ -68,7 +68,7 @@ class ScaleHiddenTest extends IntegrationTestCase {
 		self::assertStringNotContainsString('/balance', $owner_help);
 		self::assertStringNotContainsStringIgnoringCase('шкал', $owner_help);
 		self::assertStringContainsString('/team', $owner_help);
-		self::assertStringContainsString('/nick <ник>', $owner_help);
+		self::assertStringContainsString('<code>/nick игровой_ник</code>', $owner_help);
 	}
 
 	public function testAnyoneCanViewOwnAndOthersLevel(): void {

@@ -557,7 +557,7 @@ class AdminCommandsTest extends IntegrationTestCase {
 		self::assertStringContainsString('/levels', $help_user);
 		self::assertStringContainsString('/history', $help_user);
 		self::assertStringContainsString('/nick — свой игровой ник', $help_user);
-		self::assertStringContainsString('/nick <ник>', $help_user);
+		self::assertStringContainsString('<code>/nick игровой_ник</code>', $help_user);
 		self::assertStringContainsString('/team', $help_user);
 		self::assertStringNotContainsString('/level @user 4', $help_user);
 		self::assertStringNotContainsString('/nick @user', $help_user);
@@ -572,8 +572,8 @@ class AdminCommandsTest extends IntegrationTestCase {
 
 		$this->dispatch($this->privateMessage($this->owner, '/help'));
 		$help = $this->http->lastText();
-		self::assertStringContainsString('/edit <id>', $help);
-		self::assertStringContainsString('/cancel <id>', $help);
+		self::assertStringContainsString('/edit <code>номер</code>', $help);
+		self::assertStringContainsString('/cancel <code>номер</code>', $help);
 		self::assertStringNotContainsString('/close', $help);
 		self::assertStringContainsString('/nick @user НикВИгре', $help);
 		self::assertStringContainsString('/level @user 4', $help);
