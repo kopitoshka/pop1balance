@@ -78,12 +78,22 @@ class MessageHandler {
 			$message_id = $this->api->sendMessage($chat_id, Texts::levels($ctx->isPrivate() && $ctx->is_owner), $reply_to);
 		}
 		$groups = $reply['groups'] ?? [];
-		if ($reply['text'] !== '' || $message_id === null || $groups !== []) {
+		$suggest = $reply['suggest_markup'] ?? [];
+		$extra = [];
+		if ($groups !== []) {
+			$extra = PrivateGroups::buttons($groups);
+		} elseif ($suggest !== []) {
+			$extra = $suggest;
+		}
+		if ($reply['text'] !== '' || $message_id === null || $extra !== []) {
+			$fallback = $groups !== []
+				? 'В какой группе? Выбери кнопкой ниже.'
+				: ($suggest !== [] ? 'Может, ты про кого-то из этих?' : 'Готово!');
 			$message_id = $this->api->sendMessage(
 				$chat_id,
-				Html::e($reply['text'] !== '' ? $reply['text'] : ($groups !== [] ? 'В какой группе? Выбери кнопкой ниже.' : 'Готово!')),
+				Html::e($reply['text'] !== '' ? $reply['text'] : $fallback),
 				$reply_to,
-				$groups !== [] ? PrivateGroups::buttons($groups) : [],
+				$extra,
 			);
 		}
 		($reply['remember'])($message_id);

@@ -35,7 +35,7 @@ class BotApiTest extends TestCase {
 		(new BotApi($http, '123:ABC'))->setWebhook('https://x.test/webhook.php', 'sec', Update::ALLOWED_UPDATES);
 		$json = $http->sent('setWebhook')[0];
 		self::assertSame('sec', $json['secret_token']);
-		self::assertSame(['message', 'edited_message', 'callback_query', 'my_chat_member'], $json['allowed_updates']);
+		self::assertSame(Update::ALLOWED_UPDATES, $json['allowed_updates']);
 	}
 
 	public function testErrorIsRaised(): void {

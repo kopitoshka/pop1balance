@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace P1Bot\Handlers;
 
 use P1Bot\App\Announcer;
+use P1Bot\App\PendingPlayerRunner;
 use P1Bot\App\TeamDisbandNotifier;
 use P1Bot\App\DraftCards;
 use P1Bot\App\PrivateGroups;
@@ -46,6 +47,7 @@ class CallbackHandler {
 		protected ?Clock $clock = null,
 		protected int $conversation_ttl_minutes = 30,
 		protected ?TeamDisbandNotifier $disband_notifier = null,
+		protected ?PendingPlayerRunner $pending_runner = null,
 	) {
 	}
 
@@ -53,6 +55,9 @@ class CallbackHandler {
 		For the update log: how the button is treated.
 	*/
 	public function describe(CallbackQuery $query): string {
+		if (str_starts_with($query->data, 'sug:')) {
+			return 'suggest pick ' . $query->data;
+		}
 		$action = (string) strtok($query->data, ':');
 		if ($query->chat_id !== null && $query->chat_id < 0) {
 			return in_array($action, self::LEGACY, true) ? 'group: old button ' . $query->data . ' -> private' : 'group: unknown button';
@@ -61,6 +66,17 @@ class CallbackHandler {
 	}
 
 	public function handle(CallbackQuery $query, Player $player): void {
+		if (preg_match('/^sug:(\d+):(\d+)$/', $query->data, $sm) && $this->pending_runner !== null) {
+			$this->pending_runner->handle(
+				(int) $sm[1],
+				(int) $sm[2],
+				$player,
+				(int) $query->chat_id,
+				$query->id,
+				$query->message_id,
+			);
+			return;
+		}
 		if (!preg_match('/^([a-z]+):(-?\d+)$/', $query->data, $m)) {
 			$this->api->answerCallbackQuery($query->id);
 			return;

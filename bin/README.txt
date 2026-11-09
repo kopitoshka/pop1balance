@@ -92,3 +92,12 @@ resolve_username.py
   задаётся в config/config.php
   (username_resolve.python = python3.11),
   не через .env. Telethon==1.45.0.
+
+Подсказки @ника
+  Если @username не найден (после точного
+  совпадения и MTProto), бот предлагает до 5
+  похожих известных игроков кнопками
+  «Может, ты про…». Работает в /level, /nick
+  и AI (добавить в команду и т.п.).
+  Нужна миграция 012_pending_player_actions:
+  php bin/migrate.php

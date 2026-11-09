@@ -18,6 +18,7 @@ use P1Bot\App\TeamDisbandNotifier;
 use P1Bot\App\PlayerResolver;
 use P1Bot\App\UsernameResolver;
 use P1Bot\App\InlinePlayers;
+use P1Bot\App\PendingPlayerRunner;
 use P1Bot\App\PrivateGroups;
 use P1Bot\App\PrivateViews;
 use P1Bot\App\TournamentListing;
@@ -40,6 +41,7 @@ use P1Bot\Repository\ChatRepository;
 use P1Bot\Repository\EditedReplyRepository;
 use P1Bot\Repository\GroupNoticeRepository;
 use P1Bot\Repository\ConversationRepository;
+use P1Bot\Repository\PendingActionRepository;
 use P1Bot\Repository\PlayerRepository;
 use P1Bot\Repository\SoloPlayerRepository;
 use P1Bot\Repository\TeamRepository;
@@ -196,7 +198,14 @@ class Bootstrap {
 				'root' => (string) ($config['paths']['root'] ?? ''),
 			], $clock, $this->logger);
 		}
-		$this->player_resolver = new PlayerResolver($this->players, $clock, $this->bot->username, $username_lookup);
+		$pending_actions = new PendingActionRepository($db);
+		$this->player_resolver = new PlayerResolver(
+			$this->players,
+			$clock,
+			$this->bot->username,
+			$username_lookup,
+			$pending_actions,
+		);
 		$this->inline_players = new InlinePlayers($this->telegram, $this->players, $this->balances);
 		$this->tournament_resolver = new TournamentResolver($this->tournament_repo);
 		$this->announcements = new TournamentAnnouncementRepository($db);
@@ -338,6 +347,18 @@ class Bootstrap {
 			$this->logger,
 			$this->announcer,
 		);
+		$pending_runner = new PendingPlayerRunner(
+			$this->telegram,
+			$pending_actions,
+			$this->players,
+			$this->balances,
+			$this->access,
+			$clock,
+			$this->nicks,
+			$this->teams,
+			$this->dispatcher,
+			$this->announcer,
+		);
 		$this->router = new UpdateRouter(
 
 			$this->telegram,
@@ -362,6 +383,7 @@ class Bootstrap {
 				$clock,
 				(int) ($config['conversation_ttl_minutes'] ?? 30),
 				$this->disband_notifier,
+				$pending_runner,
 			),
 			new EditedReplyRepository($db),
 			$this->logger,

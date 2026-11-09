@@ -19,6 +19,7 @@ use P1Bot\Domain\EditTournament;
 use P1Bot\Domain\Exception\DomainError;
 use P1Bot\Domain\Exception\InvalidLevel;
 use P1Bot\Domain\Exception\PermissionDenied;
+use P1Bot\Domain\Exception\PlayerSuggestError;
 use P1Bot\Domain\Exception\ValidationError;
 use P1Bot\Domain\Levels;
 use P1Bot\Domain\NickService;
@@ -122,6 +123,9 @@ class AdminCommands {
 				PrivateGroups::buttons($e->groups),
 			);
 			return;
+		} catch (PlayerSuggestError $e) {
+			$reply = Html::e($e->getMessage());
+			$this->reply_extra = $e->replyMarkup();
 		} catch (DomainError $e) {
 			$reply = Html::e($e->getMessage());
 		}
@@ -399,10 +403,17 @@ class AdminCommands {
 		$target = null;
 		if ($mentions !== []) {
 			$first = $mentions[0];
+			$rest = trim((string) preg_replace('/' . preg_quote($first['text'], '/') . '/u', '', $args, 1));
+			$tokens_preview = preg_split('/\s+/u', $rest, -1, PREG_SPLIT_NO_EMPTY) ?: [];
+			$resume = $this->levelResume($ctx, $tokens_preview);
 			$target = isset($first['user'])
 				? $this->player_resolver->fromUser($first['user'])
-				: $this->player_resolver->fromReference('@' . $first['username'], $ctx->actor);
-			$rest = trim((string) preg_replace('/' . preg_quote($first['text'], '/') . '/u', '', $args, 1));
+				: $this->player_resolver->fromReference(
+					'@' . $first['username'],
+					$ctx->actor,
+					$resume,
+					$ctx->chatId(),
+				);
 		} elseif ($ctx->message->reply_to_from !== null && !$ctx->message->reply_to_from->is_bot) {
 			$target = $this->player_resolver->fromUser($ctx->message->reply_to_from);
 		}
@@ -417,8 +428,34 @@ class AdminCommands {
 		}
 
 		if ($target === null && $args !== '') {
-			// /level <IGN> or /level @user — look up without a mention entity
-			$target = $this->player_resolver->fromReference($args, $ctx->actor);
+			// /level @user [level…] — only when the first token is an @mention.
+			// Bare IGN may contain spaces ("Zoloto on heat") and must stay intact.
+			if (preg_match('/^@([A-Za-z][A-Za-z0-9_]{2,31})(?:\s+(.*))?$/us', $args, $m)) {
+				$rest_tokens = [];
+				if (isset($m[2]) && trim($m[2]) !== '') {
+					$rest_tokens = preg_split('/\s+/u', trim($m[2]), -1, PREG_SPLIT_NO_EMPTY) ?: [];
+				}
+				$resume = $this->levelResume($ctx, $rest_tokens);
+				$target = $this->player_resolver->fromReference(
+					'@' . $m[1],
+					$ctx->actor,
+					$resume,
+					$ctx->chatId(),
+				);
+				if ($rest_tokens !== []) {
+					if (!$ctx->is_owner) {
+						throw new PermissionDenied(AccessPolicy::LEVELS_OWNER_ONLY);
+					}
+					return $this->setLevel($ctx, $target, $rest_tokens);
+				}
+			} else {
+				$target = $this->player_resolver->fromReference(
+					$args,
+					$ctx->actor,
+					['kind' => 'level_show', 'owner_only' => false],
+					$ctx->chatId(),
+				);
+			}
 		}
 
 		if ($target === null) {
@@ -538,10 +575,18 @@ class AdminCommands {
 		$rest = $args;
 		if ($mentions !== []) {
 			$first = $mentions[0];
+			$rest = trim((string) preg_replace('/' . preg_quote($first['text'], '/') . '/u', '', $args, 1));
+			$resume = $rest !== ''
+				? ['kind' => 'nick_set', 'ign' => $rest, 'owner_only' => true]
+				: ['kind' => 'nick_show', 'owner_only' => false];
 			$target = isset($first['user'])
 				? $this->player_resolver->fromUser($first['user'])
-				: $this->player_resolver->fromReference('@' . $first['username'], $ctx->actor);
-			$rest = trim((string) preg_replace('/' . preg_quote($first['text'], '/') . '/u', '', $args, 1));
+				: $this->player_resolver->fromReference(
+					'@' . $first['username'],
+					$ctx->actor,
+					$resume,
+					$ctx->chatId(),
+				);
 		} elseif ($ctx->message->reply_to_from !== null && !$ctx->message->reply_to_from->is_bot) {
 			$target = $this->player_resolver->fromUser($ctx->message->reply_to_from);
 		}
@@ -678,6 +723,33 @@ class AdminCommands {
 			throw new ValidationError(sprintf('Не поняла %s: «%s». Нужно число.', $what, $value));
 		}
 		return (int) $value;
+	}
+
+
+	/**
+		@param list<string> $tokens
+		@return array<string, mixed>
+	*/
+	protected function levelResume(Context $ctx, array $tokens): array {
+		if ($tokens === []) {
+			return ['kind' => 'level_show', 'owner_only' => false];
+		}
+		$balance_id = null;
+		$copy = $tokens;
+		if (count($copy) >= 2 && TournamentResolver::parseId((string) end($copy)) !== null) {
+			$balance_id = TournamentResolver::parseId((string) array_pop($copy));
+		}
+		$level = Levels::parse(implode('', $copy));
+		if ($level === null) {
+			return ['kind' => 'level_show', 'owner_only' => false];
+		}
+		return [
+			'kind' => 'level_set',
+			'level' => $level,
+			'balance_id' => $balance_id,
+			'group_id' => $ctx->groupId(),
+			'owner_only' => true,
+		];
 	}
 
 	protected static function levelsHint(): string {

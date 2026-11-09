@@ -44,7 +44,9 @@ class Assistant {
 
 		'groups' = the action needs a group choice (chat_id => title): the caller adds group buttons.
 
-		@return array{text: string, remember: callable(int): void, card: ?int, history: list<array<string, mixed>>, list: bool, past_list: bool, levels: bool, groups: array<int, string>}
+		'suggest_markup' = fuzzy player pick keyboard from a failed @username resolve.
+
+		@return array{text: string, remember: callable(int): void, card: ?int, history: list<array<string, mixed>>, list: bool, past_list: bool, levels: bool, groups: array<int, string>, suggest_markup: array<string, mixed>}
 	*/
 	public function reply(Context $ctx): array {
 		$message = $ctx->message;
@@ -81,6 +83,7 @@ class Assistant {
 		$past_list = false;
 		$levels = false;
 		$groups = [];
+		$suggest_markup = [];
 		$response = $this->ai->createResponse($this->system_prompt, $input, $tools);
 		for ($round = 0; $response->tool_calls !== [] && $round < self::MAX_ROUNDS; $round++) {
 			$outputs = [];
@@ -105,6 +108,10 @@ class Assistant {
 				if (!empty($result['choose_group_ids'])) {
 					$groups = (array) $result['choose_group_ids'];
 					unset($result['choose_group_ids']);
+				}
+				if (!empty($result['suggest_markup']) && is_array($result['suggest_markup'])) {
+					$suggest_markup = $result['suggest_markup'];
+					unset($result['suggest_markup']);
 				}
 				if (isset($result['show_card'])) {
 					$card = (int) $result['show_card'];
@@ -153,6 +160,7 @@ class Assistant {
 			'past_list' => $past_list,
 			'levels' => $levels,
 			'groups' => $groups,
+			'suggest_markup' => $suggest_markup,
 			'history' => array_slice(
 				array_merge($history, [['role' => 'user', 'content' => $user_text]]),
 				-self::MAX_HISTORY,

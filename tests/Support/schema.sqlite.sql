@@ -137,3 +137,14 @@ CREATE TABLE tournament_announcements (
 	message_id     INTEGER NOT NULL,
 	PRIMARY KEY (tournament_id, chat_id)
 );
+
+CREATE TABLE pending_player_actions (
+	id              INTEGER PRIMARY KEY AUTOINCREMENT,
+	actor_player_id INTEGER NOT NULL REFERENCES players(id) ON DELETE CASCADE,
+	chat_id         INTEGER NOT NULL,
+	action_json     TEXT NOT NULL,
+	expires_at      TEXT NOT NULL,
+	created_at      TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX idx_pending_expires ON pending_player_actions(expires_at);
+

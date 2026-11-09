@@ -21,9 +21,11 @@ use P1Bot\Domain\Exception\DomainError;
 use P1Bot\Domain\Exception\InvalidLevel;
 use P1Bot\Domain\Exception\NotFound;
 use P1Bot\Domain\Exception\PermissionDenied;
+use P1Bot\Domain\Exception\PlayerSuggestError;
 use P1Bot\Domain\Exception\ValidationError;
 use P1Bot\Domain\Levels;
 use P1Bot\Domain\NickService;
+use P1Bot\Domain\Model\Player;
 use P1Bot\Domain\Model\TeamEntry;
 use P1Bot\Domain\Model\Tournament;
 use P1Bot\Domain\MoscowTime;
@@ -98,6 +100,13 @@ class Dispatcher {
 				'choose_group_ids' => $e->groups,
 				'note' => 'Кнопки выбора группы покажутся автоматически. Попроси выбрать группу и повторить запрос.',
 			];
+		} catch (PlayerSuggestError $e) {
+			return [
+				'ok' => false,
+				'error' => $e->getMessage(),
+				'suggest_markup' => $e->replyMarkup(),
+				'note' => 'Кнопки «Может, ты про…» уже уйдут в чат. Попроси нажать подходящую; ники не выдумывай.',
+			];
 		} catch (DomainError $e) {
 			return ['ok' => false, 'error' => $e->getMessage()];
 		} catch (Throwable $e) {
@@ -161,7 +170,7 @@ class Dispatcher {
 				$ref = trim((string) ($a['player'] ?? ''));
 				$player = $ref === ''
 					? $actor
-					: $this->player_resolver->fromReference($ref, $actor);
+					: $this->resolvePlayer($ref, $actor, $ctx, 'player_level', $a, 'player');
 				$scale_id = $this->balances->viewScaleId();
 				$explicit = $this->balances->explicitLevel($scale_id, $player->id);
 				$level = $explicit ?? Levels::DEFAULT;
@@ -232,7 +241,7 @@ class Dispatcher {
 
 			case 'show_nick':
 				$ref = trim((string) ($a['player'] ?? ''));
-				$player = $ref === '' ? $actor : $this->player_resolver->fromReference($ref, $actor);
+				$player = $ref === '' ? $actor : $this->resolvePlayer($ref, $actor, $ctx, 'show_nick', $a, 'player');
 				if (!$player->hasIgn()) {
 					$msg = $player->id === $actor->id
 						? 'Ник пока не привязан. Привязывает организатор 🙂'
@@ -248,7 +257,7 @@ class Dispatcher {
 				if ($this->nicks === null) {
 					return ['ok' => false, 'error' => 'Ники недоступны.'];
 				}
-				$target = $this->player_resolver->fromReference((string) ($a['player'] ?? ''), $actor);
+				$target = $this->resolvePlayer((string) ($a['player'] ?? ''), $actor, $ctx, 'assign_nick', $a, 'player', true);
 				$result = $this->nicks->assignByOwner($actor->id, $target->id, (string) ($a['nick'] ?? ''));
 				$msg = sprintf('Поставила ник «%s» игроку %s.', $result['player']->ign, $result['player']->mention());
 				if ($result['previous_holder'] !== null) {
@@ -267,15 +276,15 @@ class Dispatcher {
 			case 'register_team':
 				$t = $this->tournament($ctx, $a);
 				$ids = [];
-				foreach ((array) ($a['players'] ?? []) as $ref) {
-					$ids[] = $this->player_resolver->fromReference((string) $ref, $actor)->id;
+				foreach ((array) ($a['players'] ?? []) as $i => $ref) {
+					$ids[] = $this->resolvePlayer((string) $ref, $actor, $ctx, 'register_team', $a, 'players.' . $i)->id;
 				}
 				$entry = $this->teams->createTeam($t->id, $actor->id, (string) ($a['team_name'] ?? ''), $ids);
 				return $this->teamResult($t, $entry, 'Команда создана.');
 
 			case 'add_player':
 				[$t, $entry] = $this->team($ctx, $a);
-				$player = $this->player_resolver->fromReference((string) ($a['player'] ?? ''), $actor);
+				$player = $this->resolvePlayer((string) ($a['player'] ?? ''), $actor, $ctx, 'add_player', $a, 'player');
 				return $this->teamResult(
 					$t,
 					$this->teams->addPlayer($actor->id, $entry->team->id, $player->id),
@@ -284,7 +293,7 @@ class Dispatcher {
 
 			case 'remove_player':
 				[$t, $entry] = $this->team($ctx, $a);
-				$player = $this->player_resolver->fromReference((string) ($a['player'] ?? ''), $actor);
+				$player = $this->resolvePlayer((string) ($a['player'] ?? ''), $actor, $ctx, 'remove_player', $a, 'player');
 				return $this->teamResult(
 					$t,
 					$this->teams->removePlayer($actor->id, $entry->team->id, $player->id),
@@ -293,8 +302,8 @@ class Dispatcher {
 
 			case 'replace_player':
 				[$t, $entry] = $this->team($ctx, $a);
-				$out = $this->player_resolver->fromReference((string) ($a['out_player'] ?? ''), $actor);
-				$in = $this->player_resolver->fromReference((string) ($a['in_player'] ?? ''), $actor);
+				$out = $this->resolvePlayer((string) ($a['out_player'] ?? ''), $actor, $ctx, 'replace_player', $a, 'out_player');
+				$in = $this->resolvePlayer((string) ($a['in_player'] ?? ''), $actor, $ctx, 'replace_player', $a, 'in_player');
 				return $this->teamResult(
 					$t,
 					$this->teams->replacePlayer($actor->id, $entry->team->id, $out->id, $in->id),
@@ -311,7 +320,7 @@ class Dispatcher {
 
 			case 'transfer_captain':
 				[$t, $entry] = $this->team($ctx, $a);
-				$player = $this->player_resolver->fromReference((string) ($a['player'] ?? ''), $actor);
+				$player = $this->resolvePlayer((string) ($a['player'] ?? ''), $actor, $ctx, 'transfer_captain', $a, 'player');
 				return $this->teamResult(
 					$t,
 					$this->teams->transferCaptain($actor->id, $entry->team->id, $player->id),
@@ -481,7 +490,7 @@ class Dispatcher {
 				return ['tournament_id' => $this->no($t), 'summary' => $this->tournaments->lineup($t->id)->summary()];
 
 			case 'set_level':
-				$player = $this->player_resolver->fromReference((string) ($a['player'] ?? ''), $actor);
+				$player = $this->resolvePlayer((string) ($a['player'] ?? ''), $actor, $ctx, 'set_level', $a, 'player', true);
 				$level = Levels::parse((string) ($a['level'] ?? '')) ?? throw new ValidationError('Уровень должен быть от 1 до 6 или названием уровня.');
 				$this->balances->setLevel(
 					$ctx->groupId(),
@@ -542,6 +551,21 @@ class Dispatcher {
 		@param array<string, mixed> $a
 		@param list<string>|null $statuses
 	*/
+
+	/**
+		@param array<string, mixed> $tool_args full tool args for resume
+	*/
+	protected function resolvePlayer(string $ref, Player $actor, Context $ctx, string $tool, array $tool_args, string $player_arg, bool $owner_only = false): Player {
+		$resume = [
+			'kind' => 'tool',
+			'tool' => $tool,
+			'args' => $tool_args,
+			'player_arg' => $player_arg,
+			'owner_only' => $owner_only,
+		];
+		return $this->player_resolver->fromReference($ref, $actor, $resume, $ctx->chatId());
+	}
+
 	protected function tournament(Context $ctx, array $a, ?array $statuses = null): Tournament {
 		$id = isset($a['tournament_id']) && $a['tournament_id'] !== '' ? (int) $a['tournament_id'] : null;
 		return $this->resolver->resolve(
