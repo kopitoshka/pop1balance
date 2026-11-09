@@ -7,6 +7,7 @@ namespace P1Bot\Ai;
 use P1Bot\App\Announcer;
 use P1Bot\App\CreateAccess;
 use P1Bot\App\TeamDisbandNotifier;
+use P1Bot\App\TeamAddFlow;
 use P1Bot\App\Confirmation;
 use P1Bot\App\DraftCards;
 use P1Bot\App\NeedGroupChoice;
@@ -64,6 +65,7 @@ class Dispatcher {
 		protected ?CreateAccess $create_access = null,
 		protected ?TeamDisbandNotifier $disband_notifier = null,
 		protected ?NickService $nicks = null,
+		protected ?TeamAddFlow $team_add = null,
 	) {
 	}
 
@@ -233,10 +235,16 @@ class Dispatcher {
 
 
 			case 'set_nick':
-				// Kept as a hard refuse if an old model still calls it; players no longer get this tool.
+				if ($this->nicks === null) {
+					return ['ok' => false, 'error' => 'Ники недоступны.'];
+				}
+				if (!$ctx->isPrivate()) {
+					return ['ok' => false, 'error' => 'Ник ставится только в личке со мной.'];
+				}
+				$player = $this->nicks->setOwn($actor->id, (string) ($a['nick'] ?? ''));
 				return [
-					'ok' => false,
-					'error' => 'Ник привязывает организатор 🙂 Посмотреть свой: /nick',
+					'nick' => $player->ign,
+					'message' => sprintf('Поставила тебе ник «%s».', $player->ign),
 				];
 
 			case 'show_nick':
@@ -244,7 +252,7 @@ class Dispatcher {
 				$player = $ref === '' ? $actor : $this->resolvePlayer($ref, $actor, $ctx, 'show_nick', $a, 'player');
 				if (!$player->hasIgn()) {
 					$msg = $player->id === $actor->id
-						? 'Ник пока не привязан. Привязывает организатор 🙂'
+						? 'Ник пока не привязан. Поставить: /nick <ник в игре> или скажи мне свой ник.'
 						: sprintf('У %s ник пока не привязан.', $player->mention());
 				} else {
 					$msg = $player->id === $actor->id
@@ -284,7 +292,19 @@ class Dispatcher {
 
 			case 'add_player':
 				[$t, $entry] = $this->team($ctx, $a);
-				$player = $this->resolvePlayer((string) ($a['player'] ?? ''), $actor, $ctx, 'add_player', $a, 'player');
+				$ref = trim((string) ($a['player'] ?? ''));
+				if ($ref === '') {
+					return $this->addPlayerOffer($ctx, $actor, $entry->team->id);
+				}
+				// Partial nick without @: suggest matches instead of hard fail.
+				if ($ref[0] !== '@' && !preg_match('/^[A-Za-z][A-Za-z0-9_]{2,31}$/', $ref)) {
+					$partial = $this->players->searchPartial($ref, 5, $this->players->playersOnTeamsOfTournament($t->id));
+					if ($partial !== [] && $this->players->findKnownByUsername(ltrim($ref, '@')) === null
+						&& $this->players->findByIgnNorm(mb_strtolower($ref)) === null) {
+						return $this->partialPlayerSuggest($ctx, $actor, $entry->team->id, $ref, $partial, $a);
+					}
+				}
+				$player = $this->resolvePlayer($ref, $actor, $ctx, 'add_player', $a, 'player');
 				return $this->teamResult(
 					$t,
 					$this->teams->addPlayer($actor->id, $entry->team->id, $player->id),
@@ -383,7 +403,7 @@ class Dispatcher {
 					(int) ($a['team_size'] ?? 0),
 					$reference,
 					// Only the owner picks a scale (the parameter is offered to him only).
-					$ctx->is_owner && isset($a['balance_id']) ? (int) $a['balance_id'] : null,
+					null, // single global scale
 					isset($a['max_players']) ? (int) $a['max_players'] : null,
 				));
 				$this->announcer->renumber($t->id);
@@ -474,12 +494,6 @@ class Dispatcher {
 					'message' => 'Регистрация снова открыта, анонс опубликован во всех активных группах.',
 				];
 
-			case 'close_registration':
-				$t = $this->tournaments->closeRegistration(
-					$actor->id,
-					$this->tournament($ctx, $a, [TournamentStatus::REGISTRATION])->id,
-				);
-				return ['tournament_id' => $this->no($t), 'message' => 'Регистрация закрыта.'];
 
 			case 'set_max_players':
 				$t = $this->tournaments->setMaxPlayers(
@@ -506,43 +520,7 @@ class Dispatcher {
 					$level,
 				)];
 
-			case 'create_balance':
-				$balance = $this->balances->create(
-					$ctx->groupId(),
-					$actor->id,
-					(string) ($a['name'] ?? ''),
-					isset($a['based_on_balance_id']) ? (int) $a['based_on_balance_id'] : null,
-				);
-				return [
-					'balance_id' => $balance->id,
-					'message' => sprintf('Шкала «%s» создана (№%d).', $balance->name, $balance->id),
-				];
 
-			case 'show_balance':
-				if (isset($a['balance_id'])) {
-					$balance = $this->balances->get((int) $a['balance_id']);
-				} else {
-					$balance = $this->balance_repo->listByOwner($actor->id)[0] ?? $this->balances->findDefault();
-					if ($balance === null) {
-						throw new NotFound('Шкал баланса пока нет.');
-					}
-				}
-				$ratings = [];
-				foreach ($this->balances->effectiveRatings($balance->id) as $player_id => $rating) {
-					$p = $this->players->find($player_id);
-					$ratings[] = sprintf(
-						'%s — %s (%d)',
-						$p !== null ? $p->mention() : '#' . $player_id,
-						Levels::name($rating['level']),
-						$rating['level'],
-					);
-				}
-				return [
-					'balance_id' => $balance->id,
-					'name' => $balance->name,
-					'ratings' => $ratings,
-					'note' => 'Остальные игроки — средние (3).',
-				];
 		}
 		throw new ValidationError('Такого действия нет.');
 	}
@@ -761,4 +739,62 @@ class Dispatcher {
 	protected static function plain(string $html): string {
 		return html_entity_decode(strip_tags($html), ENT_QUOTES | ENT_HTML5, 'UTF-8');
 	}
+
+	/**
+		«добавь в мою команду» without a nick — candidate buttons + pending text search.
+		@return array<string, mixed>
+	*/
+	protected function addPlayerOffer(Context $ctx, \P1Bot\Domain\Model\Player $actor, int $team_id): array {
+		if ($this->team_add === null || !$ctx->isPrivate()) {
+			return [
+				'ok' => false,
+				'error' => 'Открой карточку команды (/team) и нажми «➕ Добавить игрока», или укажи @username.',
+			];
+		}
+		$markup = $this->team_add->suggestMarkup($actor, $team_id, $ctx->chatId());
+		// also send the telegram picker via offer? suggestMarkup only inline. Call offer for full UX.
+		$this->team_add->offer($ctx->chatId(), $actor, $team_id, $ctx->message->message_id);
+		return [
+			'message' => 'Кого добавить? Выбери кнопкой, из Telegram или напиши часть ника.',
+			'suggest_markup' => [],
+			'note' => 'Кнопки уже отправлены в чат. Не дублируй список ников.',
+		];
+	}
+
+	/**
+		Partial nick match → pick buttons that add to the team (reuse sug: pending with resume add_player).
+		@param list<\P1Bot\Domain\Model\Player> $partial
+		@param array<string, mixed> $args
+		@return array<string, mixed>
+	*/
+	protected function partialPlayerSuggest(
+		Context $ctx,
+		\P1Bot\Domain\Model\Player $actor,
+		int $team_id,
+		string $ref,
+		array $partial,
+		array $args,
+	): array {
+		// Store resume as add_player with team fixed via args; sug callback re-runs tool.
+		$resume = [
+			'kind' => 'tool',
+			'tool' => 'add_player',
+			'args' => array_merge($args, ['_team_id' => $team_id]),
+			'player_field' => 'player',
+		];
+		// Use PlayerSuggestError path via pending in player_resolver — simpler: tadd buttons directly.
+		$rows = [];
+		foreach ($partial as $player) {
+			$rows[] = [[
+				'text' => mb_substr($player->hasIgn() ? ((string) $player->ign) : $player->mention(), 0, 64),
+				'callback_data' => 'tadd:' . $team_id . ':' . $player->id,
+			]];
+		}
+		return [
+			'message' => 'Нашла похожих по «' . $ref . '» — выбери:',
+			'suggest_markup' => $rows === [] ? [] : ['reply_markup' => ['inline_keyboard' => $rows]],
+		];
+	}
+
+
 }

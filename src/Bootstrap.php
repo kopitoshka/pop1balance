@@ -18,6 +18,8 @@ use P1Bot\App\TeamDisbandNotifier;
 use P1Bot\App\PlayerResolver;
 use P1Bot\App\UsernameResolver;
 use P1Bot\App\PendingPlayerRunner;
+use P1Bot\App\TeamAddFlow;
+use P1Bot\App\TeamCards;
 use P1Bot\App\PrivateGroups;
 use P1Bot\App\PrivateViews;
 use P1Bot\App\TournamentListing;
@@ -88,6 +90,8 @@ class Bootstrap {
 	public DraftCards $drafts;
 	public TournamentListing $listing;
 	public PlayerResolver $player_resolver;
+	public TeamCards $team_cards;
+	public TeamAddFlow $team_add;
 	public TournamentResolver $tournament_resolver;
 	public Dispatcher $dispatcher;
 	public ?Assistant $assistant = null;
@@ -263,6 +267,24 @@ class Bootstrap {
 			$this->db,
 			$clock,
 		);
+		$this->team_cards = new TeamCards(
+			$this->telegram,
+			$this->tournaments,
+			$this->teams,
+			$this->players,
+			$this->access,
+			$this->private_groups,
+		);
+		$this->team_add = new TeamAddFlow(
+			$this->telegram,
+			$this->tournaments,
+			$this->teams,
+			$this->players,
+			$pending_actions,
+			$clock,
+			$this->announcer,
+			$this->team_cards,
+		);
 		$commands = new AdminCommands(
 			$this->telegram,
 			$this->bot,
@@ -279,6 +301,8 @@ class Bootstrap {
 			$this->private_groups,
 			$this->create_access,
 			$this->nicks,
+			$this->team_cards,
+			$this->team_repo,
 		);
 
 		$this->dispatcher = new Dispatcher(
@@ -298,6 +322,7 @@ class Bootstrap {
 			$this->create_access,
 			$this->disband_notifier,
 			$this->nicks,
+			$this->team_add,
 		);
 		$ai = $this->makeAiClient();
 		if ($ai !== null) {
@@ -331,6 +356,7 @@ class Bootstrap {
 			$this->listing,
 			$this->private_groups,
 			$this->access,
+			$this->team_cards,
 		);
 		$this->group_chat = new GroupChat(
 			$this->telegram,
@@ -381,6 +407,8 @@ class Bootstrap {
 				(int) ($config['conversation_ttl_minutes'] ?? 30),
 				$this->disband_notifier,
 				$pending_runner,
+				$this->team_add,
+				$this->team_cards,
 			),
 			new EditedReplyRepository($db),
 			$this->logger,
@@ -398,6 +426,7 @@ class Bootstrap {
 				$messages,
 				$clock,
 				$this->create_access,
+				$this->team_add,
 			),
 			$this->group_redirect,
 			$this->dialogs,

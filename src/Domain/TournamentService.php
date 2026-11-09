@@ -50,17 +50,13 @@ class TournamentService {
 	*/
 	public function create(CreateTournament $input): Tournament {
 		// Create permission is enforced by CreateAccess in handlers (shared group with owner).
-		if ($input->balance_id !== null) {
-			// Picking a scale is owner only for now; others always get the default scale.
-			$this->access->assertOwner($input->organizer_id);
-		}
-
 		$title = $this->validTitle($input->title);
 		$starts_at = $this->validStart($input->starts_at_msk);
 		$team_size = $this->validTeamSize($input->team_size);
+		// Single global scale for all tournaments.
 		[$balance_id, $reference, $max_points] = $this->levelLimit(
 			$input->reference_team,
-			$input->balance_id,
+			null,
 			$team_size,
 		);
 		$max_players = $this->validMaxPlayers($input->max_players ?? $this->default_max_players, $team_size);
@@ -84,11 +80,6 @@ class TournamentService {
 			$t = $this->get($tournament_id);
 			$this->access->assertCanManageTournament($t, $actor_id);
 			$this->assertEditable($t);
-			if ($edit->balance_id !== null) {
-				// Changing the scale is owner only for now; other edits keep the tournament's scale.
-				$this->access->assertOwner($actor_id);
-			}
-
 			$fields = [];
 			if ($edit->title !== null) {
 				$fields['title'] = $this->validTitle($edit->title);
@@ -99,7 +90,7 @@ class TournamentService {
 			}
 
 			$limit_touched = $edit->team_size !== null || $edit->reference_team !== null
-				|| $edit->balance_id !== null || $edit->remove_level_limit;
+				|| $edit->remove_level_limit;
 			if ($limit_touched) {
 				if ($this->hasEntries($t->id)) {
 					throw new ValidationError(self::LEVEL_LOCKED);
@@ -121,7 +112,7 @@ class TournamentService {
 				}
 				[$balance_id, $reference, $max_points] = $this->levelLimit(
 					$level,
-					$edit->balance_id ?? $t->balance_id,
+					null,
 					$team_size,
 				);
 				$fields += [
@@ -460,13 +451,14 @@ class TournamentService {
 		@return array{0: ?int, 1: ?string, 2: ?int}
 	*/
 	protected function levelLimit(?string $level, ?int $balance_id, int $team_size): array {
+		unset($balance_id); // single global default scale
 		if ($level === null || trim($level) === '') {
 			throw new InvalidLevel(self::REFERENCE_REQUIRED);
 		}
 		[$levels, $max_points] = Levels::parseTournamentLevel($level, $team_size);
-		$balance = $balance_id !== null ? $this->balances->find($balance_id) : $this->balances->findDefault();
+		$balance = $this->balances->findDefault();
 		if ($balance === null) {
-			throw new NotFound($balance_id !== null ? 'Такой шкалы баланса нет.' : 'Уровни игроков ещё не настроены, поэтому турнир пока не создать. Напиши главному админу.');
+			throw new NotFound('Уровни игроков ещё не настроены, поэтому турнир пока не создать. Напиши главному админу.');
 		}
 		return [$balance->id, $levels !== null ? Levels::formatReferenceTeam($levels) : null, $max_points];
 	}

@@ -134,4 +134,32 @@ class TeamRepository {
 		);
 		return $row === null ? null : TeamMember::fromRow($row);
 	}
+
+	/**
+		Teams the player is on in tournaments with the given statuses.
+
+		@param list<string> $statuses
+		@return list<Team>
+	*/
+	public function listTeamsForPlayer(int $player_id, array $statuses): array {
+		if ($statuses === []) {
+			return [];
+		}
+		$params = ['p' => $player_id];
+		$keys = [];
+		foreach (array_values($statuses) as $i => $status) {
+			$key = 's' . $i;
+			$keys[] = ':' . $key;
+			$params[$key] = $status;
+		}
+		$rows = $this->db->fetchAll(
+			'SELECT t.* FROM teams t
+				INNER JOIN team_members m ON m.team_id = t.id
+				INNER JOIN tournaments tr ON tr.id = t.tournament_id
+				WHERE m.player_id = :p AND tr.status IN (' . implode(',', $keys) . ')
+				ORDER BY tr.starts_at ASC, t.id ASC',
+			$params,
+		);
+		return array_map([Team::class, 'fromRow'], $rows);
+	}
 }

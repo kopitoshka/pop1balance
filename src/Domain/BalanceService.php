@@ -39,8 +39,7 @@ class BalanceService {
 
 	/**
 		Scale used for /level and for team point limits — always the default (global) scale.
-		Keeps what users see in /level identical to enrollment math. Tournament.balance_id may
-		still be stored for owner /balance tooling; enrollment reads this view scale.
+		Keeps what users see in /level identical to enrollment math. All tournaments use this scale.
 	*/
 	public function viewScaleId(): ?int {
 		return $this->findDefault()?->id;

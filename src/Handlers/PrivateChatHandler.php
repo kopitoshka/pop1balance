@@ -7,6 +7,7 @@ namespace P1Bot\Handlers;
 use P1Bot\App\CreateAccess;
 use P1Bot\App\DraftCards;
 use P1Bot\App\PrivateGroups;
+use P1Bot\App\TeamAddFlow;
 use P1Bot\App\PrivateViews;
 use P1Bot\Domain\AccessPolicy;
 use P1Bot\Domain\Exception\DomainError;
@@ -80,6 +81,7 @@ class PrivateChatHandler {
 		protected MessageHandler $messages,
 		protected Clock $clock,
 		protected ?CreateAccess $create_access = null,
+		protected ?TeamAddFlow $team_add = null,
 	) {
 	}
 
@@ -170,7 +172,7 @@ class PrivateChatHandler {
 				);
 				return;
 			case self::LEVELS:
-				$this->api->sendMessage($chat_id, Texts::levels($is_owner));
+				$this->commands->handle($this->context($message, $actor), 'levels', '');
 				return;
 			case self::TOURNAMENTS:
 				$this->views->list($chat_id, $actor, $is_owner);
@@ -185,6 +187,14 @@ class PrivateChatHandler {
 			case self::USERS_SHARED:
 				$this->onUsersShared($message, $actor);
 				return;
+		}
+		if (
+			$this->team_add !== null
+			&& in_array($decision['kind'], [self::AI, self::FALLBACK], true)
+			&& $message->text !== ''
+			&& $this->team_add->handleSearchText($chat_id, $actor, $message->text, $message->message_id)
+		) {
+			return;
 		}
 		$this->messages->handle($this->context($message, $actor));
 	}
@@ -279,6 +289,13 @@ class PrivateChatHandler {
 		$shared = $message->users_shared;
 		if ($shared === null || $shared['users'] === []) {
 			$this->api->sendMessage($chat_id, 'Никого не выбрали.', $message->message_id, $remove);
+			return;
+		}
+		if (
+			$this->team_add !== null
+			&& (int) ($shared['request_id'] ?? 0) === TeamAddFlow::REQUEST_USERS_ID
+			&& $this->team_add->handleUsersShared($chat_id, $actor, $shared['users'], $message->message_id)
+		) {
 			return;
 		}
 		$lines = [];

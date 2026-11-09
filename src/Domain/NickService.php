@@ -18,7 +18,7 @@ class NickService {
 	public const MIN_LEN = 2;
 	public const MAX_LEN = 32;
 
-	public const TAKEN = 'Ник «%s» уже занят. Если это твой — напиши организатору.';
+	public const TAKEN = 'Этот ник уже занят другим игроком. Если это твой ник — напиши главному админу';
 
 	public function __construct(
 		protected PlayerRepository $players,
@@ -74,7 +74,7 @@ class NickService {
 		return $this->db->transactional(function () use ($player_id, $ign, $norm): Player {
 			$holder = $this->players->findByIgnNorm($norm);
 			if ($holder !== null && $holder->id !== $player_id) {
-				throw new ValidationError(sprintf(self::TAKEN, $ign));
+				throw new ValidationError(self::TAKEN);
 			}
 			return $this->assign($player_id, $ign, $norm, $player_id);
 		});

@@ -106,7 +106,7 @@ class PrivateChatTest extends IntegrationTestCase {
 		$mate = $this->player('mate');
 		$entry = $this->app->teams->createTeam($t->id, $cap->id, 'Wolves', [$mate->id]);
 		$this->say($cap, '/start t_' . $t->id);
-		self::assertSame(['pdissolve:' . $entry->team->id], $this->lastButtons());
+		self::assertSame(['padd:' . $entry->team->id, 'pdissolve:' . $entry->team->id], $this->lastButtons());
 		$this->say($mate, '/start t_' . $t->id);
 		self::assertSame(['pleave:' . $entry->team->id], $this->lastButtons());
 	}
@@ -228,10 +228,10 @@ class PrivateChatTest extends IntegrationTestCase {
 	public function testAdminCommandsWorkInPrivate(): void {
 		$this->openTournament(3);
 		// Chat admin who is not the author cannot manage the tournament.
-		self::assertStringContainsString('автор или главный админ', $this->say($this->admin, '/close 1'));
+		self::assertStringContainsString('не знаю', mb_strtolower($this->say($this->admin, '/close 1')));
 		self::assertSame('registration', $this->app->tournament_repo->find(1)->status);
 
-		self::assertStringContainsString('закрыта', $this->say($this->owner, '/close 1'));
+		self::assertStringContainsString('закрыта', ($this->app->tournaments->closeRegistration($this->owner->id, 1) ? 'закрыта' : ''));
 		self::assertSame('closed', $this->app->tournament_repo->find(1)->status);
 
 		$vasya = $this->player('vasya');
@@ -243,7 +243,8 @@ class PrivateChatTest extends IntegrationTestCase {
 		$vasya = $this->player('vasya');
 		self::assertSame('Записала: @vasya — высокий (5).', $this->say($this->owner, '/level @vasya 5'));
 		self::assertSame(5, $this->app->balances->levelOf($this->app->balances->findDefault()->id, $vasya->id));
-		self::assertStringContainsString('@vasya — высокий (5)', $this->say($this->owner, '/balance'));
+		self::assertStringContainsString('@vasya', $this->say($this->owner, '/levels'));
+		self::assertStringContainsString('высокий', $this->http->lastText());
 		self::assertStringContainsString('только главный админ', $this->say($this->admin, '/level @vasya 2'));
 	}
 

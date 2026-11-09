@@ -78,7 +78,7 @@ class AccessPolicy {
 	}
 
 	/**
-		Edit / open / close / cancel: only the tournament's author (organizer) or the bot owner.
+		Edit / open / cancel: only the tournament's author (organizer) or the bot owner.
 		Group admins have no special rights here.
 	*/
 	public function canManageTournament(Tournament $tournament, int $player_id): bool {

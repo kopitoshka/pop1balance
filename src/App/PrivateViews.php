@@ -16,7 +16,7 @@ use P1Bot\View\Html;
 /**
 	What the private chat shows: a tournament with buttons for the player's state and the list of
 	tournaments with «open» buttons. Callbacks: psolo:<t>, punsolo:<t>, pteam:<t>, pleave:<team>,
-	pdissolve:<team>, popen:<t> (handled by CallbackHandler).
+	pdissolve:<team>, padd:<team>, tadd:<team>:<player>, popen:<t> (handled by CallbackHandler).
 */
 class PrivateViews {
 
@@ -28,6 +28,7 @@ class PrivateViews {
 		protected TournamentListing $listing,
 		protected PrivateGroups $groups,
 		protected AccessPolicy $access,
+		protected ?TeamCards $team_cards = null,
 	) {
 	}
 
@@ -74,6 +75,9 @@ class PrivateViews {
 		}
 		$team = $this->teams->teamOf($t->id, $player->id);
 		if ($team !== null) {
+			if ($this->team_cards !== null) {
+				return $this->team_cards->rows($t, $team, $player);
+			}
 			return $team->team->captain_id === $player->id
 				? [[[
 					'text' => '🚫 Распустить команду «' . $team->team->name . '»',

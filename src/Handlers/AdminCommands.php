@@ -42,20 +42,20 @@ use P1Bot\View\Texts;
 	Slash commands: the fallback that works without AI.
 */
 class AdminCommands {
-	protected const PUBLIC = ['help', 'start', 'tournaments', 'history', 'info', 'level', 'levels', 'nick', 'adduser'];
+	protected const PUBLIC = ['help', 'start', 'tournaments', 'history', 'info', 'level', 'levels', 'nick', 'adduser', 'team'];
 
 	/**
 		«уровень», «уровень турнира», «максимальный уровень», «макс. уровень» — one field (old «эталон» still works).
 	*/
 	protected const LEVEL_FIELD = '/^(?:(?:максимальный|макс\.?)\s*уровень(?:\s+турнира)?|уровень(?:\s+турнира)?|эталон|reference|level)(?=\s|$)\s*(.*)$/us';
 	protected const CREATE = ['new'];
-	protected const MANAGE = ['edit', 'cancel', 'open', 'close'];
-	protected const ADMIN = ['new', 'edit', 'cancel', 'open', 'close', 'balance'];
+	protected const MANAGE = ['edit', 'cancel', 'open'];
+	protected const ADMIN = ['new', 'edit', 'cancel', 'open'];
 
 	/**
 		Owner only for now (scales are hidden from users, see AccessPolicy::LEVELS_OWNER_ONLY).
 	*/
-	protected const OWNER = ['balance'];
+	protected const OWNER = [];
 
 	protected const LEVEL_ALL_LIMIT = 80;
 
@@ -85,6 +85,8 @@ class AdminCommands {
 		protected ?PrivateGroups $groups = null,
 		protected ?CreateAccess $create_access = null,
 		protected ?NickService $nicks = null,
+		protected ?\P1Bot\App\TeamCards $team_cards = null,
+		protected ?\P1Bot\Repository\TeamRepository $team_repo = null,
 	) {
 	}
 
@@ -157,8 +159,10 @@ class AdminCommands {
 			case 'adduser':
 				return $this->addUser($ctx);
 			case 'levels':
-				// Management examples only for the owner in private; groups always get the basic text.
-				return Texts::levels($ctx->isPrivate() && $ctx->is_owner);
+				if ($ctx->isPrivate() && $ctx->is_owner) {
+					return $this->ownerLevels($ctx);
+				}
+				return Texts::levels(false);
 			case 'info':
 				[$id] = self::splitId($args);
 				$t = $this->resolver->resolve($this->resolveScope($ctx), $id, TournamentStatus::infoable());
@@ -169,13 +173,8 @@ class AdminCommands {
 				return $this->edit($ctx, $args);
 			case 'open':
 				return $this->open($ctx, $args);
-			case 'close':
-				$t = $this->tournaments->closeRegistration($ctx->actor->id, $this->target($ctx, $args)->id);
-				$this->announcer->refresh($t->id);
-				return sprintf(
-					'Регистрация на %s закрыта. Состав зафиксирован, но снять команду ещё можно.',
-					Html::b($t->title),
-				);
+			case 'team':
+				return $this->showTeam($ctx);
 			case 'cancel':
 				$t = $this->tournaments->cancel($ctx->actor->id, $this->target($ctx, $args)->id);
 				$this->announcer->refresh($t->id);
@@ -185,8 +184,6 @@ class AdminCommands {
 				return $this->levelCommand($ctx, $args);
 			case 'nick':
 				return $this->nickCommand($ctx, $args);
-			case 'balance':
-				return $this->showBalance($ctx, $args);
 		}
 		return '';
 	}
@@ -333,14 +330,6 @@ class AdminCommands {
 			case 'лимит':
 			case 'limit':
 				$edit = new EditTournament(null, null, null, null, null, self::intArg($value, 'лимит участников'));
-				break;
-			case 'баланс':
-			case 'balance':
-				if (!$ctx->is_owner) {
-					throw new PermissionDenied(AccessPolicy::OWNER_ONLY);
-				}
-				$balance_id = TournamentResolver::parseId($value) ?? throw new ValidationError('Укажи номер шкалы баланса, например: /edit 5 баланс 2');
-				$edit = new EditTournament(null, null, null, null, $balance_id);
 				break;
 			default:
 				throw new ValidationError(sprintf(
@@ -563,17 +552,26 @@ class AdminCommands {
 
 
 	/**
-		/nick — show own nick; /nick @user IGN — owner assigns. Users cannot set their own.
+		/nick — show own; /nick IGN — set own (private); /nick @user IGN — owner assigns.
 	*/
 	protected function nickCommand(Context $ctx, string $args): string {
 		if ($this->nicks === null) {
 			throw new ValidationError('Ники пока недоступны.');
 		}
+		if (!$ctx->isPrivate()) {
+			$this->reply_extra = DeepLink::button(
+				Messages::GROUP_REDIRECT_BUTTON,
+				DeepLink::url($this->bot->username),
+			);
+			return Messages::GROUP_REDIRECT;
+		}
 		$args = trim($args);
 		$mentions = $ctx->message->mentionedUsers($this->bot->username);
 		$target = null;
 		$rest = $args;
+		$owner_form = false;
 		if ($mentions !== []) {
+			$owner_form = true;
 			$first = $mentions[0];
 			$rest = trim((string) preg_replace('/' . preg_quote($first['text'], '/') . '/u', '', $args, 1));
 			$resume = $rest !== ''
@@ -588,10 +586,23 @@ class AdminCommands {
 					$ctx->chatId(),
 				);
 		} elseif ($ctx->message->reply_to_from !== null && !$ctx->message->reply_to_from->is_bot) {
+			$owner_form = true;
 			$target = $this->player_resolver->fromUser($ctx->message->reply_to_from);
+		} elseif (preg_match('/^@([A-Za-z][A-Za-z0-9_]{2,31})(?:\s+(.*))?$/us', $args, $am)) {
+			$owner_form = true;
+			$rest = trim($am[2] ?? '');
+			$resume = $rest !== ''
+				? ['kind' => 'nick_set', 'ign' => $rest, 'owner_only' => true]
+				: ['kind' => 'nick_show', 'owner_only' => false];
+			$target = $this->player_resolver->fromReference(
+				'@' . $am[1],
+				$ctx->actor,
+				$resume,
+				$ctx->chatId(),
+			);
 		}
 
-		if ($target !== null && $rest !== '') {
+		if ($owner_form && $target !== null && $rest !== '') {
 			if (!$ctx->is_owner) {
 				throw new PermissionDenied(AccessPolicy::OWNER_ONLY);
 			}
@@ -610,7 +621,7 @@ class AdminCommands {
 			return $msg;
 		}
 
-		if ($target !== null && $rest === '') {
+		if ($owner_form && $target !== null && $rest === '') {
 			return $this->showNick($ctx, $target);
 		}
 
@@ -618,24 +629,16 @@ class AdminCommands {
 			return $this->showNick($ctx, $ctx->actor);
 		}
 
-		// Bare IGN: owner may set own nick; everyone else is refused.
-		if ($ctx->is_owner) {
-			$result = $this->nicks->assignByOwner($ctx->actor->id, $ctx->actor->id, $args);
-			return sprintf(
-				'Поставила тебе ник «%s».',
-				Html::e($result['player']->ign ?? $args),
-			);
-		}
-		throw new ValidationError(
-			'Ник привязывает организатор 🙂 Посмотреть свой: /nick',
-		);
+		// Whole remainder = own IGN (spaces allowed, 2–32 chars).
+		$player = $this->nicks->setOwn($ctx->actor->id, $args);
+		return sprintf('Поставила тебе ник «%s».', Html::e((string) $player->ign));
 	}
 
 	protected function showNick(Context $ctx, Player $player): string {
 		$own = $player->id === $ctx->actor->id;
 		if (!$player->hasIgn()) {
 			$text = $own
-				? 'Ник пока не привязан. Привязывает организатор 🙂'
+				? 'Ник пока не привязан. Поставить: /nick <ник в игре>'
 				: sprintf('У %s ник пока не привязан.', Html::e($player->mention()));
 		} elseif ($own) {
 			$text = sprintf('Твой ник: <b>%s</b>', Html::e((string) $player->ign));
@@ -646,51 +649,15 @@ class AdminCommands {
 				Html::e((string) $player->ign),
 			);
 		}
+		if ($own) {
+			$text .= "\nСменить: /nick <ник в игре>";
+		}
 		if ($ctx->is_owner && $own) {
 			$text .= "\nПоставить другому: /nick @user НикВИгре";
 		}
 		return $text;
 	}
 
-	/**
-		/balance [id]
-	*/
-	protected function showBalance(Context $ctx, string $args): string {
-		$id = TournamentResolver::parseId($args);
-		if ($id === null) {
-			$own = $this->balance_repo->listByOwner($ctx->actor->id);
-			$balance = $own[0] ?? $this->balances->findDefault();
-			if ($balance === null) {
-				throw new ValidationError('Шкал баланса пока нет.');
-			}
-		} else {
-			$balance = $this->balances->get($id);
-		}
-
-		$rows = [];
-		foreach ($this->balances->effectiveRatings($balance->id) as $player_id => $rating) {
-			$player = $this->players->find($player_id);
-			$rows[] = sprintf(
-				'• %s — %s (%d)%s',
-				Html::e($player !== null ? $player->mention() : '#' . $player_id),
-				Levels::name($rating['level']),
-				$rating['level'],
-				$rating['balance_id'] !== $balance->id ? ' <i>унаследовано</i>' : '',
-			);
-		}
-		$owner = $this->players->find($balance->owner_id);
-		$header = sprintf(
-			'<b>Шкала «%s»</b> (№%d, владелец %s%s)',
-			Html::e($balance->name),
-			$balance->id,
-			Html::e($owner !== null ? $owner->mention() : '?'),
-			$balance->parent_id !== null ? ', основана на №' . $balance->parent_id : '',
-		);
-		if ($rows === []) {
-			return $header . "\nОценок пока нет. Все игроки считаются средними (3).";
-		}
-		return $header . "\n" . implode("\n", $rows) . "\n\nОстальные игроки — средние (3).";
-	}
 
 	/**
 		Private chat: look up tournaments globally. In a group: candidates without an id stay group-local.
@@ -771,6 +738,129 @@ class AdminCommands {
 		Private chat: reply keyboard with Telegram user picker (any user).
 		In groups GroupChat redirects to private before this runs.
 	*/
+
+	/**
+		/team — private team card(s) for open/upcoming tournaments.
+	*/
+	protected function showTeam(Context $ctx): string {
+		if (!$ctx->isPrivate()) {
+			$this->reply_extra = DeepLink::button(
+				Messages::GROUP_REDIRECT_BUTTON,
+				DeepLink::url($this->bot->username),
+			);
+			return Messages::GROUP_REDIRECT;
+		}
+		if ($this->team_repo === null || $this->team_cards === null) {
+			return 'Команды пока недоступны.';
+		}
+		$teams = $this->team_repo->listTeamsForPlayer(
+			$ctx->actor->id,
+			[\P1Bot\Domain\TournamentStatus::REGISTRATION, \P1Bot\Domain\TournamentStatus::CLOSED],
+		);
+		if ($teams === []) {
+			return "Сейчас ты не в команде ни на одном открытом турнире.\n"
+				. 'Собрать: открой турнир (/tournaments) → «👥 Собрать команду», '
+				. 'или напиши мне «запиши команду …».';
+		}
+		if (count($teams) > 1) {
+			$rows = [];
+			$lines = ['Ты в нескольких командах — выбери:'];
+			foreach ($teams as $team) {
+				$t = $this->tournaments->get($team->tournament_id);
+				$lines[] = '• «' . Html::e($team->name) . '» — ' . Html::e($t->title) . ' (№' . $t->id . ')';
+				$rows[] = [[
+					'text' => mb_substr('🛡 ' . $team->name . ' · ' . $t->title, 0, 64),
+					'callback_data' => 'tcard:' . $team->id,
+				]];
+			}
+			$this->reply_extra = ['reply_markup' => ['inline_keyboard' => $rows]];
+			return implode("\n", $lines);
+		}
+		$entry = $this->teamsGet($teams[0]->id);
+		$t = $this->tournaments->get($entry->team->tournament_id);
+		$this->team_cards->send($ctx->chatId(), $t, $entry, $ctx->actor, $ctx->message->message_id);
+		return '';
+	}
+
+	/**
+		Owner /levels in private: rated players grouped by level, then the reference help.
+	*/
+	protected function ownerLevels(Context $ctx): string {
+		$scale = $this->balances->findDefault();
+		$chunks = [];
+		if ($scale !== null) {
+			$by_level = [1 => [], 2 => [], 3 => [], 4 => [], 5 => [], 6 => []];
+			foreach ($this->balances->effectiveRatings($scale->id) as $player_id => $rating) {
+				$player = $this->players->find($player_id);
+				if ($player === null || $player->tg_user_id === null) {
+					continue;
+				}
+				$level = (int) $rating['level'];
+				if (!isset($by_level[$level])) {
+					continue;
+				}
+				$by_level[$level][] = $player;
+			}
+			$lines = ['📋 <b>Уровни игроков</b>'];
+			$any = false;
+			foreach ($by_level as $level => $list) {
+				if ($list === []) {
+					continue;
+				}
+				$any = true;
+				usort($list, static fn ($a, $b) => strcmp($a->plainLabel(), $b->plainLabel()));
+				$lines[] = '';
+				$lines[] = '<b>' . Levels::name($level) . ' (' . $level . ')</b> — ' . count($list);
+				foreach ($list as $player) {
+					$lines[] = '• ' . $player->lineupLabel()
+						. ($player->username !== null ? ' · @' . Html::e($player->username) : '');
+				}
+			}
+			if (!$any) {
+				$lines[] = '';
+				$lines[] = 'Пока никому не поставлен уровень — все считаются средними (3).';
+			}
+			$chunks = $this->splitTelegramMessages(implode("\n", $lines));
+			foreach (array_slice($chunks, 0, -1) as $chunk) {
+				$this->api->sendMessage($ctx->chatId(), $chunk, $ctx->message->message_id);
+			}
+			$preamble = $chunks !== [] ? end($chunks) . "\n\n" : '';
+			return $preamble . Texts::levels(true);
+		}
+		return Texts::levels(true);
+	}
+
+	/**
+		@param list<string> $noop
+		@return list<string>
+	*/
+	protected function splitTelegramMessages(string $text, int $limit = 3900): array {
+		if (mb_strlen($text) <= $limit) {
+			return [$text];
+		}
+		$parts = [];
+		$buf = '';
+		foreach (explode("\n", $text) as $line) {
+			$candidate = $buf === '' ? $line : $buf . "\n" . $line;
+			if (mb_strlen($candidate) > $limit && $buf !== '') {
+				$parts[] = $buf;
+				$buf = $line;
+			} else {
+				$buf = $candidate;
+			}
+		}
+		if ($buf !== '') {
+			$parts[] = $buf;
+		}
+		return $parts !== [] ? $parts : [$text];
+	}
+
+	protected function teamsGet(int $team_id): \P1Bot\Domain\Model\TeamEntry {
+		// Prefer TeamService when available via tournaments path — use team_repo members.
+		$team = $this->team_repo->find($team_id) ?? throw new \P1Bot\Domain\Exception\NotFound('Такой команды нет.');
+		return new \P1Bot\Domain\Model\TeamEntry($team, $this->team_repo->members($team_id));
+	}
+
 	protected function addUser(Context $ctx): string {
 		if (!$ctx->isPrivate()) {
 			$this->reply_extra = DeepLink::button(

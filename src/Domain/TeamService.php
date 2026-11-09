@@ -270,6 +270,18 @@ class TeamService {
 	/**
 		@return array{0: Team, 1: Tournament}
 	*/
+	/**
+		Whether the actor may add a player now (captain or organizer/owner, lineup editable).
+	*/
+	public function canActorAddPlayer(int $actor_id, int $team_id): bool {
+		try {
+			$this->captainContext($actor_id, $team_id, true);
+			return true;
+		} catch (\Throwable) {
+			return false;
+		}
+	}
+
 	protected function captainContext(int $actor_id, int $team_id, bool $needs_open_registration): array {
 		$team = $this->teams->find($team_id) ?? throw new NotFound('Такой команды нет.');
 		$tournament = $this->tournaments->find($team->tournament_id) ?? throw new NotFound('Такого турнира нет.');

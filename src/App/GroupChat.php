@@ -86,7 +86,7 @@ class GroupChat {
 				$this->commands->handle($ctx, $name, $command['args']);
 				return;
 			}
-			// /history /nick /adduser /new /edit /open /close /cancel /balance → private redirect
+			// /history /nick /adduser /team /new /edit /open /cancel → private redirect
 			$this->redirectManage($message, $command['name']);
 			return;
 		}

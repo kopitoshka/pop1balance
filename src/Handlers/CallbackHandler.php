@@ -10,6 +10,8 @@ use P1Bot\App\TeamDisbandNotifier;
 use P1Bot\App\DraftCards;
 use P1Bot\App\PrivateGroups;
 use P1Bot\App\PrivateViews;
+use P1Bot\App\TeamAddFlow;
+use P1Bot\App\TeamCards;
 use P1Bot\Domain\Exception\DomainError;
 use P1Bot\Domain\Model\Player;
 use P1Bot\Domain\Model\Tournament;
@@ -48,6 +50,8 @@ class CallbackHandler {
 		protected int $conversation_ttl_minutes = 30,
 		protected ?TeamDisbandNotifier $disband_notifier = null,
 		protected ?PendingPlayerRunner $pending_runner = null,
+		protected ?TeamAddFlow $team_add = null,
+		protected ?TeamCards $team_cards = null,
 	) {
 	}
 
@@ -57,6 +61,9 @@ class CallbackHandler {
 	public function describe(CallbackQuery $query): string {
 		if (str_starts_with($query->data, 'sug:')) {
 			return 'suggest pick ' . $query->data;
+		}
+		if (str_starts_with($query->data, 'padd:') || str_starts_with($query->data, 'tadd:') || str_starts_with($query->data, 'tcard:')) {
+			return 'private: button ' . $query->data;
 		}
 		$action = (string) strtok($query->data, ':');
 		if ($query->chat_id !== null && $query->chat_id < 0) {
@@ -75,6 +82,9 @@ class CallbackHandler {
 				$query->id,
 				$query->message_id,
 			);
+			return;
+		}
+		if ($query->chat_id !== null && $query->chat_id > 0 && $this->handleTeamAddCallbacks($query, $player)) {
 			return;
 		}
 		if (!preg_match('/^([a-z]+):(-?\d+)$/', $query->data, $m)) {
@@ -296,4 +306,36 @@ class CallbackHandler {
 		unset($t);
 		return 'Опубликовала! Анонс уже во всех группах, регистрация открыта 🎉';
 	}
+
+	/**
+		padd:<team>, tadd:<team>:<player>, tcard:<team>
+	*/
+	protected function handleTeamAddCallbacks(CallbackQuery $query, Player $player): bool {
+		$chat_id = (int) $query->chat_id;
+		try {
+			if (preg_match('/^padd:(\d+)$/', $query->data, $m) && $this->team_add !== null) {
+				$this->api->answerCallbackQuery($query->id);
+				$this->team_add->offer($chat_id, $player, (int) $m[1], $query->message_id);
+				return true;
+			}
+			if (preg_match('/^tadd:(\d+):(\d+)$/', $query->data, $m) && $this->team_add !== null) {
+				$this->api->answerCallbackQuery($query->id, 'Добавляю…');
+				$this->team_add->addKnown($chat_id, $player, (int) $m[1], (int) $m[2], $query->message_id);
+				return true;
+			}
+			if (preg_match('/^tcard:(\d+)$/', $query->data, $m) && $this->team_cards !== null) {
+				$entry = $this->teams->get((int) $m[1]);
+				$t = $this->tournaments->get($entry->team->tournament_id);
+				$this->api->answerCallbackQuery($query->id);
+				$this->team_cards->send($chat_id, $t, $entry, $player);
+				return true;
+			}
+		} catch (DomainError $e) {
+			$this->api->answerCallbackQuery($query->id, $e->getMessage(), true);
+			return true;
+		}
+		return false;
+	}
+
+
 }

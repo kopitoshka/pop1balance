@@ -5,6 +5,7 @@
 
 migrate.php
   Применяет новые migrations/*.sql по порядку.
+  013: все турниры на шкалу по умолчанию.
 
 diag.php
   Здоровье бота / БД. Также:
@@ -15,7 +16,8 @@ diag.php
 set_webhook.php
   Ставит webhook по TELEGRAM_* из .env.
   Также обновляет меню команд (в т.ч.
-  /adduser и /history — только в личке).
+  /adduser, /history, /team, /nick — в личке;
+  /start в личном меню не дублируем).
 
 cron.php
   Напоминания и автозавершение турниров

@@ -11,12 +11,11 @@ class Tools {
 	/**
 		Owner only for now: scales are hidden from users (see AccessPolicy::LEVELS_OWNER_ONLY).
 	*/
-	public const OWNER_TOOLS = ['set_level', 'create_balance', 'show_balance', 'assign_nick'];
+	public const OWNER_TOOLS = ['set_level', 'assign_nick'];
 
 	public const ADMIN_TOOLS = [
 		'create_tournament', 'edit_tournament', 'cancel_tournament', 'open_registration',
-		'close_registration', 'set_max_players', 'set_level', 'create_balance', 'show_balance',
-		'publish_tournament',
+		'set_max_players', 'set_level', 'publish_tournament',
 	];
 
 	/**
@@ -25,7 +24,7 @@ class Tools {
 	public const MUTATING = [
 		'register_team', 'add_player', 'remove_player', 'replace_player', 'rename_team', 'transfer_captain',
 		'withdraw_team', 'leave_team', 'join_solo', 'leave_solo', 'edit_tournament', 'cancel_tournament',
-		'close_registration', 'set_max_players',
+		'set_max_players',
 	];
 
 	/**
@@ -49,16 +48,6 @@ class Tools {
 		@return list<array<string, mixed>>
 	*/
 	protected static function withOwnerParams(array $tools): array {
-		foreach ($tools as $i => $tool) {
-			if ($tool['name'] === 'create_tournament') {
-				$properties = clone $tools[$i]['parameters']['properties'];
-				$properties->balance_id = [
-					'type' => 'integer',
-					'description' => 'Номер шкалы уровней; по умолчанию основная шкала.',
-				];
-				$tools[$i]['parameters']['properties'] = $properties;
-			}
-		}
 		return $tools;
 	}
 
@@ -73,13 +62,7 @@ class Tools {
 					'type' => 'string',
 					'description' => '1–6 или название: начальный, начальный+, средний, средний+, высокий, высокий+.',
 				],
-				'balance_id' => ['type' => 'integer', 'description' => 'Номер шкалы; по умолчанию основная.'],
 			], ['player', 'level']),
-			self::fn('create_balance', 'Создать свою шкалу баланса.', [
-				'name' => ['type' => 'string'],
-				'based_on_balance_id' => ['type' => 'integer', 'description' => 'Унаследовать оценки из этой шкалы.'],
-			], ['name']),
-			self::fn('show_balance', 'Показать оценки игроков в шкале.', ['balance_id' => ['type' => 'integer']]),
 			self::fn(
 				'assign_nick',
 				'Поставить игровой ник любому игроку (только главный админ); если ник занят — забрать.',
@@ -142,6 +125,12 @@ class Tools {
 				'list_player_levels',
 				'Список игроков, которым уже поставили уровень (только в личном чате).',
 				[],
+			),
+			self::fn(
+				'set_nick',
+				'Поставить или сменить игровой ник автора сообщения (Population: One IGN).',
+				['nick' => ['type' => 'string', 'description' => 'Ник в игре (2–32 символа, пробелы можно).']],
+				['nick'],
 			),
 			self::fn(
 				'show_nick',
@@ -245,7 +234,6 @@ class Tools {
 				'Снова открыть закрытую регистрацию. Для черновика покажет карточку с вопросом «Публикуем или что-то поправить?» (сама публикация — только publish_tournament после явного «да»).',
 				['tournament_id' => $tid],
 			),
-			self::fn('close_registration', 'Закрыть регистрацию.', ['tournament_id' => $tid]),
 			self::fn(
 				'set_max_players',
 				'Изменить лимит участников турнира.',

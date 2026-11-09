@@ -46,15 +46,18 @@ try {
 		['command' => 'levels', 'description' => 'Справка по уровням'],
 		['command' => 'help', 'description' => 'Подсказка по командам'],
 	];
-	$private = array_merge(
-		array_slice($common, 0, 2),
-		[
-			['command' => 'history', 'description' => 'Прошедшие турниры'],
-			['command' => 'nick', 'description' => 'Свой игровой ник'],
-			['command' => 'adduser', 'description' => 'Добавить игроков (выбор в Telegram)'],
-		],
-		array_slice($common, 2),
-	);
+	// Private: no /start (Telegram already has Start); + history/nick/adduser/team.
+	$private = [
+		['command' => 'tournaments', 'description' => 'Активные турниры'],
+		['command' => 'history', 'description' => 'Прошедшие турниры'],
+		['command' => 'info', 'description' => 'Состав турнира (/info N)'],
+		['command' => 'team', 'description' => 'Карточка твоей команды'],
+		['command' => 'level', 'description' => 'Свой или чужой уровень'],
+		['command' => 'nick', 'description' => 'Свой игровой ник'],
+		['command' => 'adduser', 'description' => 'Добавить игроков (выбор в Telegram)'],
+		['command' => 'levels', 'description' => 'Справка по уровням'],
+		['command' => 'help', 'description' => 'Подсказка по командам'],
+	];
 	// Default + groups: without /history|/adduser; private: with them.
 	$api->setMyCommands($common);
 	$api->setMyCommands($common, ['type' => 'all_group_chats']);
@@ -65,7 +68,7 @@ try {
 		$api->setMyCommands($private, ['type' => 'chat', 'chat_id' => $owner_tg_id]);
 		fwrite(STDOUT, "Owner private commands refreshed (chat {$owner_tg_id})\n");
 	}
-	fwrite(STDOUT, "Bot commands updated (history/nick/adduser = private only)\n");
+	fwrite(STDOUT, "Bot commands updated (private: history/nick/adduser/team; no /start in menu)\n");
 } catch (Throwable $e) {
 	fwrite(STDERR, 'Error: ' . $e->getMessage() . "\n");
 	exit(1);

@@ -66,4 +66,41 @@ class PendingActionRepository {
 			['n' => DateFormat::toDb($now)],
 		);
 	}
+
+	/**
+		Latest non-expired pending action for this actor in this chat (deleted on take).
+		When $op is set, only rows whose action.op matches.
+
+		@return array{id: int, actor_player_id: int, chat_id: int, action: array<string, mixed>}|null
+	*/
+	public function takeLatest(
+		int $actor_player_id,
+		int $chat_id,
+		DateTimeImmutable $now,
+		?string $op = null,
+	): ?array {
+		$rows = $this->db->fetchAll(
+			'SELECT * FROM pending_player_actions
+				WHERE actor_player_id = :a AND chat_id = :c AND expires_at >= :n
+				ORDER BY id DESC LIMIT 20',
+			['a' => $actor_player_id, 'c' => $chat_id, 'n' => DateFormat::toDb($now)],
+		);
+		foreach ($rows as $row) {
+			$action = json_decode((string) $row['action_json'], true);
+			if (!is_array($action)) {
+				continue;
+			}
+			if ($op !== null && ($action['op'] ?? null) !== $op) {
+				continue;
+			}
+			$this->db->run('DELETE FROM pending_player_actions WHERE id = :id', ['id' => (int) $row['id']]);
+			return [
+				'id' => (int) $row['id'],
+				'actor_player_id' => (int) $row['actor_player_id'],
+				'chat_id' => (int) $row['chat_id'],
+				'action' => $action,
+			];
+		}
+		return null;
+	}
 }

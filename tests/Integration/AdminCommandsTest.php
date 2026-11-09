@@ -191,8 +191,13 @@ class AdminCommandsTest extends IntegrationTestCase {
 		$this->confirmCard($organizer);
 		self::assertSame(TournamentStatus::REGISTRATION, $this->app->tournament_repo->find(1)->status);
 
-		$this->dispatch($this->privateMessage($other, '/close 1'));
-		self::assertStringContainsString('автор или главный админ', $this->http->lastText());
+		// /close removed
+		try {
+			$this->app->tournaments->closeRegistration($other->id, 1);
+			self::fail('other must not close');
+		} catch (\P1Bot\Domain\Exception\DomainError $e) {
+			self::assertStringContainsString('автор или главный админ', $e->getMessage());
+		}
 		self::assertSame(TournamentStatus::REGISTRATION, $this->app->tournament_repo->find(1)->status);
 	}
 
@@ -201,7 +206,7 @@ class AdminCommandsTest extends IntegrationTestCase {
 		$this->chatAdmins([$organizer]);
 		$this->dispatch($this->privateMessage($organizer, '/new 23.11 20:00 | Кубок | 3 | 3,3,4'));
 		$this->confirmCard($organizer);
-		$this->dispatch($this->privateMessage($this->owner, '/close 1'));
+		$this->app->tournaments->closeRegistration($this->owner->id, 1);
 		self::assertSame(TournamentStatus::CLOSED, $this->app->tournament_repo->find(1)->status);
 	}
 
@@ -239,7 +244,7 @@ class AdminCommandsTest extends IntegrationTestCase {
 	public function testOpenReopensClosedTournamentDirectly(): void {
 		$this->dispatch($this->privateMessage($this->owner, '/new 23.11 20:00 | Кубок | 3 | 3,3,4'));
 		$this->confirmCard($this->owner);
-		$this->dispatch($this->privateMessage($this->owner, '/close 1'));
+		$this->app->tournaments->closeRegistration($this->owner->id, 1);
 		$this->dispatch($this->privateMessage($this->owner, '/open 1'));
 		self::assertSame(TournamentStatus::REGISTRATION, $this->app->tournament_repo->find(1)->status);
 	}
@@ -271,7 +276,7 @@ class AdminCommandsTest extends IntegrationTestCase {
 		$this->dispatch($this->privateMessage($this->owner, '/edit 1 погода хорошая'));
 		self::assertStringContainsString('Не знаю поле', $this->http->lastText());
 
-		$this->dispatch($this->privateMessage($this->owner, '/close 1'));
+		$this->app->tournaments->closeRegistration($this->owner->id, 1);
 		self::assertSame(TournamentStatus::CLOSED, $this->app->tournament_repo->find(1)->status);
 		$last = $this->http->sent('editMessageText');
 		self::assertSame(
@@ -309,11 +314,14 @@ class AdminCommandsTest extends IntegrationTestCase {
 		$this->dispatch($this->privateMessage($this->owner, '/level @vasya 9'));
 		self::assertStringContainsString('Уровень от 1 до 6', $this->http->lastText());
 
-		$this->dispatch($this->privateMessage($this->owner, '/balance'));
-		$text = $this->http->lastText();
-		self::assertStringContainsString('Шкала «Баланс по умолчанию»', $text);
-		self::assertStringContainsString('@vasya — средний+ (4)', $text);
-		self::assertStringContainsString('@petya — высокий+ (6)', $text);
+		$this->dispatch($this->privateMessage($this->owner, '/levels'));
+		$all = implode("\n", array_column($this->http->sent('sendMessage'), 'text'));
+		self::assertStringContainsString('Уровни игроков', $all);
+		self::assertStringContainsString('@vasya', $all);
+		self::assertStringContainsString('@petya', $all);
+		self::assertStringContainsString('средний+', $all);
+		self::assertStringContainsString('высокий+', $all);
+		self::assertStringContainsString('Уровень турнира', $all);
 	}
 
 	public function testTournamentsListAndHelp(): void {
@@ -533,7 +541,7 @@ class AdminCommandsTest extends IntegrationTestCase {
 		self::assertStringNotContainsString('Поставить уровень игроку', $group_levels);
 
 		$this->dispatch($this->privateMessage($this->owner, '/levels'));
-		$owner_levels = $this->http->lastText();
+		$owner_levels = implode("\n", array_column($this->http->sent('sendMessage'), 'text'));
 		self::assertStringContainsString('/edit 1 уровень 10', $owner_levels);
 		self::assertStringContainsString('Поставить уровень игроку: /level @user 4', $owner_levels);
 
@@ -541,8 +549,9 @@ class AdminCommandsTest extends IntegrationTestCase {
 		$help_user = $this->http->lastText();
 		self::assertStringContainsString('/levels', $help_user);
 		self::assertStringContainsString('/history', $help_user);
-		self::assertStringContainsString('/nick — посмотреть свой игровой ник', $help_user);
-		self::assertStringNotContainsString('поставить или поменять', $help_user);
+		self::assertStringContainsString('/nick — свой игровой ник', $help_user);
+		self::assertStringContainsString('/nick <ник>', $help_user);
+		self::assertStringContainsString('/team', $help_user);
 		self::assertStringNotContainsString('/level @user 4', $help_user);
 		self::assertStringNotContainsString('/nick @user', $help_user);
 
@@ -556,7 +565,9 @@ class AdminCommandsTest extends IntegrationTestCase {
 
 		$this->dispatch($this->privateMessage($this->owner, '/help'));
 		$help = $this->http->lastText();
-		self::assertStringContainsString('/edit 1 уровень 10', $help);
+		self::assertStringContainsString('/edit <id>', $help);
+		self::assertStringContainsString('/cancel <id>', $help);
+		self::assertStringNotContainsString('/close', $help);
 		self::assertStringContainsString('/nick @user НикВИгре', $help);
 		self::assertStringContainsString('/level @user 4', $help);
 		foreach ([$help, $text, $owner_levels, $group_levels] as $chunk) {

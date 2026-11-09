@@ -237,6 +237,175 @@ class PlayerRepository {
 	}
 
 
+	/**
+		Known players (tg_user_id set) the actor played with/against or who share a group
+		via tournament history; excludes anyone already on a team of $tournament_id.
+
+		@return list<Player>
+	*/
+	public function teamAddCandidates(int $actor_id, int $tournament_id, int $limit = 8): array {
+		$limit = max(1, min(20, $limit));
+		$taken = $this->playersOnTeamsOfTournament($tournament_id);
+		$taken_set = array_fill_keys($taken, true);
+		$taken_set[$actor_id] = true;
+
+		$chat_rows = $this->db->fetchAll(
+			'SELECT DISTINCT tr.chat_id FROM tournaments tr
+				WHERE tr.chat_id IS NOT NULL AND tr.id IN (
+					SELECT tournament_id FROM team_members WHERE player_id = :a
+					UNION
+					SELECT tournament_id FROM solo_players WHERE player_id = :a2
+					UNION
+					SELECT id FROM tournaments WHERE organizer_id = :a3
+				)',
+			['a' => $actor_id, 'a2' => $actor_id, 'a3' => $actor_id],
+		);
+		$chat_ids = [];
+		foreach ($chat_rows as $row) {
+			$chat_ids[] = (int) $row['chat_id'];
+		}
+
+		$scores = [];
+		// Same past tournaments as actor.
+		foreach ($this->db->fetchAll(
+			'SELECT tm.player_id AS pid, MAX(tr.starts_at) AS last_at
+				FROM team_members tm
+				INNER JOIN tournaments tr ON tr.id = tm.tournament_id
+				WHERE tm.tournament_id IN (
+					SELECT tournament_id FROM team_members WHERE player_id = :a
+					UNION
+					SELECT tournament_id FROM solo_players WHERE player_id = :a2
+				) AND tm.player_id <> :a3
+				GROUP BY tm.player_id',
+			['a' => $actor_id, 'a2' => $actor_id, 'a3' => $actor_id],
+		) as $row) {
+			$pid = (int) $row['pid'];
+			$scores[$pid] = max($scores[$pid] ?? 0, 100);
+		}
+		foreach ($this->db->fetchAll(
+			'SELECT sp.player_id AS pid, MAX(tr.starts_at) AS last_at
+				FROM solo_players sp
+				INNER JOIN tournaments tr ON tr.id = sp.tournament_id
+				WHERE sp.tournament_id IN (
+					SELECT tournament_id FROM team_members WHERE player_id = :a
+					UNION
+					SELECT tournament_id FROM solo_players WHERE player_id = :a2
+				) AND sp.player_id <> :a3
+				GROUP BY sp.player_id',
+			['a' => $actor_id, 'a2' => $actor_id, 'a3' => $actor_id],
+		) as $row) {
+			$pid = (int) $row['pid'];
+			$scores[$pid] = max($scores[$pid] ?? 0, 80);
+		}
+		if ($chat_ids !== []) {
+			$params = [];
+			$keys = [];
+			foreach ($chat_ids as $i => $cid) {
+				$key = 'c' . $i;
+				$keys[] = ':' . $key;
+				$params[$key] = $cid;
+			}
+			$sql = 'SELECT DISTINCT tm.player_id AS pid FROM team_members tm
+				INNER JOIN tournaments tr ON tr.id = tm.tournament_id
+				WHERE tr.chat_id IN (' . implode(',', $keys) . ')
+				UNION
+				SELECT DISTINCT sp.player_id FROM solo_players sp
+				INNER JOIN tournaments tr ON tr.id = sp.tournament_id
+				WHERE tr.chat_id IN (' . implode(',', $keys) . ')';
+			foreach ($this->db->fetchAll($sql, $params) as $row) {
+				$pid = (int) $row['pid'];
+				$scores[$pid] = max($scores[$pid] ?? 0, 40);
+			}
+		}
+		arsort($scores);
+		$out = [];
+		foreach ($scores as $pid => $_score) {
+			if (isset($taken_set[$pid])) {
+				continue;
+			}
+			$player = $this->find($pid);
+			if ($player === null || $player->tg_user_id === null) {
+				continue;
+			}
+			$out[] = $player;
+			if (count($out) >= $limit) {
+				break;
+			}
+		}
+		return $out;
+	}
+
+	/**
+		Player ids already on any team of this tournament.
+		@return list<int>
+	*/
+	public function playersOnTeamsOfTournament(int $tournament_id): array {
+		$rows = $this->db->fetchAll(
+			'SELECT player_id FROM team_members WHERE tournament_id = :t',
+			['t' => $tournament_id],
+		);
+		return array_map(static fn (array $r): int => (int) $r['player_id'], $rows);
+	}
+
+	/**
+		Partial match on username / display_name / IGN for known players.
+		@param list<int> $exclude_ids
+		@return list<Player>
+	*/
+	public function searchPartial(string $query, int $limit = 8, array $exclude_ids = []): array {
+		$query = trim($query);
+		$limit = max(1, min(20, $limit));
+		if ($query === '') {
+			return [];
+		}
+		$q = mb_strtolower(ltrim($query, '@'));
+		$exclude = array_fill_keys($exclude_ids, true);
+		$rows = $this->db->fetchAll(
+			'SELECT * FROM players WHERE tg_user_id IS NOT NULL ORDER BY id DESC LIMIT 3000',
+		);
+		$prefix = [];
+		$contains = [];
+		foreach ($rows as $row) {
+			$pid = (int) $row['id'];
+			if (isset($exclude[$pid])) {
+				continue;
+			}
+			$fields = [
+				mb_strtolower((string) ($row['username'] ?? '')),
+				mb_strtolower((string) ($row['display_name'] ?? '')),
+				mb_strtolower((string) ($row['ign_norm'] ?? '')),
+				mb_strtolower((string) ($row['ign'] ?? '')),
+			];
+			$is_prefix = false;
+			$is_contains = false;
+			foreach ($fields as $field) {
+				if ($field === '') {
+					continue;
+				}
+				if (str_starts_with($field, $q)) {
+					$is_prefix = true;
+					break;
+				}
+				if (str_contains($field, $q)) {
+					$is_contains = true;
+				}
+			}
+			if ($is_prefix) {
+				$prefix[] = $row;
+			} elseif ($is_contains) {
+				$contains[] = $row;
+			}
+		}
+		$sort = static function (array $a, array $b): int {
+			return ((string) ($a['username'] ?? 'ÿ')) <=> ((string) ($b['username'] ?? 'ÿ'))
+				?: ((string) $a['display_name'] <=> (string) $b['display_name']);
+		};
+		usort($prefix, $sort);
+		usort($contains, $sort);
+		$merged = array_slice(array_merge($prefix, $contains), 0, $limit);
+		return array_map([Player::class, 'fromRow'], $merged);
+	}
+
 	public function fuzzySuggest(string $needle, int $limit = 5): array {
 		$needle = mb_strtolower(ltrim(trim($needle), '@'));
 		$limit = max(1, min(10, $limit));
