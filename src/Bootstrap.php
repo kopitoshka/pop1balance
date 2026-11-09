@@ -155,7 +155,7 @@ final class Bootstrap
             $clock,
             $commands,
             new MessageHandler($this->telegram, $this->bot),
-            new CallbackHandler($this->telegram),
+            new CallbackHandler($this->telegram, $this->bot, $this->tournaments, $this->teams, $this->announcer),
         );
     }
 

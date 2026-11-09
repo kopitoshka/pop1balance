@@ -30,7 +30,7 @@ use P1Bot\View\Texts;
 /** Slash commands: the fallback that works without AI. */
 final class AdminCommands
 {
-    private const PUBLIC = ['help', 'start', 'tournaments'];
+    private const PUBLIC = ['help', 'start', 'tournaments', 'info'];
     private const ADMIN = ['new', 'edit', 'cancel', 'open', 'close', 'level', 'balance'];
 
     /** Tournaments an admin command may target when no id is given. */
@@ -79,6 +79,10 @@ final class AdminCommands
                 return Texts::help($this->bot->username, $ctx->isAdmin);
             case 'tournaments':
                 return $this->listTournaments($ctx);
+            case 'info':
+                [$id] = self::splitId($args);
+                $t = $this->resolver->resolve($ctx->chatId(), $id, TournamentStatus::active());
+                return $this->announcer->text($t);
             case 'new':
                 return $this->create($ctx, $args);
             case 'edit':

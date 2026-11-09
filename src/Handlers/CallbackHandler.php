@@ -4,19 +4,65 @@ declare(strict_types=1);
 
 namespace P1Bot\Handlers;
 
+use P1Bot\App\Announcer;
+use P1Bot\Domain\Exception\DomainError;
 use P1Bot\Domain\Model\Player;
+use P1Bot\Domain\TeamService;
+use P1Bot\Domain\TournamentService;
+use P1Bot\Telegram\BotIdentity;
 use P1Bot\Telegram\CallbackQuery;
 use P1Bot\Telegram\TelegramApi;
 
-/** Inline button presses. */
+/** Inline buttons under the announcement: solo:<id>, unsolo:<id>, howto:<id>. */
 final class CallbackHandler
 {
-    public function __construct(private TelegramApi $api)
-    {
+    public function __construct(
+        private TelegramApi $api,
+        private BotIdentity $bot,
+        private TournamentService $tournaments,
+        private TeamService $teams,
+        private Announcer $announcer,
+    ) {
     }
 
     public function handle(CallbackQuery $query, Player $player): void
     {
-        $this->api->answerCallbackQuery($query->id);
+        if (!preg_match('/^(solo|unsolo|howto):(\d+)$/', $query->data, $m)) {
+            $this->api->answerCallbackQuery($query->id);
+            return;
+        }
+        $tournamentId = (int) $m[2];
+
+        try {
+            $t = $this->tournaments->get($tournamentId);
+            if ($t->chatId !== $query->chatId) {
+                $this->api->answerCallbackQuery($query->id);
+                return;
+            }
+            switch ($m[1]) {
+                case 'solo':
+                    $this->teams->joinSolo($t->id, $player->id);
+                    $placement = $this->tournaments->lineup($t->id)->placementOf($player->id);
+                    $text = $placement === 'reserve'
+                        ? 'Записал тебя соло, но мест уже нет: ты в резерве. Если кто-то снимется, поднимешься сам.'
+                        : 'Записал тебя соло! Команду соберёте уже в игре.';
+                    $this->announcer->refresh($t->id);
+                    $this->api->answerCallbackQuery($query->id, $text, true);
+                    return;
+                case 'unsolo':
+                    $this->teams->leaveSolo($t->id, $player->id);
+                    $this->announcer->refresh($t->id);
+                    $this->api->answerCallbackQuery($query->id, 'Снял тебя с турнира. Передумаешь — жми «Хочу участвовать».', true);
+                    return;
+                default:
+                    $this->api->answerCallbackQuery($query->id, sprintf(
+                        'Капитан пишет в чат: @%s запиши команду <название>: я, @игрок1, @игрок2. В команде %d игрока(ов).',
+                        $this->bot->username,
+                        $t->teamSize,
+                    ), true);
+            }
+        } catch (DomainError $e) {
+            $this->api->answerCallbackQuery($query->id, $e->getMessage(), true);
+        }
     }
 }
