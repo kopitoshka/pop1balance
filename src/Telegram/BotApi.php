@@ -81,6 +81,13 @@ class BotApi implements TelegramApi {
 		$this->call('answerCallbackQuery', $params);
 	}
 
+	/**
+		@return array<string, mixed> Chat object
+	*/
+	public function getChat(int $chat_id): array {
+		return $this->call('getChat', ['chat_id' => $chat_id]);
+	}
+
 	public function getChatMember(int $chat_id, int $user_id): array {
 		return $this->call('getChatMember', ['chat_id' => $chat_id, 'user_id' => $user_id]);
 	}
@@ -142,7 +149,8 @@ class BotApi implements TelegramApi {
 			} else {
 				$this->logger?->error($line, $this->target($params));
 			}
-			throw new TelegramError($method, $description, $code);
+			$parameters = isset($data['parameters']) && is_array($data['parameters']) ? $data['parameters'] : [];
+			throw new TelegramError($method, $description, $code, $parameters);
 		}
 		$result = $data['result'] ?? [];
 		return is_array($result) ? $result : ['value' => $result];

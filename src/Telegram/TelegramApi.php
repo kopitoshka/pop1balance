@@ -39,6 +39,11 @@ interface TelegramApi {
 	): void;
 
 	/**
+		@return array<string, mixed> Chat object
+	*/
+	public function getChat(int $chat_id): array;
+
+	/**
 		@return array<string, mixed> ChatMember object (status: creator, administrator, member, restricted, left, kicked)
 	*/
 	public function getChatMember(int $chat_id, int $user_id): array;

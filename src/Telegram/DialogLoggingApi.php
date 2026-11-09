@@ -45,6 +45,10 @@ class DialogLoggingApi implements TelegramApi {
 		$this->dialogs->onCallbackAnswer($callback_query_id, $text);
 	}
 
+	public function getChat(int $chat_id): array {
+		return $this->api->getChat($chat_id);
+	}
+
 	public function getChatMember(int $chat_id, int $user_id): array {
 		return $this->api->getChatMember($chat_id, $user_id);
 	}
