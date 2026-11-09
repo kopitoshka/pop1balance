@@ -157,26 +157,6 @@ class Assistant {
 		Facts the model needs; it is rebuilt for every message.
 	*/
 
-	/**
-		Short group chat: no tools, one model round. Empty string when the model said nothing.
-	*/
-	public function replyPlain(Context $ctx): string {
-		$message = $ctx->message;
-		$user_text = $message->textWithoutMention($this->bot->username);
-		if ($user_text === '') {
-			$user_text = '(пустое сообщение, просто упомянули бота)';
-		}
-		$prompt = $this->system_prompt . "\n\nСейчас тебе написали в ГРУППЕ. Ответь коротко (1–2 предложения), по-дружески, "
-			. "без действий с турнирами и без просьбы перейти в личку, если вопрос просто светский. "
-			. "Не вызывай инструменты — их нет.";
-		$input = [
-			['role' => 'developer', 'content' => 'Сообщение из группы «' . $ctx->group_title . '». Автор: '
-				. ($ctx->actor->username !== null ? '@' . $ctx->actor->username : $ctx->actor->display_name) . '.'],
-			['role' => 'user', 'content' => $user_text],
-		];
-		$response = $this->ai->createResponse($prompt, $input, []);
-		return trim($response->text);
-	}
 
 	protected function contextBlock(Context $ctx): string {
 		$author = $ctx->actor;

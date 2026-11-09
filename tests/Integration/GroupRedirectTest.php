@@ -21,9 +21,7 @@ class GroupRedirectTest extends IntegrationTestCase {
 	}
 
 	protected function config(): array {
-		$config = parent::config();
-		$config['openai']['api_key'] = 'sk-test';
-		return $config;
+		return parent::config();
 	}
 
 	/**
@@ -174,12 +172,32 @@ class GroupRedirectTest extends IntegrationTestCase {
 		self::assertNull($this->app->tournaments->lineup($t->id)->placementOf($mate->id));
 	}
 
-	public function testOffTopicGetsAiReply(): void {
+	public function testUnrecognizedShowsTournamentsAndHelpHint(): void {
+		$this->openTournament(3);
 		$vasya = $this->player('vasya');
-		$this->http->queueOpenAi($this->text('Привет! Я на связи 🙂'));
 		$reply = $this->groupReply($vasya, '@pop1_bot привет как дела');
-		self::assertSame('Привет! Я на связи 🙂', $reply['text']);
+		self::assertStringStartsWith(Messages::GROUP_FALLBACK_PREFIX, $reply['text']);
+		self::assertStringContainsString('Субботний кубок', $reply['text']);
+		self::assertStringEndsWith(Messages::GROUP_FALLBACK_HINT, $reply['text']);
 		self::assertNull($reply['url']);
+		self::assertSame([], array_filter($this->http->requests, static function (array $r): bool {
+			return str_ends_with($r['url'], '/responses');
+		}), 'no AI in the group');
+	}
+
+	public function testWhatsNewIsTournamentsList(): void {
+		$this->openTournament(3);
+		$reply = $this->groupReply($this->player('vasya'), '@pop1_bot Что нового?');
+		self::assertStringContainsString('Субботний кубок', $reply['text']);
+		self::assertStringContainsString('📋', $reply['text']);
+		self::assertSame([], array_filter($this->http->requests, static function (array $r): bool {
+			return str_ends_with($r['url'], '/responses');
+		}));
+	}
+
+	public function testFallbackWhenNoTournaments(): void {
+		$reply = $this->groupReply($this->player('vasya'), '@pop1_bot привет');
+		self::assertSame(Messages::GROUP_FALLBACK_EMPTY, $reply['text']);
 	}
 
 	public function testUnaddressedMessagesAreIgnored(): void {
@@ -192,14 +210,4 @@ class GroupRedirectTest extends IntegrationTestCase {
 		@param array<string, mixed> $body
 		@return array<string, mixed>
 	*/
-	/**
-		@return array<string, mixed>
-	*/
-	protected function text(string $text): array {
-		return ['id' => 'r1', 'output' => [[
-			'type' => 'message',
-			'role' => 'assistant',
-			'content' => [['type' => 'output_text', 'text' => $text]],
-		]]];
-	}
 }

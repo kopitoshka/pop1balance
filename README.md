@@ -241,10 +241,11 @@ for the webhook too, e.g. `sudo -u apache php bin/diag.php`.
   only the **largest** mark (60 = hour before) posts the short «⏰ Через час стартует турнир …» notice into **every**
   active group (deep-link button). The 15-minute mark does **not** broadcast to groups. Deduped via `group_notices`.
   `REMIND_ALL_GROUPS=0` turns group broadcasts off (no private DM reminders yet). `REMINDER_MINUTES` key unchanged.
-- In the group when mentioned/replied: info (`/tournaments`, `/info`, `/levels`, `/help`, «какие турниры?»…) is
-  answered there (help ends with a private-chat hint + button); «запиши меня» / «удали меня» join/leave solo when
-  the tournament is unambiguous; management (`/new`, create/edit…) → random private redirect phrase + deep link;
-  off-topic → short AI reply. Deep link is `t_<id>` when clear, else `g_<chat id>`.
+- In the group when mentioned/replied: info (`/tournaments`, `/info`, `/levels`, `/help`, «какие турниры?»,
+  «что нового?»…) is answered there (help ends with a private-chat hint + button); «запиши меня» / «удали меня»
+  join/leave solo when the tournament is unambiguous; management (`/new`, create/edit…) → random private redirect
+  phrase + deep link; anything else → fixed snapshot of nearest tournaments + «Все мои команды — /help 😉»
+  (no free-form AI chat in groups). Deep link is `t_<id>` when clear, else `g_<chat id>`.
 - Buttons of old group messages (`solo`, `unsolo`, `howto`, `pub`, `fix`) answer «Теперь это в личке…» and open
   the private chat via `answerCallbackQuery(url=t.me/<bot>?start=t_<id>)`.
 

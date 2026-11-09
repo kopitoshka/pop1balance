@@ -26,6 +26,13 @@ class Messages {
 
 	public const GROUP_HELP_HINT = 'А ещё больше умею в личке — записать, собрать команду, создать турнир 😉';
 
+	/** Hint under a compact tournament list when the group message was not a known action. */
+	public const GROUP_FALLBACK_HINT = 'Все мои команды — /help 😉';
+
+	public const GROUP_FALLBACK_EMPTY = 'Пока турниров нет 🙂 Все мои команды — /help 😉';
+
+	public const GROUP_FALLBACK_PREFIX = 'Вот что у нас ближайшее:';
+
 	public const REGISTRATION_CLOSED = 'Регистрация уже закрыта, составы не меняются ⏰';
 
 	public const ALREADY_SOLO = 'Ты уже записан на этот турнир 🙂';

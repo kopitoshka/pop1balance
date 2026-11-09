@@ -303,9 +303,9 @@ class Bootstrap {
 			$this->tournament_resolver,
 			$this->group_redirect,
 			$commands,
+			$this->listing,
 			$this->random,
 			$this->logger,
-			$this->assistant,
 			$this->announcer,
 		);
 		$this->router = new UpdateRouter(

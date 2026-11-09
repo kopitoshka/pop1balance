@@ -4,7 +4,6 @@ declare(strict_types=1);
 
 namespace P1Bot\App;
 
-use P1Bot\Ai\Assistant;
 use P1Bot\Domain\Exception\DomainError;
 use P1Bot\Domain\Exception\NotFound;
 use P1Bot\Domain\Exception\ValidationError;
@@ -24,18 +23,18 @@ use P1Bot\View\DeepLink;
 use P1Bot\View\Html;
 use P1Bot\View\Messages;
 use P1Bot\View\Texts;
-use Throwable;
 
 /**
 	What to do with a group message addressed to the bot: info answers, solo join/leave,
-	management redirects (random phrase), or a short AI chat with no tools.
+	management redirects (random phrase), or a fixed tournaments snapshot + /help hint.
+	No free-form AI chat in groups.
 */
 class GroupChat {
 	public const INTENT_INFO = 'info';
 	public const INTENT_JOIN = 'join';
 	public const INTENT_LEAVE = 'leave';
 	public const INTENT_MANAGE = 'manage';
-	public const INTENT_CHAT = 'chat';
+	public const INTENT_FALLBACK = 'fallback';
 
 	public function __construct(
 		protected TelegramApi $api,
@@ -45,9 +44,9 @@ class GroupChat {
 		protected TournamentResolver $resolver,
 		protected GroupRedirect $redirect,
 		protected AdminCommands $commands,
+		protected TournamentListing $listing,
 		protected RandomSource $random,
 		protected Logger $logger,
-		protected ?Assistant $assistant = null,
 		protected ?Announcer $announcer = null,
 	) {
 	}
@@ -70,7 +69,7 @@ class GroupChat {
 		if ($this->isManage($t)) {
 			return self::INTENT_MANAGE;
 		}
-		return self::INTENT_CHAT;
+		return self::INTENT_FALLBACK;
 	}
 
 	/**
@@ -104,7 +103,7 @@ class GroupChat {
 				$this->redirectManage($message);
 				return;
 			default:
-				$this->chat($ctx);
+				$this->fallback($ctx);
 		}
 	}
 
@@ -118,7 +117,7 @@ class GroupChat {
 			$this->commands->handle($ctx, 'levels', '');
 			return;
 		}
-		if (preg_match('/\b(турнир\w*|tournaments?)\b/u', $t) && preg_match('/\b(какие|список|скоро|ближайш|активн|покажи|есть)\b/u', $t)) {
+		if ($this->isTournamentsAsk($t)) {
 			$this->commands->handle($ctx, 'tournaments', '');
 			return;
 		}
@@ -245,25 +244,20 @@ class GroupChat {
 		$this->sendRedirect($message, Messages::manageRedirect($this->random), $payload);
 	}
 
-	protected function chat(Context $ctx): void {
-		if ($this->assistant === null) {
-			$this->api->sendMessage(
-				$ctx->chatId(),
-				Html::e('Я тут 🙂 По турнирам — /tournaments, записаться — «запиши меня», остальное лучше в личке.'),
-				$ctx->message->message_id,
-			);
-			return;
+	/**
+		Unrecognized group mention: compact tournament list (or «нет») + /help hint. No AI chatter.
+	*/
+	protected function fallback(Context $ctx): void {
+		$this->api->sendMessage($ctx->chatId(), $this->fallbackText(), $ctx->message->message_id);
+	}
+
+	public function fallbackText(): string {
+		$messages = $this->listing->messages(0, false);
+		if ($messages === []) {
+			return Messages::GROUP_FALLBACK_EMPTY;
 		}
-		try {
-			$text = $this->assistant->replyPlain($ctx);
-		} catch (Throwable $e) {
-			$this->logger->exception($e, 'group chat');
-			$text = 'Что-то пошло не так, попробуй ещё раз или напиши мне в личку 🙂';
-		}
-		if ($text === '') {
-			$text = 'Я тут 🙂 Если по турнирам — /tournaments или «запиши меня».';
-		}
-		$this->api->sendMessage($ctx->chatId(), $text, $ctx->message->message_id);
+		return Messages::GROUP_FALLBACK_PREFIX . "\n\n" . implode("\n\n", $messages)
+			. "\n\n" . Messages::GROUP_FALLBACK_HINT;
 	}
 
 	/**
@@ -378,7 +372,22 @@ class GroupChat {
 		if (preg_match('/\b(уровень|уровни|levels)\b/u', $t) && !preg_match('/создай|поставь|поменяй/u', $t)) {
 			return true;
 		}
-		if (preg_match('/\b(какие турниры|список турниров|турниры скоро|какие есть турниры|что за турнир)/u', $t)) {
+		if ($this->isTournamentsAsk($t)) {
+			return true;
+		}
+		return false;
+	}
+
+	protected function isTournamentsAsk(string $t): bool {
+		if (preg_match('/\b(что нового|новости|что есть|есть ли что|что по играм|что по расписанию)\b/u', $t)) {
+			return true;
+		}
+		if (preg_match('/\b(какие турниры|список турниров|турниры скоро|какие есть турниры|что за турнир)\b/u', $t)) {
+			return true;
+		}
+		if (preg_match('/\b(турнир\w*|tournaments?)\b/u', $t)
+			&& preg_match('/\b(какие|список|скоро|ближайш|активн|покажи|есть)\b/u', $t)
+		) {
 			return true;
 		}
 		if (preg_match('/^(какие|что|покажи|расскажи).{0,40}турнир/u', $t)) {
