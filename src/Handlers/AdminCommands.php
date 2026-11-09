@@ -21,6 +21,7 @@ use P1Bot\Domain\Exception\InvalidLevel;
 use P1Bot\Domain\Exception\PermissionDenied;
 use P1Bot\Domain\Exception\ValidationError;
 use P1Bot\Domain\Levels;
+use P1Bot\Domain\NickService;
 use P1Bot\Domain\Model\Player;
 use P1Bot\Domain\Model\Tournament;
 use P1Bot\Domain\MoscowTime;
@@ -40,7 +41,7 @@ use P1Bot\View\Texts;
 	Slash commands: the fallback that works without AI.
 */
 class AdminCommands {
-	protected const PUBLIC = ['help', 'start', 'tournaments', 'history', 'info', 'level', 'levels'];
+	protected const PUBLIC = ['help', 'start', 'tournaments', 'history', 'info', 'level', 'levels', 'nick'];
 
 	/**
 		«уровень», «уровень турнира», «максимальный уровень», «макс. уровень» — one field (old «эталон» still works).
@@ -82,6 +83,7 @@ class AdminCommands {
 		protected TournamentListing $listing,
 		protected ?PrivateGroups $groups = null,
 		protected ?CreateAccess $create_access = null,
+		protected ?NickService $nicks = null,
 	) {
 	}
 
@@ -172,6 +174,8 @@ class AdminCommands {
 				return sprintf('Турнир %s отменён. Жаль!', Html::b($t->title));
 			case 'level':
 				return $this->levelCommand($ctx, $args);
+			case 'nick':
+				return $this->nickCommand($ctx, $args);
 			case 'balance':
 				return $this->showBalance($ctx, $args);
 		}
@@ -407,6 +411,11 @@ class AdminCommands {
 			return $this->setLevel($ctx, $target, $tokens);
 		}
 
+		if ($target === null && $args !== '') {
+			// /level <IGN> or /level @user — look up without a mention entity
+			$target = $this->player_resolver->fromReference($args, $ctx->actor);
+		}
+
 		if ($target === null) {
 			$target = $ctx->actor;
 			$own = true;
@@ -450,14 +459,14 @@ class AdminCommands {
 				)
 				: sprintf(
 					'%s — уровень ещё не ставили, считаю %s (%d).',
-					Html::e($player->mention()),
+					Html::e($player->plainLabel()),
 					Levels::name(Levels::DEFAULT),
 					Levels::DEFAULT,
 				);
 		} else {
 			$body = $own
 				? sprintf('Твой уровень: %s (%d)', Levels::name($explicit), $explicit)
-				: sprintf('%s — %s (%d)', Html::e($player->mention()), Levels::name($explicit), $explicit);
+				: sprintf('%s — %s (%d)', Html::e($player->plainLabel()), Levels::name($explicit), $explicit);
 		}
 		return $body . $this->levelFooter($ctx->is_owner);
 	}
@@ -474,7 +483,7 @@ class AdminCommands {
 		$rows = [];
 		foreach ($ratings as $player_id => $rating) {
 			$player = $this->players->find($player_id);
-			$label = $player !== null ? $player->mention() : '#' . $player_id;
+			$label = $player !== null ? $player->plainLabel() : '#' . $player_id;
 			$rows[] = [
 				'level' => $rating['level'],
 				'label' => $label,
@@ -507,6 +516,81 @@ class AdminCommands {
 			$footer .= "\nПоставить: /level @ник 4";
 		}
 		return $footer;
+	}
+
+
+	/**
+		/nick [IGN] | /nick @user IGN (owner). Private for changes; group redirects earlier.
+	*/
+	protected function nickCommand(Context $ctx, string $args): string {
+		if ($this->nicks === null) {
+			throw new ValidationError('Ники пока недоступны.');
+		}
+		$args = trim($args);
+		$mentions = $ctx->message->mentionedUsers($this->bot->username);
+		$target = null;
+		$rest = $args;
+		if ($mentions !== []) {
+			$first = $mentions[0];
+			$target = isset($first['user'])
+				? $this->player_resolver->fromUser($first['user'])
+				: $this->player_resolver->fromReference('@' . $first['username'], $ctx->actor);
+			$rest = trim((string) preg_replace('/' . preg_quote($first['text'], '/') . '/u', '', $args, 1));
+		} elseif ($ctx->message->reply_to_from !== null && !$ctx->message->reply_to_from->is_bot) {
+			$target = $this->player_resolver->fromUser($ctx->message->reply_to_from);
+		}
+
+		if ($target !== null && $rest !== '') {
+			if (!$ctx->is_owner) {
+				throw new PermissionDenied(AccessPolicy::OWNER_ONLY);
+			}
+			$result = $this->nicks->assignByOwner($ctx->actor->id, $target->id, $rest);
+			$msg = sprintf(
+				'Поставила ник «%s» игроку %s.',
+				Html::e($result['player']->ign ?? $rest),
+				Html::e($result['player']->mention()),
+			);
+			if ($result['previous_holder'] !== null) {
+				$msg .= sprintf(
+					' Раньше он был у %s — забрала.',
+					Html::e($result['previous_holder']->mention()),
+				);
+			}
+			return $msg;
+		}
+
+		if ($target !== null && $rest === '') {
+			return $this->showNick($target, $target->id === $ctx->actor->id);
+		}
+
+		if ($args === '') {
+			return $this->showNick($ctx->actor, true);
+		}
+
+		$player = $this->nicks->setOwn($ctx->actor->id, $args);
+		return sprintf(
+			"Записала твой игровой ник: <b>%s</b>.\nПоменять: /nick НовыйНик",
+			Html::e((string) $player->ign),
+		);
+	}
+
+	protected function showNick(Player $player, bool $own): string {
+		if (!$player->hasIgn()) {
+			return $own
+				? "Игровой ник ещё не задан.\nПоставить: /nick ТвойНикВИгре"
+				: sprintf('У %s игровой ник ещё не задан.', Html::e($player->mention()));
+		}
+		if ($own) {
+			return sprintf(
+				"Твой игровой ник: <b>%s</b>.\nПоменять: /nick НовыйНик",
+				Html::e((string) $player->ign),
+			);
+		}
+		return sprintf(
+			'%s — игровой ник <b>%s</b>.',
+			Html::e($player->mention()),
+			Html::e((string) $player->ign),
+		);
 	}
 
 	/**

@@ -23,6 +23,7 @@ use P1Bot\Domain\Exception\NotFound;
 use P1Bot\Domain\Exception\PermissionDenied;
 use P1Bot\Domain\Exception\ValidationError;
 use P1Bot\Domain\Levels;
+use P1Bot\Domain\NickService;
 use P1Bot\Domain\Model\TeamEntry;
 use P1Bot\Domain\Model\Tournament;
 use P1Bot\Domain\MoscowTime;
@@ -60,6 +61,7 @@ class Dispatcher {
 		protected ?PrivateGroups $groups = null,
 		protected ?CreateAccess $create_access = null,
 		protected ?TeamDisbandNotifier $disband_notifier = null,
+		protected ?NickService $nicks = null,
 	) {
 	}
 
@@ -219,6 +221,46 @@ class Dispatcher {
 						: "Уровни:\n- " . implode("\n- ", $lines) . "\n\nВсе уровни — /levels",
 					'note' => 'Перескажи список коротко или почти дословно. Шкалы не упоминай.',
 				];
+
+
+			case 'set_nick':
+				if (!$ctx->isPrivate()) {
+					return ['ok' => false, 'error' => 'Ник ставится в личке: /nick …'];
+				}
+				if ($this->nicks === null) {
+					return ['ok' => false, 'error' => 'Ники недоступны.'];
+				}
+				$player = $this->nicks->setOwn($actor->id, (string) ($a['nick'] ?? ''));
+				return [
+					'nick' => $player->ign,
+					'message' => sprintf('Записала твой игровой ник: %s. Поменять: /nick НовыйНик', $player->ign),
+				];
+
+			case 'show_nick':
+				$ref = trim((string) ($a['player'] ?? ''));
+				$player = $ref === '' ? $actor : $this->player_resolver->fromReference($ref, $actor);
+				if (!$player->hasIgn()) {
+					$msg = $player->id === $actor->id
+						? 'Игровой ник ещё не задан. Поставить: /nick ТвойНикВИгре'
+						: sprintf('У %s игровой ник ещё не задан.', $player->mention());
+				} else {
+					$msg = $player->id === $actor->id
+						? sprintf('Твой игровой ник: %s', $player->ign)
+						: sprintf('%s — игровой ник %s', $player->mention(), $player->ign);
+				}
+				return ['player' => $player->mention(), 'nick' => $player->ign, 'message' => $msg];
+
+			case 'assign_nick':
+				if ($this->nicks === null) {
+					return ['ok' => false, 'error' => 'Ники недоступны.'];
+				}
+				$target = $this->player_resolver->fromReference((string) ($a['player'] ?? ''), $actor);
+				$result = $this->nicks->assignByOwner($actor->id, $target->id, (string) ($a['nick'] ?? ''));
+				$msg = sprintf('Поставила ник «%s» игроку %s.', $result['player']->ign, $result['player']->mention());
+				if ($result['previous_holder'] !== null) {
+					$msg .= sprintf(' Раньше он был у %s — забрала.', $result['previous_holder']->mention());
+				}
+				return ['message' => $msg, 'nick' => $result['player']->ign];
 
 			case 'tournament_info':
 				$t = $this->tournament($ctx, $a, TournamentStatus::infoable());

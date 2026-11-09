@@ -47,14 +47,17 @@ try {
 	];
 	$private = array_merge(
 		array_slice($common, 0, 2),
-		[['command' => 'history', 'description' => 'Прошедшие турниры']],
+		[
+			['command' => 'history', 'description' => 'Прошедшие турниры'],
+			['command' => 'nick', 'description' => 'Игровой ник (Po1)'],
+		],
 		array_slice($common, 2),
 	);
 	// Default + groups: without /history; private chats: with /history.
 	$api->setMyCommands($common);
 	$api->setMyCommands($common, ['type' => 'all_group_chats']);
 	$api->setMyCommands($private, ['type' => 'all_private_chats']);
-	fwrite(STDOUT, "Bot commands updated (history = private only)\n");
+	fwrite(STDOUT, "Bot commands updated (history/nick = private only)\n");
 } catch (Throwable $e) {
 	fwrite(STDERR, 'Error: ' . $e->getMessage() . "\n");
 	exit(1);

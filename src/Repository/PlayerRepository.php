@@ -32,6 +32,38 @@ class PlayerRepository {
 		return $row === null ? null : Player::fromRow($row);
 	}
 
+	public function findByIgnNorm(string $ign_norm): ?Player {
+		$row = $this->db->fetchOne('SELECT * FROM players WHERE ign_norm = :n', ['n' => $ign_norm]);
+		return $row === null ? null : Player::fromRow($row);
+	}
+
+	public function updateIgn(int $player_id, ?string $ign, ?string $ign_norm): void {
+		$this->db->run(
+			'UPDATE players SET ign = :i, ign_norm = :n WHERE id = :id',
+			['i' => $ign, 'n' => $ign_norm, 'id' => $player_id],
+		);
+	}
+
+	public function recordIgnHistory(
+		int $player_id,
+		string $ign,
+		string $ign_norm,
+		DateTimeImmutable $now,
+		?int $changed_by,
+	): void {
+		$this->db->run(
+			'INSERT INTO player_ign_history (player_id, ign, ign_norm, changed_at, changed_by)
+				VALUES (:p, :i, :n, :c, :b)',
+			[
+				'p' => $player_id,
+				'i' => $ign,
+				'n' => $ign_norm,
+				'c' => DateFormat::toDb($now),
+				'b' => $changed_by,
+			],
+		);
+	}
+
 	/**
 		Player who wrote a message. If someone already referenced them by @username
 		(placeholder row without tg_user_id), that row is claimed instead of creating a duplicate.

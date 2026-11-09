@@ -23,6 +23,7 @@ use P1Bot\App\TournamentResolver;
 use P1Bot\Domain\AccessPolicy;
 use P1Bot\Domain\BalanceService;
 use P1Bot\Domain\TeamService;
+use P1Bot\Domain\NickService;
 use P1Bot\Domain\TournamentService;
 use P1Bot\Handlers\AdminCommands;
 use P1Bot\Handlers\CallbackHandler;
@@ -70,6 +71,7 @@ class Bootstrap {
 	public AccessPolicy $access;
 	public BalanceService $balances;
 	public TournamentService $tournaments;
+	public NickService $nicks;
 	public TeamService $teams;
 
 	public Logger $logger;
@@ -228,6 +230,12 @@ class Bootstrap {
 			$this->logger,
 		);
 		$this->group_redirect = new GroupRedirect($this->bot, $this->tournaments, $this->tournament_resolver);
+		$this->nicks = new NickService(
+			$this->players,
+			$this->access,
+			$this->db,
+			$clock,
+		);
 		$commands = new AdminCommands(
 			$this->telegram,
 			$this->bot,
@@ -243,6 +251,7 @@ class Bootstrap {
 			$this->listing,
 			$this->private_groups,
 			$this->create_access,
+			$this->nicks,
 		);
 
 		$this->dispatcher = new Dispatcher(
@@ -261,6 +270,7 @@ class Bootstrap {
 			$this->private_groups,
 			$this->create_access,
 			$this->disband_notifier,
+			$this->nicks,
 		);
 		$ai = $this->makeAiClient();
 		if ($ai !== null) {

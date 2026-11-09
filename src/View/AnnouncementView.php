@@ -259,7 +259,11 @@ class AnnouncementView {
 
 	protected function name(int $player_id): string {
 		$player = $this->players[$player_id] ?? null;
-		return Html::e($player !== null ? $player->mention() : 'игрок #' . $player_id);
+		if ($player === null) {
+			return Html::e('игрок #' . $player_id);
+		}
+		// IGN as tg:// link when set; otherwise @username / name. No @ beside IGN in dense lineups.
+		return $player->lineupLabel();
 	}
 
 	protected static function ucfirst(string $s): string {

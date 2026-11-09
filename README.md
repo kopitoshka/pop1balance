@@ -11,7 +11,7 @@ PHP 8.0+ (tested on 8.0 and 8.3), MySQL 8 / MariaDB 10.5+, no framework.
 
 - Webhook: `public/webhook.php`. **Everything happens in the private chat with the bot.** The group gets only
   announcements (cards), reminders and the info commands `/tournaments`, `/info N`, `/level`, `/levels`, `/help`
-  (`/history` and `/level all` are private-only).
+  (`/history`, `/level all` and `/nick` are private-only).
   Any other command, @mention or reply to the bot in the group (joining, creating, editing, questions — admins
   included) gets one reply «Давай в личке 👉» with a URL button `https://t.me/<bot>?start=…` (see «Group»).
   No AI in the group.

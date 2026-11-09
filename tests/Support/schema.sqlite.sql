@@ -6,10 +6,21 @@ CREATE TABLE players (
 	tg_user_id    INTEGER NULL UNIQUE,
 	username      TEXT NULL UNIQUE,
 	display_name  TEXT NOT NULL DEFAULT '',
+	ign           TEXT NULL,
+	ign_norm      TEXT NULL UNIQUE,
 	created_at    TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
 	dm_ok         INTEGER NOT NULL DEFAULT 0,
 	dm_started_at TEXT NULL,
 	dm_group_id   INTEGER NULL
+);
+
+CREATE TABLE player_ign_history (
+	id           INTEGER PRIMARY KEY AUTOINCREMENT,
+	player_id    INTEGER NOT NULL REFERENCES players(id) ON DELETE CASCADE,
+	ign          TEXT NOT NULL,
+	ign_norm     TEXT NOT NULL,
+	changed_at   TEXT NOT NULL,
+	changed_by   INTEGER NULL REFERENCES players(id) ON DELETE SET NULL
 );
 
 CREATE TABLE chats (

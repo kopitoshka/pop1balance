@@ -449,6 +449,9 @@ class GroupChat {
 		if ($this->isHistoryAsk($t)) {
 			return true;
 		}
+		if (preg_match('/\b(мой\s+ник|ник\s+в\s+игре|поставь\s+ник|смени\s+ник)\b/u', $t)) {
+			return true;
+		}
 		if (preg_match('/\b(создай|создать|новый турнир|открой регистрац|закрой регистрац|отмени турнир|опубликуй|поправь турнир)\b/u', $t)) {
 			return true;
 		}

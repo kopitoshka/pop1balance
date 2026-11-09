@@ -11,7 +11,7 @@ class Tools {
 	/**
 		Owner only for now: scales are hidden from users (see AccessPolicy::LEVELS_OWNER_ONLY).
 	*/
-	public const OWNER_TOOLS = ['set_level', 'create_balance', 'show_balance'];
+	public const OWNER_TOOLS = ['set_level', 'create_balance', 'show_balance', 'assign_nick'];
 
 	public const ADMIN_TOOLS = [
 		'create_tournament', 'edit_tournament', 'cancel_tournament', 'open_registration',
@@ -80,6 +80,15 @@ class Tools {
 				'based_on_balance_id' => ['type' => 'integer', 'description' => 'Унаследовать оценки из этой шкалы.'],
 			], ['name']),
 			self::fn('show_balance', 'Показать оценки игроков в шкале.', ['balance_id' => ['type' => 'integer']]),
+			self::fn(
+				'assign_nick',
+				'Поставить игровой ник любому игроку (только главный админ); если ник занят — забрать.',
+				[
+					'player' => ['type' => 'string', 'description' => '"@username".'],
+					'nick' => ['type' => 'string', 'description' => 'Ник в игре.'],
+				],
+				['player', 'nick'],
+			),
 		];
 	}
 
@@ -133,6 +142,17 @@ class Tools {
 				'list_player_levels',
 				'Список игроков, которым уже поставили уровень (только в личном чате).',
 				[],
+			),
+			self::fn(
+				'set_nick',
+				'Поставить или поменять свой игровой ник Population: One (только в личке).',
+				['nick' => ['type' => 'string', 'description' => 'Ник в игре, например «Zoloto on heat».']],
+				['nick'],
+			),
+			self::fn(
+				'show_nick',
+				'Показать свой игровой ник или ник @username.',
+				['player' => ['type' => 'string', 'description' => '"@username" или пусто для себя.']],
 			),
 			self::fn('register_team', 'Записать новую команду. Автор сообщения становится капитаном и входит в состав.', [
 				'tournament_id' => $tid,
