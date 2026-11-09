@@ -25,7 +25,7 @@ final class MessageTest extends TestCase
     {
         $msg = $this->message('@vasya привет', [['type' => 'mention', 'offset' => 0, 'length' => 6]]);
         self::assertFalse($msg->isAddressedTo('pop1_bot', 42));
-        self::assertSame([['username' => 'vasya']], $msg->mentionedUsers('pop1_bot'));
+        self::assertSame([['text' => '@vasya', 'username' => 'vasya']], $msg->mentionedUsers('pop1_bot'));
     }
 
     public function testReplyToBotIsAddressed(): void

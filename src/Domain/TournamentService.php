@@ -163,6 +163,15 @@ final class TournamentService
         return $this->tournaments->listByChat($chatId, TournamentStatus::active());
     }
 
+    /**
+     * @param list<string> $statuses
+     * @return list<Tournament>
+     */
+    public function listByStatus(int $chatId, array $statuses): array
+    {
+        return $this->tournaments->listByChat($chatId, $statuses);
+    }
+
     public function lineup(int $tournamentId): Lineup
     {
         $t = $this->get($tournamentId);

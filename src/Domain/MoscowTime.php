@@ -31,6 +31,45 @@ final class MoscowTime
         return $local->setTimezone(new DateTimeZone('UTC'));
     }
 
+    /**
+     * Human input in Moscow time: "23.11 20:00", "23.11.2026 20:00", "2026-11-23 20:00".
+     * Without a year the nearest future date is used. Returns UTC.
+     */
+    public static function parseHuman(string $value, DateTimeImmutable $nowUtc): DateTimeImmutable
+    {
+        $value = trim(preg_replace('/\s+/u', ' ', $value) ?? $value);
+        if (preg_match('/^(\d{1,2})\.(\d{1,2})(?:\.(\d{2,4}))?\s+(\d{1,2})[:.](\d{2})$/u', $value, $m)) {
+            $nowMsk = $nowUtc->setTimezone(self::zone());
+            $year = $m[3] !== '' ? (int) $m[3] : (int) $nowMsk->format('Y');
+            if ($year < 100) {
+                $year += 2000;
+            }
+            $candidate = self::fromParts($year, (int) $m[2], (int) $m[1], (int) $m[4], (int) $m[5], $value);
+            if ($m[3] === '' && $candidate < $nowUtc->modify('-1 day')) {
+                $candidate = self::fromParts($year + 1, (int) $m[2], (int) $m[1], (int) $m[4], (int) $m[5], $value);
+            }
+            return $candidate;
+        }
+        if (preg_match('/^\d{4}-\d{2}-\d{2}[ T]\d{1,2}:\d{2}$/', $value)) {
+            return self::parse($value);
+        }
+        throw new ValidationError(sprintf('Не понимаю дату «%s». Пиши так: 23.11 20:00 (по МСК).', $value));
+    }
+
+    /** "2026-11-23 20:00" in Moscow time, the format CreateTournament expects. */
+    public static function toInput(DateTimeImmutable $utc): string
+    {
+        return $utc->setTimezone(self::zone())->format('Y-m-d H:i');
+    }
+
+    private static function fromParts(int $year, int $month, int $day, int $hour, int $minute, string $original): DateTimeImmutable
+    {
+        if (!checkdate($month, $day, $year) || $hour > 23 || $minute > 59) {
+            throw new ValidationError(sprintf('Такой даты нет: «%s».', $original));
+        }
+        return self::parse(sprintf('%04d-%02d-%02d %02d:%02d', $year, $month, $day, $hour, $minute));
+    }
+
     public static function format(DateTimeInterface $utc, string $pattern = 'd.m.Y H:i'): string
     {
         return DateTimeImmutable::createFromInterface($utc)->setTimezone(self::zone())->format($pattern) . ' МСК';

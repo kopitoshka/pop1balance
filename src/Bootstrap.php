@@ -4,6 +4,9 @@ declare(strict_types=1);
 
 namespace P1Bot;
 
+use P1Bot\App\Announcer;
+use P1Bot\App\PlayerResolver;
+use P1Bot\App\TournamentResolver;
 use P1Bot\Domain\AccessPolicy;
 use P1Bot\Domain\BalanceService;
 use P1Bot\Domain\TeamService;
@@ -53,6 +56,9 @@ final class Bootstrap
     public TelegramApi $telegram;
     public ChatAdminSync $adminSync;
     public UpdateRouter $router;
+    public Announcer $announcer;
+    public PlayerResolver $playerResolver;
+    public TournamentResolver $tournamentResolver;
 
     /** @var array<string, mixed> */
     public array $config;
@@ -123,6 +129,22 @@ final class Bootstrap
             (int) ($config['admins_cache_minutes'] ?? 10),
         );
 
+        $this->announcer = new Announcer($this->telegram, $this->tournaments, $this->players, $this->bot, $this->logger);
+        $this->playerResolver = new PlayerResolver($this->players, $clock);
+        $this->tournamentResolver = new TournamentResolver($this->tournamentRepo);
+        $commands = new AdminCommands(
+            $this->telegram,
+            $this->bot,
+            $this->tournaments,
+            $this->balances,
+            $this->balanceRepo,
+            $this->players,
+            $this->tournamentResolver,
+            $this->playerResolver,
+            $this->announcer,
+            $clock,
+        );
+
         $this->router = new UpdateRouter(
             $this->telegram,
             $this->bot,
@@ -131,7 +153,7 @@ final class Bootstrap
             $this->adminSync,
             $this->access,
             $clock,
-            new AdminCommands($this->telegram, $this->bot),
+            $commands,
             new MessageHandler($this->telegram, $this->bot),
             new CallbackHandler($this->telegram),
         );

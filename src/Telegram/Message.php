@@ -112,9 +112,9 @@ final class Message
 
     /**
      * Users mentioned in the message, except the bot: ['username' => 'vasya'] for @mentions,
-     * ['user' => TgUser] for text_mention (users without username).
+     * ['user' => TgUser] for text_mention (users without username); 'text' is the entity text.
      *
-     * @return list<array{username?: string, user?: TgUser}>
+     * @return list<array{text: string, username?: string, user?: TgUser}>
      */
     public function mentionedUsers(string $botUsername): array
     {
@@ -123,12 +123,13 @@ final class Message
         foreach ($this->entities as $entity) {
             $type = $entity['type'] ?? '';
             if ($type === 'mention') {
-                $username = ltrim($this->entityText($entity), '@');
+                $text = $this->entityText($entity);
+                $username = ltrim($text, '@');
                 if (mb_strtolower($username) !== $bot) {
-                    $result[] = ['username' => $username];
+                    $result[] = ['text' => $text, 'username' => $username];
                 }
             } elseif ($type === 'text_mention' && isset($entity['user'])) {
-                $result[] = ['user' => TgUser::fromArray($entity['user'])];
+                $result[] = ['text' => $this->entityText($entity), 'user' => TgUser::fromArray($entity['user'])];
             }
         }
         return $result;
