@@ -43,7 +43,8 @@ final class TournamentServiceTest extends IntegrationTestCase
         self::assertSame('средний+ (11 баллов на троих)', $t->levelLabel());
     }
 
-    public function testNoReferenceMeansNoLimit(): void
+    /** Legacy rows created before the reference team became mandatory still work without a limit. */
+    public function testLegacyTournamentWithoutReferenceHasNoLimit(): void
     {
         $t = $this->openTournament(2, null, 16);
         self::assertNull($t->balanceId);
@@ -56,12 +57,15 @@ final class TournamentServiceTest extends IntegrationTestCase
     public function testValidation(): void
     {
         $cases = [
-            'team too big' => new CreateTournament(self::CHAT_ID, $this->owner->id, 'X', '2026-11-14 19:00', 5),
+            'team too big' => new CreateTournament(self::CHAT_ID, $this->owner->id, 'X', '2026-11-14 19:00', 5, '3,3,3,3,3'),
             'reference size mismatch' => new CreateTournament(self::CHAT_ID, $this->owner->id, 'X', '2026-11-14 19:00', 3, '3,3'),
-            'past start' => new CreateTournament(self::CHAT_ID, $this->owner->id, 'X', '2026-11-01 19:00', 3),
-            'empty title' => new CreateTournament(self::CHAT_ID, $this->owner->id, ' ', '2026-11-14 19:00', 3),
+            'no reference' => new CreateTournament(self::CHAT_ID, $this->owner->id, 'X', '2026-11-14 19:00', 3),
+            'blank reference' => new CreateTournament(self::CHAT_ID, $this->owner->id, 'X', '2026-11-14 19:00', 3, '  '),
+            'bad level' => new CreateTournament(self::CHAT_ID, $this->owner->id, 'X', '2026-11-14 19:00', 3, 'средний, средний, крутой'),
+            'past start' => new CreateTournament(self::CHAT_ID, $this->owner->id, 'X', '2026-11-01 19:00', 3, '3,3,4'),
+            'empty title' => new CreateTournament(self::CHAT_ID, $this->owner->id, ' ', '2026-11-14 19:00', 3, '3,3,4'),
             'balance without reference' => new CreateTournament(self::CHAT_ID, $this->owner->id, 'X', '2026-11-14 19:00', 3, null, 1),
-            'max players below team' => new CreateTournament(self::CHAT_ID, $this->owner->id, 'X', '2026-11-14 19:00', 3, null, null, 2),
+            'max players below team' => new CreateTournament(self::CHAT_ID, $this->owner->id, 'X', '2026-11-14 19:00', 3, '3,3,4', null, 2),
         ];
         foreach ($cases as $name => $input) {
             try {
@@ -106,7 +110,7 @@ final class TournamentServiceTest extends IntegrationTestCase
     public function testListActive(): void
     {
         $open = $this->openTournament();
-        $this->app->tournaments->create(new CreateTournament(self::CHAT_ID, $this->owner->id, 'Черновик', '2026-11-15 19:00', 2));
+        $this->app->tournaments->create(new CreateTournament(self::CHAT_ID, $this->owner->id, 'Черновик', '2026-11-15 19:00', 2, '3,3'));
         $cancelled = $this->openTournament();
         $this->app->tournaments->cancel($this->owner->id, $cancelled->id);
 

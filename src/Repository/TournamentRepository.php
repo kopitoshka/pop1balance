@@ -15,7 +15,7 @@ final class TournamentRepository
     /** Columns that update() may touch. */
     private const UPDATABLE = [
         'title', 'starts_at', 'team_size', 'balance_id', 'reference_team', 'max_points',
-        'max_players', 'status', 'announce_msg_id', 'reminded_at',
+        'max_players', 'status', 'announce_msg_id', 'reminded_at', 'card_msg_id',
     ];
 
     public function __construct(private Database $db)
@@ -74,6 +74,16 @@ final class TournamentRepository
             };
         }
         $this->db->run('UPDATE tournaments SET ' . implode(', ', $sets) . ' WHERE id = :id', $params);
+    }
+
+    /** Draft whose confirmation card is the given message. */
+    public function findByCardMessage(int $chatId, int $messageId): ?Tournament
+    {
+        $row = $this->db->fetchOne(
+            'SELECT * FROM tournaments WHERE chat_id = :c AND card_msg_id = :m',
+            ['c' => $chatId, 'm' => $messageId],
+        );
+        return $row === null ? null : Tournament::fromRow($row);
     }
 
     /**

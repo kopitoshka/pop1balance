@@ -5,6 +5,8 @@ declare(strict_types=1);
 namespace P1Bot\Ai;
 
 use P1Bot\App\Announcer;
+use P1Bot\App\Confirmation;
+use P1Bot\App\DraftCards;
 use P1Bot\App\PlayerResolver;
 use P1Bot\App\TournamentResolver;
 use P1Bot\Domain\BalanceService;
@@ -47,6 +49,8 @@ final class Dispatcher
         private Announcer $announcer,
         private Clock $clock,
         private Logger $logger,
+        private ?DraftCards $drafts = null,
+        private string $botUsername = '',
     ) {
     }
 
@@ -153,6 +157,7 @@ final class Dispatcher
             case 'create_tournament':
                 $startsAt = MoscowTime::parseHuman((string) ($a['starts_at_msk'] ?? ''), $this->clock->now());
                 $reference = isset($a['reference_team']) && trim((string) $a['reference_team']) !== '' ? (string) $a['reference_team'] : null;
+                // Always a draft: publishing needs the organizer's explicit confirmation of the card.
                 $t = $this->tournaments->create(new CreateTournament(
                     $ctx->chatId(),
                     $actor->id,
@@ -160,14 +165,10 @@ final class Dispatcher
                     MoscowTime::toInput($startsAt),
                     (int) ($a['team_size'] ?? 0),
                     $reference,
-                    null,
+                    isset($a['balance_id']) ? (int) $a['balance_id'] : null,
                     isset($a['max_players']) ? (int) $a['max_players'] : null,
                 ));
-                if (!empty($a['open_registration'])) {
-                    $t = $this->tournaments->openRegistration($actor->id, $t->id);
-                    $this->announcer->publish($t->id);
-                }
-                return ['tournament_id' => $t->id, 'info' => $this->line($t), 'status' => TournamentStatus::label($t->status)];
+                return $this->cardResult($t, 'Черновик создан.');
 
             case 'edit_tournament':
                 $t = $this->tournament($ctx, $a, [TournamentStatus::DRAFT, TournamentStatus::REGISTRATION, TournamentStatus::CLOSED]);
@@ -179,18 +180,38 @@ final class Dispatcher
                     isset($a['reference_team']) && $a['reference_team'] !== '' ? (string) $a['reference_team'] : null,
                     null,
                     isset($a['max_players']) ? (int) $a['max_players'] : null,
-                    !empty($a['remove_level_limit']),
+                    false,
                 ));
+                if ($t->status === TournamentStatus::DRAFT) {
+                    return $this->cardResult($t, 'Черновик обновлён.');
+                }
                 return ['tournament_id' => $t->id, 'info' => $this->line($t)];
+
+            case 'publish_tournament':
+                if ($this->drafts === null) {
+                    throw new ValidationError('Публикация недоступна.');
+                }
+                $t = $this->tournament($ctx, $a, [TournamentStatus::DRAFT]);
+                if (!Confirmation::isClearYes($ctx->message->textWithoutMention($this->botUsername()))) {
+                    // Not a clear "yes": show the card again and ask again.
+                    return $this->cardResult($t, 'Пользователь не подтвердил публикацию однозначно, турнир НЕ опубликован.') + ['published' => false];
+                }
+                $t = $this->drafts->publish($actor->id, $t->id);
+                return ['tournament_id' => $t->id, 'published' => true, 'message' => 'Опубликовано: регистрация открыта, анонс в чате.'];
 
             case 'cancel_tournament':
                 $t = $this->tournaments->cancel($actor->id, $this->tournament($ctx, $a, [TournamentStatus::DRAFT, TournamentStatus::REGISTRATION, TournamentStatus::CLOSED])->id);
                 return ['tournament_id' => $t->id, 'message' => 'Турнир отменён.'];
 
             case 'open_registration':
-                $t = $this->tournaments->openRegistration($actor->id, $this->tournament($ctx, $a, [TournamentStatus::DRAFT, TournamentStatus::CLOSED])->id);
+                // Drafts are published only through publish_tournament after confirmation.
+                $t = $this->tournament($ctx, $a, [TournamentStatus::CLOSED]);
+                if ($t->status === TournamentStatus::DRAFT) {
+                    throw new ValidationError('Это черновик: его публикуют только после явного «да» на карточку (publish_tournament).');
+                }
+                $t = $this->tournaments->openRegistration($actor->id, $t->id);
                 $this->announcer->publish($t->id);
-                return ['tournament_id' => $t->id, 'message' => 'Регистрация открыта, анонс опубликован в чате.'];
+                return ['tournament_id' => $t->id, 'message' => 'Регистрация снова открыта, анонс опубликован в чате.'];
 
             case 'close_registration':
                 $t = $this->tournaments->closeRegistration($actor->id, $this->tournament($ctx, $a, [TournamentStatus::REGISTRATION])->id);
@@ -288,10 +309,50 @@ final class Dispatcher
         ];
     }
 
+    /**
+     * Result for a created/edited draft: the card with «Публикуем или что-то поправить?» is
+     * shown by PHP right after this turn (show_card), the model must not write it itself.
+     *
+     * @return array<string, mixed>
+     */
+    private function cardResult(Tournament $t, string $message): array
+    {
+        return [
+            'tournament_id' => $t->id,
+            'show_card' => $t->id,
+            'message' => $message,
+            'card' => $this->drafts !== null ? self::plain($this->drafts->cardText($t)) : $this->line($t),
+            'note' => 'Карточка с вопросом «Публикуем или что-то поправить?» и кнопками будет показана автоматически. Публикуй только после явного «да».',
+        ];
+    }
+
+    private function botUsername(): string
+    {
+        return $this->botUsername;
+    }
+
     private function placementLabel(Tournament $t, int $playerId): string
     {
         $placement = $this->tournaments->lineup($t->id)->placementOf($playerId);
         return $placement === 'reserve' ? 'резерв' : ($placement === 'forming' ? 'команда собирается' : 'основной состав');
+    }
+
+    /**
+     * Unpublished drafts of the author (for the model's context).
+     *
+     * @return list<string>
+     */
+    public function draftLines(Context $ctx): array
+    {
+        $lines = [];
+        foreach ($this->tournaments->listByStatus($ctx->chatId(), [TournamentStatus::DRAFT]) as $t) {
+            if ($t->organizerId !== $ctx->actor->id) {
+                continue;
+            }
+            $lines[] = '№' . $t->id . ' ' . Messages::tournamentLine($t, $this->tournaments->lineup($t->id))
+                . ($t->cardMsgId !== null ? ' — карточка показана, ждём ответа «Публикуем или что-то поправить?»' : ' — карточка ещё не показана');
+        }
+        return $lines;
     }
 
     /** @return list<string> */

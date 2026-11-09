@@ -146,8 +146,24 @@ abstract class IntegrationTestCase extends TestCase
         $this->app->balances->setLevel(self::CHAT_ID, $this->owner->id, $player->id, $level);
     }
 
+    /** A null reference creates a legacy row without a level limit (no longer possible via the bot). */
     protected function openTournament(int $teamSize = 3, ?string $reference = '3,3,4', ?int $maxPlayers = null): Tournament
     {
+        if ($reference === null) {
+            $t = $this->app->tournamentRepo->create([
+                'chat_id' => self::CHAT_ID,
+                'organizer_id' => $this->owner->id,
+                'title' => 'Субботний кубок',
+                'starts_at' => \P1Bot\Domain\MoscowTime::parse('2026-11-14 19:00'),
+                'team_size' => $teamSize,
+                'balance_id' => null,
+                'reference_team' => null,
+                'max_points' => null,
+                'max_players' => $maxPlayers ?? 24,
+                'status' => \P1Bot\Domain\TournamentStatus::DRAFT,
+            ], $this->clock->now());
+            return $this->app->tournaments->openRegistration($this->owner->id, $t->id);
+        }
         $t = $this->app->tournaments->create(new CreateTournament(
             self::CHAT_ID,
             $this->owner->id,

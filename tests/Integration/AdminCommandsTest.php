@@ -23,27 +23,98 @@ final class AdminCommandsTest extends IntegrationTestCase
         self::assertSame(30, $t->maxPlayers);
         self::assertSame($this->owner->id, $t->organizerId);
         self::assertSame(TournamentStatus::DRAFT, $t->status);
-        self::assertStringContainsString('/open 1', $this->http->lastText());
+
+        $card = $this->http->sent('sendMessage')[0];
+        self::assertStringContainsString('Турнир №1 (черновик)', $card['text']);
+        self::assertStringContainsString('Эталонная команда: средний, средний, средний+', $card['text']);
+        self::assertStringEndsWith('Публикуем или что-то поправить?', $card['text']);
+        self::assertSame('pub:1', $card['reply_markup']['inline_keyboard'][0][0]['callback_data']);
+        self::assertSame('fix:1', $card['reply_markup']['inline_keyboard'][0][1]['callback_data']);
+        self::assertSame(1000, $this->app->tournamentRepo->find(1)->cardMsgId);
+        self::assertSame([], $this->http->sent('editMessageText'), 'nothing published');
     }
 
-    public function testNewWithoutBalanceAndDefaults(): void
+    public function testNewRequiresReferenceTeamAndUsesDefaults(): void
     {
-        $this->dispatch($this->groupMessage($this->owner, '/new 23.11 20:00 | Без баланса | 2 | -'));
+        foreach (['/new 23.11 20:00 | Без баланса | 2 | -', '/new 23.11 20:00 | Без баланса | 2'] as $command) {
+            $this->dispatch($this->groupMessage($this->owner, $command));
+            self::assertNull($this->app->tournamentRepo->find(1), $command);
+        }
+
+        $this->dispatch($this->groupMessage($this->owner, '/new 23.11 20:00 | Пары | 2 | Танк, слабый плюс'));
         $t = $this->app->tournamentRepo->find(1);
-        self::assertNull($t->balanceId);
+        self::assertSame(7, $t->maxPoints);
+        self::assertNotNull($t->balanceId, 'default scale');
         self::assertSame(24, $t->maxPlayers);
+    }
+
+    public function testClearYesReplyToCardPublishes(): void
+    {
+        $this->dispatch($this->groupMessage($this->owner, '/new 23.11 20:00 | Кубок | 3 | 3,3,4'));
+        $cardId = $this->app->tournamentRepo->find(1)->cardMsgId;
+
+        $this->dispatch($this->groupMessage($this->owner, 'Да, всё верно!', ['reply_to_message' => [
+            'message_id' => $cardId, 'from' => ['id' => self::BOT_ID, 'is_bot' => true, 'first_name' => 'Bot'],
+        ]]));
+        $t = $this->app->tournamentRepo->find(1);
+        self::assertSame(TournamentStatus::REGISTRATION, $t->status);
+        self::assertNotNull($t->announceMsgId);
+        $edit = $this->http->sent('editMessageText')[0];
+        self::assertSame($cardId, $edit['message_id']);
+        self::assertStringContainsString('Опубликовано', $edit['text']);
+        self::assertStringNotContainsString('Публикуем или', $edit['text']);
+        self::assertStringContainsString('Опубликовал', $this->http->lastText());
+    }
+
+    public function testUnclearReplyToCardDoesNotPublish(): void
+    {
+        $this->dispatch($this->groupMessage($this->owner, '/new 23.11 20:00 | Кубок | 3 | 3,3,4'));
+        $cardId = $this->app->tournamentRepo->find(1)->cardMsgId;
+        foreach (['да, но время 21:00', 'не, подожди', 'хм', 'вроде да?'] as $answer) {
+            $this->dispatch($this->groupMessage($this->owner, $answer, ['reply_to_message' => [
+                'message_id' => $cardId, 'from' => ['id' => self::BOT_ID, 'is_bot' => true, 'first_name' => 'Bot'],
+            ]]));
+            self::assertSame(TournamentStatus::DRAFT, $this->app->tournamentRepo->find(1)->status, $answer);
+            self::assertStringContainsString('Не публикую', $this->http->lastText());
+        }
+    }
+
+    public function testEditDraftShowsNewCardAndOldCardIsOutdated(): void
+    {
+        $this->dispatch($this->groupMessage($this->owner, '/new 23.11 20:00 | Кубок | 3 | 3,3,4'));
+        $oldCard = $this->app->tournamentRepo->find(1)->cardMsgId;
+        $this->http->reset();
+
+        $this->dispatch($this->groupMessage($this->owner, '/edit 1 эталон средний, средний, высокий'));
+        $t = $this->app->tournamentRepo->find(1);
+        self::assertSame(11, $t->maxPoints);
+        self::assertNotSame($oldCard, $t->cardMsgId);
+        self::assertStringContainsString('Публикуем или что-то поправить?', $this->http->lastText());
+
+        $this->dispatch($this->groupMessage($this->owner, 'да', ['reply_to_message' => [
+            'message_id' => $oldCard, 'from' => ['id' => self::BOT_ID, 'is_bot' => true, 'first_name' => 'Bot'],
+        ]]));
+        self::assertSame(TournamentStatus::DRAFT, $this->app->tournamentRepo->find(1)->status, 'old card is not a confirmation');
+    }
+
+    public function testNoBalanceEditIsGone(): void
+    {
+        $this->dispatch($this->groupMessage($this->owner, '/new 23.11 20:00 | Кубок | 3 | 3,3,4'));
+        $this->dispatch($this->groupMessage($this->owner, '/edit 1 без баланса'));
+        self::assertStringContainsString('Не знаю поле', $this->http->lastText());
+        self::assertSame(10, $this->app->tournamentRepo->find(1)->maxPoints);
     }
 
     public function testNewWithoutArgsExplainsSyntax(): void
     {
         $this->dispatch($this->groupMessage($this->owner, '/new'));
-        self::assertStringContainsString('/new 23.11 20:00 | Название | 3 | 3,3,4 | 24', $this->http->lastText());
+        self::assertStringContainsString('/new 23.11 20:00 | Название | 3 | средний, средний, средний+ | 24', $this->http->lastText());
         self::assertNull($this->app->tournamentRepo->find(1));
     }
 
     public function testValidationErrorIsShownHumanly(): void
     {
-        $this->dispatch($this->groupMessage($this->owner, '/new 23.11 20:00 | Кубок | 5'));
+        $this->dispatch($this->groupMessage($this->owner, '/new 23.11 20:00 | Кубок | 5 | 3,3,3,3,3'));
         self::assertStringContainsString('от 2 до 4 игроков', $this->http->lastText());
     }
 
@@ -62,7 +133,7 @@ final class AdminCommandsTest extends IntegrationTestCase
                 'id' => $this->tgIdOf($this->admin), 'is_bot' => false, 'first_name' => 'Admin', 'username' => 'admin2',
             ]]]];
         });
-        $this->dispatch($this->groupMessage($this->admin, '/new 23.11 20:00 | Кубок | 2'));
+        $this->dispatch($this->groupMessage($this->admin, '/new 23.11 20:00 | Кубок | 2 | 3,3'));
         self::assertSame($this->admin->id, $this->app->tournamentRepo->find(1)->organizerId);
     }
 
@@ -84,12 +155,12 @@ final class AdminCommandsTest extends IntegrationTestCase
 
         $t = $this->app->tournamentRepo->find(1);
         self::assertSame(TournamentStatus::REGISTRATION, $t->status);
-        self::assertSame(1001, $t->announceMsgId, "second sendMessage (after the /new reply)");
+        self::assertSame(1001, $t->announceMsgId, "second sendMessage (after the /new card)");
     }
 
     public function testEditCloseCancelRefreshAnnouncement(): void
     {
-        $this->dispatch($this->groupMessage($this->owner, '/new 23.11 20:00 | Кубок | 3'));
+        $this->dispatch($this->groupMessage($this->owner, '/new 23.11 20:00 | Кубок | 3 | 3,3,4'));
         $this->dispatch($this->groupMessage($this->owner, '/open 1'));
         $this->http->reset();
 
@@ -116,8 +187,8 @@ final class AdminCommandsTest extends IntegrationTestCase
 
     public function testAmbiguousTournamentAsksForId(): void
     {
-        $this->dispatch($this->groupMessage($this->owner, '/new 23.11 20:00 | Первый | 3'));
-        $this->dispatch($this->groupMessage($this->owner, '/new 24.11 20:00 | Второй | 3'));
+        $this->dispatch($this->groupMessage($this->owner, '/new 23.11 20:00 | Первый | 3 | 3,3,4'));
+        $this->dispatch($this->groupMessage($this->owner, '/new 24.11 20:00 | Второй | 3 | 3,3,4'));
         $this->dispatch($this->groupMessage($this->owner, '/open'));
         self::assertStringContainsString('Уточни номер турнира', $this->http->lastText());
         self::assertStringContainsString('№2 — Второй', $this->http->lastText());

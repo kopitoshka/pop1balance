@@ -48,7 +48,7 @@ cp .env.example .env && chmod 640 .env     # then fill it in, see below
 sudo chown -R apache:apache storage        # or nginx:nginx — the php-fpm user must write logs
 ```
 
-Updating later: `git pull && php bin/migrate.php`.
+Updating later: `git pull && php bin/migrate.php`. (e.g. `003_tournament_card.sql` adds `tournaments.card_msg_id`).
 
 ### 3. Database
 
@@ -169,13 +169,40 @@ Players (in the group, mention the bot or reply to it):
 - Buttons under the announcement: «Хочу участвовать» (solo), «Передумал».
 
 Admins:
-- `/new 23.11 20:00 | Кубок | 3 | 3,3,4 | 24` — date/time MSK | title | team size | reference team (`-` = no balance) | player limit
-- `/open [id]` — open registration and post the announcement; `/close [id]`; `/cancel [id]`
-- `/edit [id] время 23.11 21:00` (fields: название, время, размер, эталон, лимит, баланс N, без баланса)
+- `/new 23.11 20:00 | Кубок | 3 | средний, средний, средний+ | 24` — date/time MSK | title | team size |
+  reference team (required, one level per player; digits `3,3,4` work too) | player limit (default 24).
+  Creates a **draft** and shows its card ending with «Публикуем или что-то поправить?» and the buttons
+  «✅ Публикуем» / «✏️ Поправить».
+- `/edit [id] время 23.11 21:00` (fields: название, время, размер, эталон, лимит, баланс N). Editing a draft shows a fresh card.
+- `/open [id]` — explicitly open registration and post the announcement (also reopens a closed one); `/close [id]`; `/cancel [id]`
 - `/level @user 4 [balance]`, `/balance [id]`
 - `/tournaments`, `/info [id]`, `/help` — for everyone
 
 The id can be omitted when only one tournament fits. Admins can do all of this in plain text too.
+
+### Creating a tournament (draft → card → confirmation)
+
+Every tournament has a balance: the organizer names the strongest allowed team by levels, e.g.
+«средний, средний, средний+» (team limit = sum of the levels = 10; the number of levels = team size).
+There is no "no balance" option any more (old tournaments without a limit keep working).
+
+1. In plain text («@bot создай турнир на субботу в 20:00, тройки, эталон средний, средний, средний+») the bot
+   collects title, MSK date/time, team size and the reference team and asks for whatever is missing.
+   Player limit defaults to 24, the level scale to the default one.
+2. It creates a draft and shows the card with «Публикуем или что-то поправить?».
+3. Publishing (registration opens, announcement is posted) happens only on a clear confirmation from the
+   organizer: the «Публикуем» button, or a reply to the card like «да», «публикуем», «ок», «всё верно».
+   The check is done in PHP (`App\Confirmation`), not by the model: anything with a correction, a question,
+   a negation or numbers («да, но время 21:00») is not a confirmation — the edits are applied and the card is shown again.
+   The model can publish only via the `publish_tournament` tool, which re-checks the user's message.
+4. Every change of a draft invalidates the previous card (`tournaments.card_msg_id`), so only the latest
+   shown version can be confirmed.
+
+### Levels
+
+`1 начальный, 2 начальный+, 3 средний, 4 средний+, 5 высокий, 6 высокий+`. Synonyms: слабый / базовый /
+начинающий = начальный, танк = высокий. Case-insensitive, «плюс» = «+» («слабый плюс» = 2, «танк+» = 6),
+small typos are tolerated («выскоий» = высокий).
 
 ## Development
 

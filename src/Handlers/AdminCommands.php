@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace P1Bot\Handlers;
 
 use P1Bot\App\Announcer;
+use P1Bot\App\DraftCards;
 use P1Bot\App\PlayerResolver;
 use P1Bot\App\TournamentResolver;
 use P1Bot\Domain\BalanceService;
@@ -47,6 +48,7 @@ final class AdminCommands
         private PlayerResolver $playerResolver,
         private Announcer $announcer,
         private Clock $clock,
+        private DraftCards $drafts,
     ) {
     }
 
@@ -118,7 +120,7 @@ final class AdminCommands
             }
         }
         if ($lines === []) {
-            return 'Сейчас активных турниров нет.' . ($ctx->isAdmin ? ' Создать: /new 23.11 20:00 | Название | 3 | 3,3,4 | 24' : '');
+            return 'Сейчас активных турниров нет.' . ($ctx->isAdmin ? ' Создать: /new 23.11 20:00 | Название | 3 | средний, средний, средний+ | 24' : '');
         }
         return "<b>Турниры:</b>\n" . implode("\n", $lines);
     }
@@ -128,19 +130,21 @@ final class AdminCommands
         return '№' . $t->id . ' ' . Html::e(Messages::tournamentLine($t, $this->tournaments->lineup($t->id)));
     }
 
-    /** /new 23.11 20:00 | Название | 3 | 3,3,4 | 24 */
+    /** /new 23.11 20:00 | Название | 3 | средний, средний, средний+ | 24 => draft card with confirmation */
     private function create(Context $ctx, string $args): string
     {
         $parts = array_map('trim', explode('|', $args));
-        if (count($parts) < 3 || $parts[0] === '' || $parts[1] === '') {
+        if (count($parts) < 4 || $parts[0] === '' || $parts[1] === '' || $parts[3] === '') {
             throw new ValidationError(
-                "Создать турнир можно одной строкой:\n/new 23.11 20:00 | Название | 3 | 3,3,4 | 24\n"
-                . 'Дата и время по МСК | название | игроков в команде (2–4) | эталонная команда (или «-» без баланса) | лимит участников (по умолчанию 24).',
+                "Создать турнир можно одной строкой:\n/new 23.11 20:00 | Название | 3 | средний, средний, средний+ | 24\n"
+                . 'Дата и время по МСК | название | игроков в команде (2–4) | эталонная команда: уровни самой сильной допустимой команды, '
+                . 'по одному на игрока (можно цифрами: 3,3,4) | лимит участников (по умолчанию 24).'
+                . "\nИли просто напиши мне, какой турнир нужен, — я уточню детали.",
             );
         }
         $startsAt = MoscowTime::parseHuman($parts[0], $this->clock->now());
         $teamSize = self::intArg($parts[2], 'размер команды');
-        $reference = isset($parts[3]) && !in_array($parts[3], ['', '-', '—', 'нет'], true) ? $parts[3] : null;
+        $reference = $parts[3];
         $maxPlayers = isset($parts[4]) && $parts[4] !== '' ? self::intArg($parts[4], 'лимит участников') : null;
 
         $t = $this->tournaments->create(new CreateTournament(
@@ -154,12 +158,10 @@ final class AdminCommands
             $maxPlayers,
         ));
 
-        return sprintf(
-            "Готово, турнир №%d создан:\n%s\n\nПока это черновик. Открыть регистрацию и опубликовать анонс: /open %d",
-            $t->id,
-            Html::e(Messages::tournamentLine($t, $this->tournaments->lineup($t->id))),
-            $t->id,
-        );
+        $this->drafts->show($t->id, $ctx->message->messageId, $ctx->actor->id, [
+            ['role' => 'user', 'content' => '/new ' . $args],
+        ]);
+        return '';
     }
 
     /** /edit [5] поле значение */
@@ -167,7 +169,7 @@ final class AdminCommands
     {
         [$id, $rest] = self::splitId($args);
         if (!preg_match('/^(\S+)\s*(.*)$/us', $rest, $m)) {
-            throw new ValidationError("Что поменять? Например:\n/edit 5 время 23.11 21:00\n/edit 5 название Кубок выходного дня\n/edit 5 лимит 32\n/edit 5 размер 2\n/edit 5 эталон 3,3,4\n/edit 5 без баланса");
+            throw new ValidationError("Что поменять? Например:\n/edit 5 время 23.11 21:00\n/edit 5 название Кубок выходного дня\n/edit 5 лимит 32\n/edit 5 размер 2\n/edit 5 эталон средний, средний, средний+");
         }
         $field = mb_strtolower($m[1]);
         $value = trim($m[2]);
@@ -200,15 +202,17 @@ final class AdminCommands
                 $balanceId = TournamentResolver::parseId($value) ?? throw new ValidationError('Укажи номер шкалы баланса, например: /edit 5 баланс 2');
                 $edit = new EditTournament(null, null, null, null, $balanceId);
                 break;
-            case 'без':
-            case 'nobalance':
-                $edit = new EditTournament(null, null, null, null, null, null, true);
-                break;
             default:
-                throw new ValidationError(sprintf('Не знаю поле «%s». Можно: название, время, размер, эталон, лимит, баланс, без баланса.', $field));
+                throw new ValidationError(sprintf('Не знаю поле «%s». Можно: название, время, размер, эталон, лимит, баланс.', $field));
         }
 
         $t = $this->tournaments->edit($ctx->actor->id, $t->id, $edit);
+        if ($t->status === TournamentStatus::DRAFT) {
+            $this->drafts->show($t->id, $ctx->message->messageId, $ctx->actor->id, [
+                ['role' => 'user', 'content' => '/edit ' . $args],
+            ]);
+            return '';
+        }
         $this->announcer->refresh($t->id);
         return "Обновил:\n" . Html::e(Messages::tournamentLine($t, $this->tournaments->lineup($t->id)));
     }

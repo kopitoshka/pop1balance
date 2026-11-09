@@ -21,6 +21,9 @@ final class TournamentService
     public const MIN_TEAM_SIZE = 2;
     public const MAX_TEAM_SIZE = 4;
 
+    public const REFERENCE_REQUIRED = 'Нужно задать баланс: перечисли уровни самой сильной допустимой команды, '
+        . 'например «средний, средний, средний+». Уровней должно быть столько же, сколько игроков в команде.';
+
     public function __construct(
         private TournamentRepository $tournaments,
         private TeamRepository $teams,
@@ -87,11 +90,10 @@ final class TournamentService
                 }
                 $teamSize = $this->validTeamSize($edit->teamSize ?? $t->teamSize);
                 if ($edit->removeLevelLimit) {
-                    [$balanceId, $reference, $maxPoints] = [null, null, null];
-                } else {
-                    $reference = $edit->referenceTeam ?? $t->referenceTeam;
-                    [$balanceId, $reference, $maxPoints] = $this->levelLimit($reference, $edit->balanceId ?? $t->balanceId, $teamSize);
+                    throw new ValidationError('Турнир без баланса сделать нельзя. ' . self::REFERENCE_REQUIRED);
                 }
+                $reference = $edit->referenceTeam ?? $t->referenceTeam;
+                [$balanceId, $reference, $maxPoints] = $this->levelLimit($reference, $edit->balanceId ?? $t->balanceId, $teamSize);
                 $fields += ['team_size' => $teamSize, 'balance_id' => $balanceId, 'reference_team' => $reference, 'max_points' => $maxPoints];
             }
 
@@ -99,6 +101,10 @@ final class TournamentService
                 $fields['max_players'] = $this->validMaxPlayers($edit->maxPlayers ?? $t->maxPlayers, $fields['team_size'] ?? $t->teamSize);
             }
 
+            if ($fields !== [] && $t->status === TournamentStatus::DRAFT) {
+                // The changed draft must be shown again before it can be published.
+                $fields['card_msg_id'] = null;
+            }
             $this->tournaments->update($t->id, $fields);
             return $this->get($t->id);
         });
@@ -195,6 +201,17 @@ final class TournamentService
             }
         }
         return $result;
+    }
+
+    /** Remembers the confirmation card shown for the current version of a draft. */
+    public function setCardMessage(int $tournamentId, ?int $messageId): void
+    {
+        $this->tournaments->update($tournamentId, ['card_msg_id' => $messageId]);
+    }
+
+    public function findByCardMessage(int $chatId, int $messageId): ?Tournament
+    {
+        return $this->tournaments->findByCardMessage($chatId, $messageId);
     }
 
     public function setAnnounceMessage(int $tournamentId, int $messageId): void
@@ -299,7 +316,8 @@ final class TournamentService
     }
 
     /**
-     * Reference team => [balance_id, canonical reference, max_points]. No reference => no limit.
+     * Reference team => [balance_id, canonical reference, max_points]. A reference team is
+     * required: tournaments without balance can no longer be created (old rows may still have NULL).
      * A reference without an explicit scale uses the default scale.
      *
      * @return array{0: ?int, 1: ?string, 2: ?int}
@@ -307,14 +325,11 @@ final class TournamentService
     private function levelLimit(?string $referenceTeam, ?int $balanceId, int $teamSize): array
     {
         if ($referenceTeam === null || trim($referenceTeam) === '') {
-            if ($balanceId !== null) {
-                throw new ValidationError('Для баланса нужна эталонная команда, например 3,3,4.');
-            }
-            return [null, null, null];
+            throw new ValidationError(self::REFERENCE_REQUIRED);
         }
         $levels = Levels::parseReferenceTeam($referenceTeam);
         if (count($levels) !== $teamSize) {
-            throw new ValidationError(sprintf('В эталонной команде должно быть %d игрока(ов), как и в команде турнира, а указано %d.', $teamSize, count($levels)));
+            throw new ValidationError(sprintf('В команде %d игрока(ов), значит в эталонной команде нужно перечислить %d уровня(ей), а указано %d.', $teamSize, $teamSize, count($levels)));
         }
         $balance = $balanceId !== null ? $this->balances->find($balanceId) : $this->balances->findDefault();
         if ($balance === null) {

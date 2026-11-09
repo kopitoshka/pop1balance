@@ -57,14 +57,49 @@ final class CallbackHandlerTest extends IntegrationTestCase
         self::assertStringContainsString('1. <b>Wolves</b> — @cap (кэп), @mate', $this->http->lastText());
     }
 
+    public function testPublishAndFixButtonsOnDraftCard(): void
+    {
+        $this->dispatch($this->groupMessage($this->owner, '/new 23.11 20:00 | Кубок | 2 | 3,4'));
+        $cardId = $this->app->tournamentRepo->find(1)->cardMsgId;
+
+        // Someone else cannot publish or fix.
+        $vasya = $this->player('vasya');
+        $this->dispatch($this->press($vasya, 'pub:1', $cardId));
+        self::assertStringContainsString('только его организатор', $this->lastAnswer());
+        $this->dispatch($this->press($vasya, 'fix:1', $cardId));
+        self::assertStringContainsString('только его организатор', $this->lastAnswer());
+        self::assertSame('draft', $this->app->tournamentRepo->find(1)->status);
+
+        // «Поправить» explains how to correct, publishes nothing.
+        $this->dispatch($this->press($this->owner, 'fix:1', $cardId));
+        self::assertStringContainsString('Ответь на карточку', $this->lastAnswer());
+        self::assertSame('draft', $this->app->tournamentRepo->find(1)->status);
+
+        // A button on an outdated card does nothing.
+        $this->dispatch($this->press($this->owner, 'pub:1', $cardId - 1));
+        self::assertStringContainsString('устарела', $this->lastAnswer());
+        self::assertSame('draft', $this->app->tournamentRepo->find(1)->status);
+
+        $this->dispatch($this->press($this->owner, 'pub:1', $cardId));
+        self::assertStringContainsString('Опубликовано', $this->lastAnswer());
+        $t = $this->app->tournamentRepo->find(1);
+        self::assertSame('registration', $t->status);
+        self::assertNotNull($t->announceMsgId);
+        $edits = $this->http->sent('editMessageText');
+        self::assertSame([], end($edits)['reply_markup']['inline_keyboard'], 'card buttons removed');
+
+        $this->dispatch($this->press($this->owner, 'pub:1', $cardId));
+        self::assertStringContainsString('уже не черновик', $this->lastAnswer());
+    }
+
     /** @return array<string, mixed> */
-    private function press(Player $from, string $data): array
+    private function press(Player $from, string $data, int $messageId = 1): array
     {
         static $id = 1;
         return ['update_id' => 5000 + $id, 'callback_query' => [
             'id' => 'cb' . $id++,
             'from' => ['id' => $this->tgIdOf($from), 'is_bot' => false, 'first_name' => $from->displayName, 'username' => $from->username],
-            'message' => ['message_id' => 1, 'chat' => ['id' => self::CHAT_ID, 'type' => 'supergroup', 'title' => 'P1 турниры']],
+            'message' => ['message_id' => $messageId, 'chat' => ['id' => self::CHAT_ID, 'type' => 'supergroup', 'title' => 'P1 турниры']],
             'data' => $data,
         ]];
     }

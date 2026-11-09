@@ -111,20 +111,109 @@ final class AssistantTest extends IntegrationTestCase
         self::assertFalse($output['ok']);
     }
 
-    public function testAdminCreatesAndOpensTournament(): void
+    public function testAdminCreatesDraftAndGetsCardInsteadOfPublishing(): void
     {
         $this->http->queueOpenAi($this->functionCall('r1', 'c1', 'create_tournament', [
-            'title' => 'Ночной кубок', 'starts_at_msk' => '23.11 22:00', 'team_size' => 2, 'reference_team' => '4,4', 'open_registration' => true,
+            'title' => 'Ночной кубок', 'starts_at_msk' => '23.11 22:00', 'team_size' => 2, 'reference_team' => 'танк, средний+',
+            'open_registration' => true, // old parameter is ignored
         ]));
-        $this->http->queueOpenAi($this->text('r2', 'Готово, анонс в чате!'));
-        $this->dispatch($this->groupMessage($this->owner, '@' . self::BOT_USERNAME . ' создай ночной кубок на 23 ноября в 22, пары, эталон 4,4 и открой регистрацию'));
+        $this->dispatch($this->groupMessage($this->owner, '@' . self::BOT_USERNAME . ' создай ночной кубок на 23 ноября в 22, пары, эталон танк и средний+, и сразу публикуй'));
 
         $t = $this->app->tournamentRepo->find(1);
-        self::assertNotNull($t);
+        self::assertSame('draft', $t->status, 'never published without confirming the card');
+        self::assertSame(9, $t->maxPoints);
+        self::assertNull($t->announceMsgId);
+        $card = $this->http->sent('sendMessage');
+        self::assertCount(1, $card);
+        self::assertStringEndsWith('Публикуем или что-то поправить?', $card[0]['text']);
+        self::assertSame('pub:1', $card[0]['reply_markup']['inline_keyboard'][0][0]['callback_data']);
+        self::assertSame($t->cardMsgId, 1000);
+        self::assertCount(1, $this->openAiRequests(), 'the card ends the turn, no extra model round');
+
+        $tools = array_column($this->firstOpenAiRequest()['tools'], null, 'name');
+        self::assertContains('reference_team', $tools['create_tournament']['parameters']['required']);
+        self::assertArrayNotHasKey('open_registration', (array) $tools['create_tournament']['parameters']['properties']);
+        self::assertArrayNotHasKey('remove_level_limit', (array) $tools['edit_tournament']['parameters']['properties']);
+        self::assertArrayHasKey('publish_tournament', $tools);
+    }
+
+    public function testCorrectionThenClearYesPublishes(): void
+    {
+        $this->http->queueOpenAi($this->functionCall('r1', 'c1', 'create_tournament', [
+            'title' => 'Кубок', 'starts_at_msk' => '23.11 20:00', 'team_size' => 3, 'reference_team' => 'средний, средний, средний+',
+        ]));
+        $this->dispatch($this->groupMessage($this->owner, '@' . self::BOT_USERNAME . ' создай кубок 23.11 в 20, тройки, средний средний средний+'));
+        $firstCard = $this->app->tournamentRepo->find(1)->cardMsgId;
+
+        // A correction in reply to the card goes to the model, which edits the draft: new card, still a draft.
+        $this->http->queueOpenAi($this->functionCall('r2', 'c2', 'edit_tournament', ['tournament_id' => 1, 'starts_at_msk' => '23.11 21:00']));
+        $this->dispatch($this->groupMessage($this->owner, 'ок, но время 21:00', $this->replyTo($firstCard)));
+        $t = $this->app->tournamentRepo->find(1);
+        self::assertSame('draft', $t->status);
+        self::assertSame('2026-11-23 18:00:00', \P1Bot\Support\DateFormat::toDb($t->startsAt));
+        self::assertNotSame($firstCard, $t->cardMsgId);
+        $input = $this->lastOpenAiRequest()['input'];
+        self::assertStringContainsString('Публикуем или что-то поправить?', $input[count($input) - 2]['content'], 'the card is in the dialog history');
+
+        // A clear yes to the fresh card publishes without asking the model.
+        $before = count($this->openAiRequests());
+        $this->dispatch($this->groupMessage($this->owner, 'Публикуем!', $this->replyTo($t->cardMsgId)));
+        self::assertSame('registration', $this->app->tournamentRepo->find(1)->status);
+        self::assertCount($before, $this->openAiRequests());
+    }
+
+    public function testModelCannotPublishOnUnclearAnswer(): void
+    {
+        $this->http->queueOpenAi($this->functionCall('r1', 'c1', 'create_tournament', [
+            'title' => 'Кубок', 'starts_at_msk' => '23.11 20:00', 'team_size' => 2, 'reference_team' => '3,4',
+        ]));
+        $this->dispatch($this->groupMessage($this->owner, '@' . self::BOT_USERNAME . ' создай кубок 23.11 в 20, пары, 3 и 4'));
+        $card = $this->app->tournamentRepo->find(1)->cardMsgId;
+
+        // The model wrongly tries to publish and to open registration on an unclear answer.
+        $this->http->queueOpenAi($this->functionCall('r2', 'c2', 'open_registration', ['tournament_id' => 1]));
+        $this->http->queueOpenAi($this->functionCall('r3', 'c3', 'publish_tournament', ['tournament_id' => 1]));
+        $this->dispatch($this->groupMessage($this->owner, 'ну наверное можно', $this->replyTo($card)));
+
+        $t = $this->app->tournamentRepo->find(1);
+        self::assertSame('draft', $t->status);
+        self::assertNull($t->announceMsgId);
+        $outputs = array_column(array_filter($this->openAiRequests(), static fn (array $r): bool => isset($r['input'][0]['output'])), 'input');
+        self::assertFalse(json_decode($outputs[0][0]['output'], true)['ok'], 'open_registration refuses drafts');
+        self::assertStringEndsWith('Публикуем или что-то поправить?', $this->http->lastText(), 'publish refused, card shown again');
+        self::assertNotSame($card, $t->cardMsgId);
+    }
+
+    public function testModelPublishesAfterClearYes(): void
+    {
+        $this->http->queueOpenAi($this->functionCall('r1', 'c1', 'create_tournament', [
+            'title' => 'Кубок', 'starts_at_msk' => '23.11 20:00', 'team_size' => 2, 'reference_team' => '3,4',
+        ]));
+        $this->dispatch($this->groupMessage($this->owner, '@' . self::BOT_USERNAME . ' создай кубок 23.11 в 20, пары, 3 и 4'));
+
+        $this->http->queueOpenAi($this->functionCall('r2', 'c2', 'publish_tournament', ['tournament_id' => 1]));
+        $this->http->queueOpenAi($this->text('r3', 'Опубликовал, анонс в чате!'));
+        $this->dispatch($this->groupMessage($this->owner, '@' . self::BOT_USERNAME . ' да, публикуем'));
+
+        $t = $this->app->tournamentRepo->find(1);
         self::assertSame('registration', $t->status);
-        self::assertSame(8, $t->maxPoints);
         self::assertNotNull($t->announceMsgId);
-        self::assertContains('create_tournament', array_column($this->firstOpenAiRequest()['tools'], 'name'));
+        self::assertSame('Опубликовал, анонс в чате!', $this->http->lastText());
+    }
+
+    /** @return array<string, mixed> */
+    private function replyTo(?int $messageId): array
+    {
+        return ['reply_to_message' => ['message_id' => $messageId, 'from' => ['id' => self::BOT_ID, 'is_bot' => true, 'first_name' => 'Bot']]];
+    }
+
+    /** @return list<array<string, mixed>> */
+    private function openAiRequests(): array
+    {
+        return array_values(array_map(
+            static fn (array $r): array => $r['json'],
+            array_filter($this->http->requests, static fn (array $r): bool => str_ends_with($r['url'], '/responses')),
+        ));
     }
 
     public function testLevelLimitErrorGoesBackToModel(): void

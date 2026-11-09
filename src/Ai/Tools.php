@@ -10,6 +10,7 @@ final class Tools
     public const ADMIN_TOOLS = [
         'create_tournament', 'edit_tournament', 'cancel_tournament', 'open_registration',
         'close_registration', 'set_max_players', 'set_level', 'create_balance', 'show_balance',
+        'publish_tournament',
     ];
 
     /** Tools that change a tournament lineup or settings (announcement must be refreshed). */
@@ -82,28 +83,30 @@ final class Tools
     {
         $tid = self::tournamentId();
         $time = ['type' => 'string', 'description' => 'Дата и время по МСК: "23.11 20:00" или "2026-11-23 20:00".'];
-        $reference = ['type' => 'string', 'description' => 'Эталонная (самая сильная допустимая) команда: уровни через запятую, например "3,3,4". Пусто = без баланса.'];
+        $reference = ['type' => 'string', 'description' => 'Эталонная (самая сильная допустимая) команда: уровни через запятую, по одному на игрока, например "средний, средний, средний+". Обязательно.'];
 
         return [
-            self::fn('create_tournament', 'Создать турнир. Организатор — автор сообщения.', [
+            self::fn('create_tournament', 'Создать черновик турнира (не публикует). Вызывай, только когда известны название, дата и время по МСК, размер команды и эталонная команда. Организатор — автор сообщения. После вызова пользователю автоматически покажется карточка с вопросом «Публикуем или что-то поправить?».', [
                 'title' => ['type' => 'string'],
                 'starts_at_msk' => $time,
                 'team_size' => ['type' => 'integer', 'minimum' => 2, 'maximum' => 4],
                 'reference_team' => $reference,
                 'max_players' => ['type' => 'integer', 'description' => 'Лимит участников, по умолчанию 24.'],
-                'open_registration' => ['type' => 'boolean', 'description' => 'Сразу открыть регистрацию и опубликовать анонс.'],
-            ], ['title', 'starts_at_msk', 'team_size']),
-            self::fn('edit_tournament', 'Изменить турнир. Передавай только меняющиеся поля.', [
+                'balance_id' => ['type' => 'integer', 'description' => 'Номер шкалы уровней; по умолчанию основная шкала.'],
+            ], ['title', 'starts_at_msk', 'team_size', 'reference_team']),
+            self::fn('edit_tournament', 'Изменить турнир или черновик. Передавай только меняющиеся поля. Если меняешь размер команды, передай и новую эталонную команду. Для черновика карточка покажется снова.', [
                 'tournament_id' => $tid,
                 'title' => ['type' => 'string'],
                 'starts_at_msk' => $time,
                 'team_size' => ['type' => 'integer', 'minimum' => 2, 'maximum' => 4],
                 'reference_team' => $reference,
                 'max_players' => ['type' => 'integer'],
-                'remove_level_limit' => ['type' => 'boolean', 'description' => 'Убрать ограничение по уровню.'],
+            ]),
+            self::fn('publish_tournament', 'Опубликовать черновик (открыть регистрацию и выложить анонс). Вызывай ТОЛЬКО если пользователь в ответ на карточку явно подтвердил: «да», «публикуем», «ок», «всё верно». Если есть правки или сомнения — не вызывай.', [
+                'tournament_id' => $tid,
             ]),
             self::fn('cancel_tournament', 'Отменить турнир.', ['tournament_id' => $tid]),
-            self::fn('open_registration', 'Открыть регистрацию и опубликовать анонс.', ['tournament_id' => $tid]),
+            self::fn('open_registration', 'Снова открыть закрытую регистрацию (не для черновиков: их публикует publish_tournament).', ['tournament_id' => $tid]),
             self::fn('close_registration', 'Закрыть регистрацию.', ['tournament_id' => $tid]),
             self::fn('set_max_players', 'Изменить лимит участников турнира.', ['tournament_id' => $tid, 'max_players' => ['type' => 'integer']], ['max_players']),
             self::fn('set_level', 'Поставить игроку уровень в шкале баланса админа.', [

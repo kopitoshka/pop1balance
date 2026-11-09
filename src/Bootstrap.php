@@ -10,6 +10,7 @@ use P1Bot\Ai\Dispatcher;
 use P1Bot\Ai\OpenAiClient;
 use P1Bot\App\Announcer;
 use P1Bot\App\CronRunner;
+use P1Bot\App\DraftCards;
 use P1Bot\App\PlayerResolver;
 use P1Bot\App\TournamentResolver;
 use P1Bot\Domain\AccessPolicy;
@@ -62,6 +63,7 @@ final class Bootstrap
     public ChatAdminSync $adminSync;
     public UpdateRouter $router;
     public Announcer $announcer;
+    public DraftCards $drafts;
     public PlayerResolver $playerResolver;
     public TournamentResolver $tournamentResolver;
     public Dispatcher $dispatcher;
@@ -139,6 +141,18 @@ final class Bootstrap
         $this->announcer = new Announcer($this->telegram, $this->tournaments, $this->players, $this->bot, $this->logger);
         $this->playerResolver = new PlayerResolver($this->players, $clock);
         $this->tournamentResolver = new TournamentResolver($this->tournamentRepo);
+        $this->drafts = new DraftCards(
+            $this->telegram,
+            $this->tournaments,
+            $this->players,
+            $this->balanceRepo,
+            $this->conversations,
+            $this->announcer,
+            $this->access,
+            $clock,
+            $this->logger,
+            (int) ($config['conversation_ttl_minutes'] ?? 30),
+        );
         $commands = new AdminCommands(
             $this->telegram,
             $this->bot,
@@ -150,6 +164,7 @@ final class Bootstrap
             $this->playerResolver,
             $this->announcer,
             $clock,
+            $this->drafts,
         );
 
         $this->dispatcher = new Dispatcher(
@@ -163,6 +178,8 @@ final class Bootstrap
             $this->announcer,
             $clock,
             $this->logger,
+            $this->drafts,
+            $this->bot->username,
         );
         $ai = $this->makeAiClient();
         if ($ai !== null) {
@@ -187,8 +204,8 @@ final class Bootstrap
             $this->access,
             $clock,
             $commands,
-            new MessageHandler($this->telegram, $this->bot, $this->assistant, $this->logger),
-            new CallbackHandler($this->telegram, $this->bot, $this->tournaments, $this->teams, $this->announcer),
+            new MessageHandler($this->telegram, $this->bot, $this->assistant, $this->logger, $this->tournaments, $this->drafts),
+            new CallbackHandler($this->telegram, $this->bot, $this->tournaments, $this->teams, $this->announcer, $this->drafts),
         );
     }
 

@@ -26,6 +26,7 @@ final class Tournament
         public string $status,
         public ?int $announceMsgId,
         public ?DateTimeImmutable $remindedAt,
+        public ?int $cardMsgId = null,
     ) {
     }
 
@@ -46,6 +47,7 @@ final class Tournament
             TournamentStatus::assertValid((string) $row['status']),
             $row['announce_msg_id'] === null ? null : (int) $row['announce_msg_id'],
             DateFormat::fromDbNullable($row['reminded_at'] === null ? null : (string) $row['reminded_at']),
+            isset($row['card_msg_id']) ? (int) $row['card_msg_id'] : null,
         );
     }
 

@@ -55,6 +55,7 @@ CREATE TABLE tournaments (
   status          TEXT NOT NULL DEFAULT 'draft'
                   CHECK (status IN ('draft','registration','closed','running','finished','cancelled')),
   announce_msg_id INTEGER NULL,
+  card_msg_id     INTEGER NULL,
   reminded_at     TEXT NULL,
   created_at      TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
 );

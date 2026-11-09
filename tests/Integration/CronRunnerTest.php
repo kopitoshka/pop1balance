@@ -52,7 +52,7 @@ final class CronRunnerTest extends IntegrationTestCase
     {
         $t = $this->openTournament();
         $this->app->announcer->publish($t->id);
-        $draft = $this->app->tournaments->create(new \P1Bot\Domain\CreateTournament(self::CHAT_ID, $this->owner->id, 'Черновик', '2026-11-14 19:00', 2));
+        $draft = $this->app->tournaments->create(new \P1Bot\Domain\CreateTournament(self::CHAT_ID, $this->owner->id, 'Черновик', '2026-11-14 19:00', 2, '3,3'));
         $cron = $this->app->cron();
 
         $this->clock->advance('+5 days +4 hours'); // start time

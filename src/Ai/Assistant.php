@@ -35,7 +35,10 @@ final class Assistant
     /**
      * Produces the reply text and a callback to remember the dialog once the reply is sent.
      *
-     * @return array{text: string, remember: callable(int): void}
+     * 'card' is a draft id when the turn ended with a created/edited draft: the caller shows
+     * the card «Публикуем или что-то поправить?» instead of the model's text.
+     *
+     * @return array{text: string, remember: callable(int): void, card: ?int, history: list<array<string, mixed>>}
      */
     public function reply(Context $ctx): array
     {
@@ -61,24 +64,34 @@ final class Assistant
         $tools = Tools::definitions($ctx->isAdmin);
         $allowed = Tools::names($ctx->isAdmin);
 
+        $card = null;
         $response = $this->ai->createResponse($this->systemPrompt, $input, $tools);
         for ($round = 0; $response->toolCalls !== [] && $round < self::MAX_ROUNDS; $round++) {
             $outputs = [];
+            $card = null;
             foreach ($response->toolCalls as $call) {
                 $result = in_array($call['name'], $allowed, true)
                     ? $this->dispatcher->dispatch($call['name'], $call['arguments'], $ctx)
                     : ['ok' => false, 'error' => 'Это действие недоступно.'];
                 $this->logger->info('tool ' . $call['name'], ['args' => $call['arguments'], 'ok' => $result['ok'] ?? false]);
+                if (isset($result['show_card'])) {
+                    $card = (int) $result['show_card'];
+                } elseif (!empty($result['published'])) {
+                    $card = null;
+                }
                 $outputs[] = [
                     'type' => 'function_call_output',
                     'call_id' => $call['call_id'],
                     'output' => (string) json_encode($result, JSON_UNESCAPED_UNICODE),
                 ];
             }
+            if ($card !== null) {
+                break; // the card is the answer; no need for another model round
+            }
             $response = $this->ai->createResponse($this->systemPrompt, $outputs, $tools, $response->id);
         }
 
-        $text = $response->text !== '' ? $response->text : 'Готово!';
+        $text = $card === null && $response->text !== '' ? $response->text : 'Готово!';
         $newHistory = array_slice(array_merge($history, [
             ['role' => 'user', 'content' => $userText],
             ['role' => 'assistant', 'content' => $text],
@@ -96,7 +109,12 @@ final class Assistant
             );
         };
 
-        return ['text' => $text, 'remember' => $remember];
+        return [
+            'text' => $text,
+            'remember' => $remember,
+            'card' => $card,
+            'history' => array_slice(array_merge($history, [['role' => 'user', 'content' => $userText]]), -self::MAX_HISTORY),
+        ];
     }
 
     /** Facts the model needs; it is rebuilt for every message. */
@@ -105,6 +123,7 @@ final class Assistant
         $author = $ctx->actor;
         $tournaments = $this->dispatcher->dispatch('list_tournaments', [], $ctx)['tournaments'] ?? [];
         $status = $this->dispatcher->statusLines($ctx);
+        $drafts = $this->dispatcher->draftLines($ctx);
 
         return implode("\n", [
             'Контекст (для тебя, не пересказывай его целиком):',
@@ -113,6 +132,7 @@ final class Assistant
             'Автор — ' . ($ctx->isAdmin ? 'админ чата: ему доступны действия админа.' : 'обычный игрок: действия админа ему недоступны.'),
             'Активные турниры: ' . ($tournaments === [] ? 'нет.' : "\n- " . implode("\n- ", $tournaments)),
             'Заявки автора: ' . implode('; ', $status),
+            'Неопубликованные черновики автора: ' . ($drafts === [] ? 'нет.' : "\n- " . implode("\n- ", $drafts)),
         ]);
     }
 
