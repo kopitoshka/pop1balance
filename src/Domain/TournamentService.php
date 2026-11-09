@@ -104,6 +104,7 @@ final class TournamentService
             if ($fields !== [] && $t->status === TournamentStatus::DRAFT) {
                 // The changed draft must be shown again before it can be published.
                 $fields['card_msg_id'] = null;
+                $fields['card_shown_to'] = null;
             }
             $this->tournaments->update($t->id, $fields);
             return $this->get($t->id);
@@ -204,9 +205,15 @@ final class TournamentService
     }
 
     /** Remembers the confirmation card shown for the current version of a draft. */
-    public function setCardMessage(int $tournamentId, ?int $messageId): void
+    public function assertCanManage(int $actorId, int $tournamentId): void
     {
-        $this->tournaments->update($tournamentId, ['card_msg_id' => $messageId]);
+        $this->access->assertCanManageTournament($this->get($tournamentId), $actorId);
+    }
+
+    /** Remembers the shown draft card and who it was shown to (they may confirm it). */
+    public function setCardMessage(int $tournamentId, ?int $messageId, ?int $shownTo = null): void
+    {
+        $this->tournaments->update($tournamentId, ['card_msg_id' => $messageId, 'card_shown_to' => $messageId !== null ? $shownTo : null]);
     }
 
     public function findByCardMessage(int $chatId, int $messageId): ?Tournament

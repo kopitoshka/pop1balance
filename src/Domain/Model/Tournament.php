@@ -27,6 +27,7 @@ final class Tournament
         public ?int $announceMsgId,
         public ?DateTimeImmutable $remindedAt,
         public ?int $cardMsgId = null,
+        public ?int $cardShownTo = null,
     ) {
     }
 
@@ -48,6 +49,7 @@ final class Tournament
             $row['announce_msg_id'] === null ? null : (int) $row['announce_msg_id'],
             DateFormat::fromDbNullable($row['reminded_at'] === null ? null : (string) $row['reminded_at']),
             isset($row['card_msg_id']) ? (int) $row['card_msg_id'] : null,
+            isset($row['card_shown_to']) ? (int) $row['card_shown_to'] : null,
         );
     }
 

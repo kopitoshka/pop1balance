@@ -50,8 +50,8 @@ final class CallbackHandler
                     $this->api->answerCallbackQuery($query->id, 'Опубликовано! Анонс уже в чате.');
                     return;
                 case 'fix':
-                    if ($t->organizerId !== $player->id) {
-                        $this->api->answerCallbackQuery($query->id, 'Править турнир может только его организатор.', true);
+                    if (!$this->drafts->canConfirm($t, $player->id)) {
+                        $this->api->answerCallbackQuery($query->id, 'Править черновик может только его организатор или тот, кто попросил показать карточку.', true);
                         return;
                     }
                     $this->api->answerCallbackQuery($query->id, 'Ответь на карточку, что поправить: например «время 21:00» или «эталон средний, средний+, высокий».', true);

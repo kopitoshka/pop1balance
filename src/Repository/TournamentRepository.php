@@ -15,7 +15,7 @@ final class TournamentRepository
     /** Columns that update() may touch. */
     private const UPDATABLE = [
         'title', 'starts_at', 'team_size', 'balance_id', 'reference_team', 'max_points',
-        'max_players', 'status', 'announce_msg_id', 'reminded_at', 'card_msg_id',
+        'max_players', 'status', 'announce_msg_id', 'reminded_at', 'card_msg_id', 'card_shown_to',
     ];
 
     public function __construct(private Database $db)

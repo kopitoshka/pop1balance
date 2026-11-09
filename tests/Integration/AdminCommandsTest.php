@@ -143,8 +143,18 @@ final class AdminCommandsTest extends IntegrationTestCase
         $this->http->reset();
         $this->dispatch($this->groupMessage($this->owner, '/open'));
 
+        // /open on a draft does not publish: it shows the card and asks.
         $sent = $this->http->sent('sendMessage');
         self::assertCount(1, $sent);
+        self::assertStringEndsWith('Публикуем или что-то поправить?', $sent[0]['text']);
+        self::assertSame('pub:1', $sent[0]['reply_markup']['inline_keyboard'][0][0]['callback_data']);
+        self::assertSame(TournamentStatus::DRAFT, $this->app->tournamentRepo->find(1)->status);
+        self::assertSame(1001, $this->app->tournamentRepo->find(1)->cardMsgId);
+
+        $this->http->reset();
+        $this->confirmCard($this->owner);
+        $sent = $this->http->sent('sendMessage');
+        self::assertCount(2, $sent, 'announcement + short reply');
         $announcement = $sent[0];
         self::assertArrayNotHasKey('reply_parameters', $announcement);
         self::assertStringContainsString('<b>Кубок</b>', $announcement['text']);
@@ -155,13 +165,92 @@ final class AdminCommandsTest extends IntegrationTestCase
 
         $t = $this->app->tournamentRepo->find(1);
         self::assertSame(TournamentStatus::REGISTRATION, $t->status);
-        self::assertSame(1001, $t->announceMsgId, "second sendMessage (after the /new card)");
+        self::assertSame(1002, $t->announceMsgId, 'after the /new card and the /open card');
+    }
+
+    public function testOpenByAnotherAdminLetsThemOrTheOrganizerConfirm(): void
+    {
+        $organizer = $this->admin;
+        $other = $this->player('helper');
+        $this->chatAdmins([$organizer, $other]);
+        $this->dispatch($this->groupMessage($organizer, '/new 23.11 20:00 | Кубок | 3 | 3,3,4'));
+        self::assertSame($organizer->id, $this->app->tournamentRepo->find(1)->organizerId);
+
+        // A regular player can neither confirm by reply nor by the button.
+        $this->confirmCard($this->player('vasya'));
+        self::assertSame(TournamentStatus::DRAFT, $this->app->tournamentRepo->find(1)->status);
+
+        // Another admin runs /open: a fresh card for them; now they may confirm.
+        $this->dispatch($this->groupMessage($other, '/open 1'));
+        $t = $this->app->tournamentRepo->find(1);
+        self::assertSame($other->id, $t->cardShownTo);
+        self::assertSame(TournamentStatus::DRAFT, $t->status);
+        $this->confirmCard($other, 'давай, публикуем');
+        self::assertSame(TournamentStatus::REGISTRATION, $this->app->tournamentRepo->find(1)->status);
+    }
+
+    public function testOrganizerMayConfirmCardShownToAnotherAdmin(): void
+    {
+        $organizer = $this->admin;
+        $other = $this->player('helper');
+        $this->chatAdmins([$organizer, $other]);
+        $this->dispatch($this->groupMessage($organizer, '/new 23.11 20:00 | Кубок | 3 | 3,3,4'));
+        $this->dispatch($this->groupMessage($other, '/open'));
+        $this->confirmCard($organizer, 'ок');
+        self::assertSame(TournamentStatus::REGISTRATION, $this->app->tournamentRepo->find(1)->status);
+    }
+
+    public function testThirdAdminCannotConfirmSomeoneElsesCard(): void
+    {
+        $organizer = $this->admin;
+        $third = $this->player('third');
+        $this->chatAdmins([$organizer, $third]);
+        $this->dispatch($this->groupMessage($organizer, '/new 23.11 20:00 | Кубок | 3 | 3,3,4'));
+        $this->confirmCard($third);
+        self::assertSame(TournamentStatus::DRAFT, $this->app->tournamentRepo->find(1)->status);
+    }
+
+    /** @param list<\P1Bot\Domain\Model\Player> $admins Telegram chat administrators */
+    private function chatAdmins(array $admins): void
+    {
+        $this->http->onTelegram('getChatAdministrators', function () use ($admins): array {
+            return ['ok' => true, 'result' => array_map(fn ($p): array => ['status' => 'administrator', 'user' => [
+                'id' => $this->tgIdOf($p), 'is_bot' => false, 'first_name' => $p->displayName, 'username' => $p->username,
+            ]], $admins)];
+        });
+    }
+
+    public function testOpenDraftUnclearAnswerDoesNotPublish(): void
+    {
+        $this->dispatch($this->groupMessage($this->owner, '/new 23.11 20:00 | Кубок | 3 | 3,3,4'));
+        $this->dispatch($this->groupMessage($this->owner, '/open 1'));
+        $this->confirmCard($this->owner, 'да, только лимит 30');
+        self::assertSame(TournamentStatus::DRAFT, $this->app->tournamentRepo->find(1)->status);
+        self::assertStringContainsString('Не публикую', $this->http->lastText());
+    }
+
+    public function testOpenReopensClosedTournamentDirectly(): void
+    {
+        $this->dispatch($this->groupMessage($this->owner, '/new 23.11 20:00 | Кубок | 3 | 3,3,4'));
+        $this->confirmCard($this->owner);
+        $this->dispatch($this->groupMessage($this->owner, '/close 1'));
+        $this->dispatch($this->groupMessage($this->owner, '/open 1'));
+        self::assertSame(TournamentStatus::REGISTRATION, $this->app->tournamentRepo->find(1)->status);
+    }
+
+    /** Replies to the current card of tournament №1. */
+    private function confirmCard(\P1Bot\Domain\Model\Player $from, string $text = 'да'): void
+    {
+        $this->dispatch($this->groupMessage($from, $text, ['reply_to_message' => [
+            'message_id' => $this->app->tournamentRepo->find(1)->cardMsgId,
+            'from' => ['id' => self::BOT_ID, 'is_bot' => true, 'first_name' => 'Bot'],
+        ]]));
     }
 
     public function testEditCloseCancelRefreshAnnouncement(): void
     {
         $this->dispatch($this->groupMessage($this->owner, '/new 23.11 20:00 | Кубок | 3 | 3,3,4'));
-        $this->dispatch($this->groupMessage($this->owner, '/open 1'));
+        $this->confirmCard($this->owner);
         $this->http->reset();
 
         $this->dispatch($this->groupMessage($this->owner, '/edit 1 лимит 30'));
@@ -222,7 +311,7 @@ final class AdminCommandsTest extends IntegrationTestCase
         self::assertStringContainsString('активных турниров нет', $this->http->lastText());
 
         $this->dispatch($this->groupMessage($this->owner, '/new 23.11 20:00 | Кубок | 3 | 3,3,4'));
-        $this->dispatch($this->groupMessage($this->owner, '/open'));
+        $this->confirmCard($this->owner);
         $this->dispatch($this->groupMessage($vasya, '/tournaments'));
         self::assertStringContainsString('№1 Кубок — 23.11.2026 20:00 МСК, команды по 3', $this->http->lastText());
 
@@ -235,8 +324,10 @@ final class AdminCommandsTest extends IntegrationTestCase
     public function testNoServerLinksInTexts(): void
     {
         $this->dispatch($this->groupMessage($this->owner, '/help'));
-        $this->dispatch($this->groupMessage($this->owner, '/new 23.11 20:00 | Кубок | 3'));
+        $this->dispatch($this->groupMessage($this->owner, '/new 23.11 20:00 | Кубок | 3 | 3,3,4'));
         $this->dispatch($this->groupMessage($this->owner, '/open'));
+        $this->confirmCard($this->owner);
+        self::assertSame(TournamentStatus::REGISTRATION, $this->app->tournamentRepo->find(1)->status);
         foreach ($this->http->sent('sendMessage') as $message) {
             self::assertDoesNotMatchRegularExpression('~https?://~', $message['text']);
         }

@@ -76,7 +76,7 @@ final class MessageHandler
             return false;
         }
         $t = $this->tournaments->findByCardMessage($ctx->chatId(), $replyTo);
-        if ($t === null || $t->status !== TournamentStatus::DRAFT || $t->organizerId !== $ctx->actor->id) {
+        if ($t === null || $t->status !== TournamentStatus::DRAFT || !$this->drafts->canConfirm($t, $ctx->actor->id)) {
             return false;
         }
         if (Confirmation::isClearYes($ctx->message->textWithoutMention($this->bot->username))) {

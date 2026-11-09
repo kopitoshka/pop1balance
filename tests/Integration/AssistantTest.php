@@ -179,7 +179,7 @@ final class AssistantTest extends IntegrationTestCase
         self::assertSame('draft', $t->status);
         self::assertNull($t->announceMsgId);
         $outputs = array_column(array_filter($this->openAiRequests(), static fn (array $r): bool => isset($r['input'][0]['output'])), 'input');
-        self::assertFalse(json_decode($outputs[0][0]['output'], true)['ok'], 'open_registration refuses drafts');
+        self::assertCount(0, $outputs, 'open_registration on a draft only shows the card and ends the turn');
         self::assertStringEndsWith('Публикуем или что-то поправить?', $this->http->lastText(), 'publish refused, card shown again');
         self::assertNotSame($card, $t->cardMsgId);
     }

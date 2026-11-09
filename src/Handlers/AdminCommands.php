@@ -220,6 +220,14 @@ final class AdminCommands
     private function open(Context $ctx, string $args): string
     {
         $target = $this->target($ctx, $args, [TournamentStatus::DRAFT, TournamentStatus::CLOSED]);
+        if ($target->status === TournamentStatus::DRAFT) {
+            // Same confirmation as creation: card «Публикуем или что-то поправить?», publish only after a clear yes.
+            $this->tournaments->assertCanManage($ctx->actor->id, $target->id);
+            $this->drafts->show($target->id, $ctx->message->messageId, $ctx->actor->id, [
+                ['role' => 'user', 'content' => '/open ' . $args],
+            ]);
+            return '';
+        }
         $t = $this->tournaments->openRegistration($ctx->actor->id, $target->id);
         // A reopened tournament gets a fresh announcement; buttons on the old one keep working.
         $this->announcer->publish($t->id);

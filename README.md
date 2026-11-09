@@ -48,7 +48,7 @@ cp .env.example .env && chmod 640 .env     # then fill it in, see below
 sudo chown -R apache:apache storage        # or nginx:nginx — the php-fpm user must write logs
 ```
 
-Updating later: `git pull && php bin/migrate.php`. (e.g. `003_tournament_card.sql` adds `tournaments.card_msg_id`).
+Updating later: `git pull && php bin/migrate.php` (e.g. `003_tournament_card.sql` / `004_tournament_card_shown_to.sql` add `tournaments.card_msg_id` / `card_shown_to`).
 
 ### 3. Database
 
@@ -174,7 +174,8 @@ Admins:
   Creates a **draft** and shows its card ending with «Публикуем или что-то поправить?» and the buttons
   «✅ Публикуем» / «✏️ Поправить».
 - `/edit [id] время 23.11 21:00` (fields: название, время, размер, эталон, лимит, баланс N). Editing a draft shows a fresh card.
-- `/open [id]` — explicitly open registration and post the announcement (also reopens a closed one); `/close [id]`; `/cancel [id]`
+- `/open [id]` — for a draft: shows the same card and publishes only after a clear confirmation (see below);
+  for a closed tournament: reopens registration right away. `/close [id]`; `/cancel [id]`
 - `/level @user 4 [balance]`, `/balance [id]`
 - `/tournaments`, `/info [id]`, `/help` — for everyone
 
@@ -191,7 +192,7 @@ There is no "no balance" option any more (old tournaments without a limit keep w
    Player limit defaults to 24, the level scale to the default one.
 2. It creates a draft and shows the card with «Публикуем или что-то поправить?».
 3. Publishing (registration opens, announcement is posted) happens only on a clear confirmation from the
-   organizer: the «Публикуем» button, or a reply to the card like «да», «публикуем», «ок», «всё верно».
+   organizer, the admin the current card was shown to (who ran `/new`, `/edit` or `/open`) or the bot owner: the «Публикуем» button, or a reply to the card like «да», «публикуем», «ок», «всё верно».
    The check is done in PHP (`App\Confirmation`), not by the model: anything with a correction, a question,
    a negation or numbers («да, но время 21:00») is not a confirmation — the edits are applied and the card is shown again.
    The model can publish only via the `publish_tournament` tool, which re-checks the user's message.

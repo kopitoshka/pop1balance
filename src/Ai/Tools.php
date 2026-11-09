@@ -106,7 +106,7 @@ final class Tools
                 'tournament_id' => $tid,
             ]),
             self::fn('cancel_tournament', 'Отменить турнир.', ['tournament_id' => $tid]),
-            self::fn('open_registration', 'Снова открыть закрытую регистрацию (не для черновиков: их публикует publish_tournament).', ['tournament_id' => $tid]),
+            self::fn('open_registration', 'Снова открыть закрытую регистрацию. Для черновика покажет карточку с вопросом «Публикуем или что-то поправить?» (сама публикация — только publish_tournament после явного «да»).', ['tournament_id' => $tid]),
             self::fn('close_registration', 'Закрыть регистрацию.', ['tournament_id' => $tid]),
             self::fn('set_max_players', 'Изменить лимит участников турнира.', ['tournament_id' => $tid, 'max_players' => ['type' => 'integer']], ['max_players']),
             self::fn('set_level', 'Поставить игроку уровень в шкале баланса админа.', [

@@ -62,7 +62,7 @@ final class DraftCards
         }
         $text = $this->cardText($t);
         $messageId = $this->api->sendMessage($t->chatId, $text, $replyTo, TournamentCard::buttons($t->id));
-        $this->tournaments->setCardMessage($t->id, $messageId);
+        $this->tournaments->setCardMessage($t->id, $messageId, $actorId);
 
         $history[] = ['role' => 'assistant', 'content' => self::plain($text)];
         $this->conversations->save(
@@ -93,8 +93,8 @@ final class DraftCards
         if ($cardMessageId !== null && $cardMessageId !== $t->cardMsgId) {
             throw new ValidationError('Эта карточка устарела: турнир с тех пор меняли. Подтверди последнюю карточку.');
         }
-        if ($t->organizerId !== $actorId && !$this->access->isOwner($actorId)) {
-            throw new PermissionDenied('Опубликовать турнир может только его организатор.');
+        if (!$this->canConfirm($t, $actorId)) {
+            throw new PermissionDenied('Опубликовать турнир может только его организатор или тот, кто попросил показать карточку.');
         }
 
         $card = $this->cardText($t);
@@ -106,6 +106,17 @@ final class DraftCards
             $this->logger->exception($e, 'card published ' . $t->id);
         }
         return $this->tournaments->get($t->id);
+    }
+
+    /**
+     * Who may confirm a draft card: the organizer, the admin the current card was shown to
+     * (e.g. who ran /open or /edit) and the bot owner.
+     */
+    public function canConfirm(Tournament $t, int $actorId): bool
+    {
+        return $t->organizerId === $actorId
+            || ($t->cardShownTo !== null && $t->cardShownTo === $actorId)
+            || $this->access->isOwner($actorId);
     }
 
     private static function plain(string $html): string

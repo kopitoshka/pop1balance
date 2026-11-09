@@ -192,6 +192,11 @@ final class Dispatcher
                     throw new ValidationError('Публикация недоступна.');
                 }
                 $t = $this->tournament($ctx, $a, [TournamentStatus::DRAFT]);
+                if ($t->status === TournamentStatus::DRAFT && ($t->cardMsgId === null || !$this->drafts->canConfirm($t, $actor->id))) {
+                    // The card was not shown to this person yet: show it and wait for their answer.
+                    $this->tournaments->assertCanManage($actor->id, $t->id);
+                    return $this->cardResult($t, 'Сначала покажу карточку, турнир НЕ опубликован.') + ['published' => false];
+                }
                 if (!Confirmation::isClearYes($ctx->message->textWithoutMention($this->botUsername()))) {
                     // Not a clear "yes": show the card again and ask again.
                     return $this->cardResult($t, 'Пользователь не подтвердил публикацию однозначно, турнир НЕ опубликован.') + ['published' => false];
@@ -207,7 +212,9 @@ final class Dispatcher
                 // Drafts are published only through publish_tournament after confirmation.
                 $t = $this->tournament($ctx, $a, [TournamentStatus::CLOSED]);
                 if ($t->status === TournamentStatus::DRAFT) {
-                    throw new ValidationError('Это черновик: его публикуют только после явного «да» на карточку (publish_tournament).');
+                    // Same as /open for a draft: show the card, publish only after a clear yes.
+                    $this->tournaments->assertCanManage($actor->id, $t->id);
+                    return $this->cardResult($t, 'Это черновик: показываю карточку, публикация только после явного «да».') + ['published' => false];
                 }
                 $t = $this->tournaments->openRegistration($actor->id, $t->id);
                 $this->announcer->publish($t->id);
@@ -346,7 +353,7 @@ final class Dispatcher
     {
         $lines = [];
         foreach ($this->tournaments->listByStatus($ctx->chatId(), [TournamentStatus::DRAFT]) as $t) {
-            if ($t->organizerId !== $ctx->actor->id) {
+            if ($t->organizerId !== $ctx->actor->id && $t->cardShownTo !== $ctx->actor->id) {
                 continue;
             }
             $lines[] = '№' . $t->id . ' ' . Messages::tournamentLine($t, $this->tournaments->lineup($t->id))
