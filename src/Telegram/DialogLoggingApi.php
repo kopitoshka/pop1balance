@@ -60,4 +60,8 @@ class DialogLoggingApi implements TelegramApi {
 	public function setWebhook(string $url, string $secret_token, array $allowed_updates): void {
 		$this->api->setWebhook($url, $secret_token, $allowed_updates);
 	}
+
+	public function answerInlineQuery(string $inline_query_id, array $results, array $options = []): void {
+		$this->api->answerInlineQuery($inline_query_id, $results, $options);
+	}
 }

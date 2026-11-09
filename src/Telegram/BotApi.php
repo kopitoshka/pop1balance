@@ -112,6 +112,13 @@ class BotApi implements TelegramApi {
 		]);
 	}
 
+	public function answerInlineQuery(string $inline_query_id, array $results, array $options = []): void {
+		$this->call('answerInlineQuery', $options + [
+			'inline_query_id' => $inline_query_id,
+			'results' => array_values($results),
+		]);
+	}
+
 	/**
 		@param list<array{command: string, description: string}> $commands
 		@param array<string, mixed>|null $scope BotCommandScope, e.g. ['type' => 'all_private_chats']

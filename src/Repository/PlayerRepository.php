@@ -236,6 +236,134 @@ class PlayerRepository {
 		$this->db->run('UPDATE players SET dm_group_id = :g WHERE id = :id', ['g' => $chat_id, 'id' => $player_id]);
 	}
 
+
+	/**
+		Autocomplete for inline mode: real players only (tg_user_id set).
+		Prefix matches first, then contains. Query is matched against username,
+		display_name and IGN (case-insensitive; works for Cyrillic too).
+
+		@return list<Player>
+	*/
+	public function searchKnown(string $query, int $limit = 20): array {
+		$query = trim($query);
+		$limit = max(1, min(50, $limit));
+		$rows = $this->db->fetchAll(
+			'SELECT * FROM players WHERE tg_user_id IS NOT NULL ORDER BY id DESC LIMIT 3000',
+		);
+		if ($query === '') {
+			usort($rows, static function (array $a, array $b): int {
+				return ((string) ($a['username'] ?? 'ÿ')) <=> ((string) ($b['username'] ?? 'ÿ'))
+					?: ((string) $a['display_name'] <=> (string) $b['display_name']);
+			});
+			return array_map([Player::class, 'fromRow'], array_slice($rows, 0, $limit));
+		}
+		$q = mb_strtolower($query);
+		$prefix = [];
+		$contains = [];
+		foreach ($rows as $row) {
+			$fields = [
+				mb_strtolower((string) ($row['username'] ?? '')),
+				mb_strtolower((string) ($row['display_name'] ?? '')),
+				mb_strtolower((string) ($row['ign_norm'] ?? '')),
+				mb_strtolower((string) ($row['ign'] ?? '')),
+			];
+			$is_prefix = false;
+			$is_contains = false;
+			foreach ($fields as $field) {
+				if ($field === '') {
+					continue;
+				}
+				if (str_starts_with($field, $q)) {
+					$is_prefix = true;
+					break;
+				}
+				if (str_contains($field, $q)) {
+					$is_contains = true;
+				}
+			}
+			if ($is_prefix) {
+				$prefix[] = $row;
+			} elseif ($is_contains) {
+				$contains[] = $row;
+			}
+		}
+		$sort = static function (array $a, array $b): int {
+			return ((string) ($a['username'] ?? 'ÿ')) <=> ((string) ($b['username'] ?? 'ÿ'))
+				?: ((string) $a['display_name'] <=> (string) $b['display_name']);
+		};
+		usort($prefix, $sort);
+		usort($contains, $sort);
+		$merged = array_slice(array_merge($prefix, $contains), 0, $limit);
+		return array_map([Player::class, 'fromRow'], $merged);
+	}
+
+	public function fuzzySuggest(string $needle, int $limit = 5): array {
+		$needle = mb_strtolower(ltrim(trim($needle), '@'));
+		$limit = max(1, min(10, $limit));
+		if ($needle === '' || mb_strlen($needle) < 2) {
+			return [];
+		}
+		$rows = $this->db->fetchAll(
+			'SELECT * FROM players WHERE tg_user_id IS NOT NULL
+				AND (username IS NOT NULL OR display_name <> \'\' OR ign_norm IS NOT NULL)
+				ORDER BY id DESC LIMIT 2000',
+		);
+		$scored = [];
+		foreach ($rows as $row) {
+			$score = self::similarityScore($needle, $row);
+			if ($score < 45) {
+				continue;
+			}
+			$scored[] = ['score' => $score, 'row' => $row];
+		}
+		usort($scored, static fn (array $a, array $b): int => $b['score'] <=> $a['score']);
+		$out = [];
+		foreach (array_slice($scored, 0, $limit) as $item) {
+			$out[] = Player::fromRow($item['row']);
+		}
+		return $out;
+	}
+
+	/**
+		@param array<string, mixed> $row
+	*/
+	protected static function similarityScore(string $needle, array $row): float {
+		$best = 0.0;
+		foreach ([
+			(string) ($row['username'] ?? ''),
+			mb_strtolower((string) ($row['display_name'] ?? '')),
+			(string) ($row['ign_norm'] ?? ''),
+		] as $candidate) {
+			if ($candidate === '') {
+				continue;
+			}
+			if ($candidate === $needle) {
+				return 100.0;
+			}
+			similar_text($needle, $candidate, $pct);
+			$best = max($best, (float) $pct);
+			$max_len = max(mb_strlen($needle), mb_strlen($candidate));
+			if ($max_len <= 32) {
+				$dist = levenshtein(
+					mb_substr($needle, 0, 255),
+					mb_substr($candidate, 0, 255),
+				);
+				if ($dist >= 0) {
+					$lev = max(0.0, 100.0 - ($dist * 100.0 / max(1, $max_len)));
+					$best = max($best, $lev);
+				}
+			}
+			if (str_starts_with($candidate, $needle) || str_contains($candidate, $needle)) {
+				$best = max($best, 70.0);
+			}
+		}
+		return $best;
+	}
+
+	protected static function likeEscape(string $value): string {
+		return str_replace(['\\', '%', '_'], ['\\\\', '\\%', '\\_'], $value);
+	}
+
 	public static function normalizeUsername(string $username): string {
 		return mb_strtolower(ltrim(trim($username), '@'));
 	}

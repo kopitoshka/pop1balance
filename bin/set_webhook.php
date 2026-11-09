@@ -37,6 +37,7 @@ try {
 	}
 	$api->setWebhook($url, $secret, Update::ALLOWED_UPDATES);
 	fwrite(STDOUT, "Webhook set: $url\n");
+	fwrite(STDOUT, "allowed_updates: " . implode(", ", Update::ALLOWED_UPDATES) . "\n");
 	$common = [
 		['command' => 'start', 'description' => 'Турниры с кнопками записи'],
 		['command' => 'tournaments', 'description' => 'Активные турниры'],

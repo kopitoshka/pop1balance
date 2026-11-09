@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace P1Bot\Handlers;
 
 use P1Bot\App\GroupChat;
+use P1Bot\App\InlinePlayers;
 use P1Bot\App\GroupRedirect;
 use P1Bot\Domain\AccessPolicy;
 use P1Bot\Domain\Model\Player;
@@ -49,6 +50,7 @@ class UpdateRouter {
 		protected ?GroupRedirect $redirect = null,
 		protected ?DialogLog $dialogs = null,
 		protected ?GroupChat $group_chat = null,
+		protected ?InlinePlayers $inline_players = null,
 	) {
 	}
 
@@ -69,6 +71,16 @@ class UpdateRouter {
 			$this->log($update, null, sprintf('membership: chat %d (%s) %s', $membership['chat_id'], $membership['type'],
 				$membership['is_member'] ? ($membership['was_member'] ? 'still member' : 'bot added') : 'bot removed'));
 			$this->onMembership($membership);
+			return;
+		}
+		if ($update->inline_query !== null) {
+			$query = $update->inline_query;
+			$this->log($update, null, $this->inline_players !== null
+				? $this->inline_players->describe($query)
+				: 'inline_query (handler off)');
+			if ($this->inline_players !== null) {
+				$this->inline_players->handle($query);
+			}
 			return;
 		}
 		if ($update->callback_query !== null) {
