@@ -87,7 +87,7 @@ class NickTest extends IntegrationTestCase {
 		$text = $this->http->lastText();
 		$cap_row = $this->app->players->find($cap->id);
 		self::assertStringContainsString(
-			'<a href="tg://user?id=' . $cap_row->tg_user_id . '">Zoloto on heat</a>',
+			'<a href="https://t.me/' . $cap_row->username . '">Zoloto on heat</a>',
 			$text,
 		);
 		self::assertStringContainsString('@mate', $text);

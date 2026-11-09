@@ -350,7 +350,11 @@ class AdminCommandsTest extends IntegrationTestCase {
 		$this->confirmCard($this->owner);
 		self::assertSame(TournamentStatus::REGISTRATION, $this->app->tournament_repo->find(1)->status);
 		foreach ($this->http->sent('sendMessage') as $message) {
-			self::assertDoesNotMatchRegularExpression('~https?://~', $message['text']);
+			# Profile links t.me / tg:// are OK; forbid other http(s) (server paths, etc.).
+			self::assertDoesNotMatchRegularExpression(
+				'~https?://(?!(?:t\.me|telegram\.me)/)~',
+				$message['text'],
+			);
 		}
 	}
 
@@ -368,7 +372,7 @@ class AdminCommandsTest extends IntegrationTestCase {
 		$text = $this->http->lastText();
 		self::assertCount(1, $this->http->sent('sendMessage'));
 		self::assertStringContainsString('🏆 <b>Кубок &lt;1&gt;</b> · №1', $text);
-		self::assertStringContainsString('👤 Организатор: <a href="tg://user?id=', $text);
+		self::assertStringContainsString('👤 Организатор: <a href="https://t.me/', $text);
 		self::assertStringContainsString('🟢 Идёт регистрация', $text);
 		self::assertStringContainsString('🎟 Занято 3/24 · запас 0', $text);
 		self::assertStringContainsString("Wolves &amp; Co", $text);

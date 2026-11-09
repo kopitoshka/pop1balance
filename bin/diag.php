@@ -176,6 +176,8 @@ if ($player_arg !== null) {
 	fwrite(STDOUT, 'Default scale: ' . ($default === null ? '(none)' : "#{$default['id']} «{$default['name']}»") . "\n\n");
 
 	foreach ($rows as $row) {
+		$player = \P1Bot\Domain\Model\Player::fromRow($row);
+		$label = $player->lineupLabel();
 		fwrite(STDOUT, sprintf(
 			"— player #%d  tg=%s  @%s  name=%s  ign=%s\n",
 			(int) $row['id'],
@@ -184,6 +186,16 @@ if ($player_arg !== null) {
 			$row['display_name'] ?? '',
 			$row['ign'] ?? 'NULL',
 		));
+		fwrite(STDOUT, "  lineup HTML: {$label}\n");
+		if ($player->username !== null && $player->username !== '') {
+			fwrite(STDOUT, "  link: https://t.me/{$player->username} (always clickable in Telegram)\n");
+		} elseif ($player->tg_user_id !== null) {
+			fwrite(STDOUT, "  link: tg://user?id={$player->tg_user_id}\n");
+			fwrite(STDOUT, "  note: Telegram often shows tg://user?id= as PLAIN text unless that user\n");
+			fwrite(STDOUT, "        started the bot / allowed linking (privacy). Not fixable in HTML.\n");
+		} else {
+			fwrite(STDOUT, "  link: (none — no username and no tg_user_id)\n");
+		}
 		$ratings = $db->fetchAll(
 			'SELECT br.balance_id, br.level, b.name, b.is_default, b.parent_id
 				FROM balance_ratings br

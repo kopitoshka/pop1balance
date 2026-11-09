@@ -9,7 +9,15 @@ use PHPUnit\Framework\TestCase;
 
 class PlayerLabelTest extends TestCase {
 
-	public function testIgnWithTgIdIsLinked(): void {
+	public function testIgnWithUsernamePrefersTMeLink(): void {
+		$p = new Player(1, 42, 'mata_user', 'Display', 'Mata', 'mata');
+		self::assertSame(
+			'<a href="https://t.me/mata_user">Mata</a>',
+			$p->lineupLabel(),
+		);
+	}
+
+	public function testIgnWithoutUsernameUsesTgUserId(): void {
 		$p = new Player(1, 42, null, 'Display', 'Mata', 'mata');
 		self::assertSame(
 			'<a href="tg://user?id=42">Mata</a>',
@@ -17,10 +25,10 @@ class PlayerLabelTest extends TestCase {
 		);
 	}
 
-	public function testUsernameWithoutIgnIsLinkedViaTgId(): void {
+	public function testUsernameWithoutIgnPrefersTMe(): void {
 		$p = new Player(1, 99, 'kidding2u', 'Kid');
 		self::assertSame(
-			'<a href="tg://user?id=99">@kidding2u</a>',
+			'<a href="https://t.me/kidding2u">@kidding2u</a>',
 			$p->lineupLabel(),
 		);
 	}
@@ -38,6 +46,16 @@ class PlayerLabelTest extends TestCase {
 		self::assertSame(
 			'<a href="tg://user?id=7">Plain Name</a>',
 			$p->lineupLabel(),
+		);
+	}
+
+	public function testCaptainLineUsesLineupLabel(): void {
+		$cap = new Player(2, 12, null, 'Cap', 'Mata', 'mata');
+		$mate = new Player(3, 13, 'kidding2u', 'Kid');
+		$html = '👑 ' . $cap->lineupLabel() . ' (кэп), ' . $mate->lineupLabel();
+		self::assertSame(
+			'👑 <a href="tg://user?id=12">Mata</a> (кэп), <a href="https://t.me/kidding2u">@kidding2u</a>',
+			$html,
 		);
 	}
 }
