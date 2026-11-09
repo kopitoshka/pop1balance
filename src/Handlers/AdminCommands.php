@@ -149,7 +149,8 @@ class AdminCommands {
 			case 'history':
 				return $this->listHistory($ctx);
 			case 'levels':
-				return Texts::levels($ctx->is_owner);
+				// Management examples only for the owner in private; groups always get the basic text.
+				return Texts::levels($ctx->isPrivate() && $ctx->is_owner);
 			case 'info':
 				[$id] = self::splitId($args);
 				$t = $this->resolver->resolve($this->resolveScope($ctx), $id, TournamentStatus::infoable());
@@ -520,7 +521,7 @@ class AdminCommands {
 
 
 	/**
-		/nick [IGN] | /nick @user IGN (owner). Private for changes; group redirects earlier.
+		/nick — show own nick; /nick @user IGN — owner assigns. Users cannot set their own.
 	*/
 	protected function nickCommand(Context $ctx, string $args): string {
 		if ($this->nicks === null) {
@@ -560,37 +561,45 @@ class AdminCommands {
 		}
 
 		if ($target !== null && $rest === '') {
-			return $this->showNick($target, $target->id === $ctx->actor->id);
+			return $this->showNick($ctx, $target);
 		}
 
 		if ($args === '') {
-			return $this->showNick($ctx->actor, true);
+			return $this->showNick($ctx, $ctx->actor);
 		}
 
-		$player = $this->nicks->setOwn($ctx->actor->id, $args);
-		return sprintf(
-			"Записала твой игровой ник: <b>%s</b>.\nПоменять: /nick НовыйНик",
-			Html::e((string) $player->ign),
+		// Bare IGN: owner may set own nick; everyone else is refused.
+		if ($ctx->is_owner) {
+			$result = $this->nicks->assignByOwner($ctx->actor->id, $ctx->actor->id, $args);
+			return sprintf(
+				'Поставила тебе ник «%s».',
+				Html::e($result['player']->ign ?? $args),
+			);
+		}
+		throw new ValidationError(
+			'Ник привязывает организатор 🙂 Посмотреть свой: /nick',
 		);
 	}
 
-	protected function showNick(Player $player, bool $own): string {
+	protected function showNick(Context $ctx, Player $player): string {
+		$own = $player->id === $ctx->actor->id;
 		if (!$player->hasIgn()) {
-			return $own
-				? "Игровой ник ещё не задан.\nПоставить: /nick ТвойНикВИгре"
-				: sprintf('У %s игровой ник ещё не задан.', Html::e($player->mention()));
-		}
-		if ($own) {
-			return sprintf(
-				"Твой игровой ник: <b>%s</b>.\nПоменять: /nick НовыйНик",
+			$text = $own
+				? 'Ник пока не привязан. Привязывает организатор 🙂'
+				: sprintf('У %s ник пока не привязан.', Html::e($player->mention()));
+		} elseif ($own) {
+			$text = sprintf('Твой ник: <b>%s</b>', Html::e((string) $player->ign));
+		} else {
+			$text = sprintf(
+				'%s — ник <b>%s</b>.',
+				Html::e($player->mention()),
 				Html::e((string) $player->ign),
 			);
 		}
-		return sprintf(
-			'%s — игровой ник <b>%s</b>.',
-			Html::e($player->mention()),
-			Html::e((string) $player->ign),
-		);
+		if ($ctx->is_owner && $own) {
+			$text .= "\nПоставить другому: /nick @user НикВИгре";
+		}
+		return $text;
 	}
 
 	/**

@@ -224,16 +224,10 @@ class Dispatcher {
 
 
 			case 'set_nick':
-				if (!$ctx->isPrivate()) {
-					return ['ok' => false, 'error' => 'Ник ставится в личке: /nick …'];
-				}
-				if ($this->nicks === null) {
-					return ['ok' => false, 'error' => 'Ники недоступны.'];
-				}
-				$player = $this->nicks->setOwn($actor->id, (string) ($a['nick'] ?? ''));
+				// Kept as a hard refuse if an old model still calls it; players no longer get this tool.
 				return [
-					'nick' => $player->ign,
-					'message' => sprintf('Записала твой игровой ник: %s. Поменять: /nick НовыйНик', $player->ign),
+					'ok' => false,
+					'error' => 'Ник привязывает организатор 🙂 Посмотреть свой: /nick',
 				];
 
 			case 'show_nick':
@@ -241,12 +235,12 @@ class Dispatcher {
 				$player = $ref === '' ? $actor : $this->player_resolver->fromReference($ref, $actor);
 				if (!$player->hasIgn()) {
 					$msg = $player->id === $actor->id
-						? 'Игровой ник ещё не задан. Поставить: /nick ТвойНикВИгре'
-						: sprintf('У %s игровой ник ещё не задан.', $player->mention());
+						? 'Ник пока не привязан. Привязывает организатор 🙂'
+						: sprintf('У %s ник пока не привязан.', $player->mention());
 				} else {
 					$msg = $player->id === $actor->id
-						? sprintf('Твой игровой ник: %s', $player->ign)
-						: sprintf('%s — игровой ник %s', $player->mention(), $player->ign);
+						? sprintf('Твой ник: %s', $player->ign)
+						: sprintf('%s — ник %s', $player->mention(), $player->ign);
 				}
 				return ['player' => $player->mention(), 'nick' => $player->ign, 'message' => $msg];
 

@@ -49,7 +49,7 @@ try {
 		array_slice($common, 0, 2),
 		[
 			['command' => 'history', 'description' => 'Прошедшие турниры'],
-			['command' => 'nick', 'description' => 'Игровой ник (Po1)'],
+			['command' => 'nick', 'description' => 'Свой игровой ник'],
 		],
 		array_slice($common, 2),
 	);

@@ -144,12 +144,6 @@ class Tools {
 				[],
 			),
 			self::fn(
-				'set_nick',
-				'Поставить или поменять свой игровой ник Population: One (только в личке).',
-				['nick' => ['type' => 'string', 'description' => 'Ник в игре, например «Zoloto on heat».']],
-				['nick'],
-			),
-			self::fn(
 				'show_nick',
 				'Показать свой игровой ник или ник @username.',
 				['player' => ['type' => 'string', 'description' => '"@username" или пусто для себя.']],

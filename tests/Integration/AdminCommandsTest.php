@@ -515,19 +515,48 @@ class AdminCommandsTest extends IntegrationTestCase {
 			'1 — начальный (1 балл). Синонимы: базовый, начинающий',
 			'5 — высокий (5 баллов). Синоним: танк',
 			'6 — высокий+ (6 баллов)',
-			'/edit 1 уровень 10',
+			'Уровень турнира',
 		] as $needle) {
 			self::assertStringContainsString($needle, $text);
 		}
+		self::assertStringNotContainsString('/edit', $text);
+		self::assertStringNotContainsString('Поставить уровень игроку', $text);
+
+		$this->dispatch($this->groupMessage($this->owner, '/levels'));
+		$group_levels = $this->http->lastText();
+		self::assertStringContainsString('Уровни игроков', $group_levels);
+		self::assertStringNotContainsString('/edit', $group_levels);
+		self::assertStringNotContainsString('Поставить уровень игроку', $group_levels);
+
+		$this->dispatch($this->privateMessage($this->owner, '/levels'));
+		$owner_levels = $this->http->lastText();
+		self::assertStringContainsString('/edit 1 уровень 10', $owner_levels);
+		self::assertStringContainsString('Поставить уровень игроку: /level @user 4', $owner_levels);
+
 		$this->dispatch($this->privateMessage($vasya, '/help'));
 		$help_user = $this->http->lastText();
 		self::assertStringContainsString('/levels', $help_user);
 		self::assertStringContainsString('/history', $help_user);
+		self::assertStringContainsString('/nick — посмотреть свой игровой ник', $help_user);
+		self::assertStringNotContainsString('поставить или поменять', $help_user);
+		self::assertStringNotContainsString('/level @user 4', $help_user);
+		self::assertStringNotContainsString('/nick @user', $help_user);
+
+		$this->dispatch($this->groupMessage($vasya, '/help'));
+		$help_group = $this->http->lastText();
+		self::assertStringContainsString('/level — свой уровень', $help_group);
+		self::assertStringContainsString('/levels', $help_group);
+		self::assertStringNotContainsString('/new', $help_group);
+		self::assertStringNotContainsString('/nick', $help_group);
+		self::assertStringNotContainsString('/level @user 4', $help_group);
+
 		$this->dispatch($this->privateMessage($this->owner, '/help'));
 		$help = $this->http->lastText();
 		self::assertStringContainsString('/edit 1 уровень 10', $help);
-		foreach ([$help, $text] as $t) {
-			self::assertStringNotContainsStringIgnoringCase('эталон', $t);
+		self::assertStringContainsString('/nick @user НикВИгре', $help);
+		self::assertStringContainsString('/level @user 4', $help);
+		foreach ([$help, $text, $owner_levels, $group_levels] as $chunk) {
+			self::assertStringNotContainsStringIgnoringCase('эталон', $chunk);
 		}
 	}
 

@@ -4,27 +4,29 @@ declare(strict_types=1);
 
 namespace P1Bot\Tests\Integration;
 
-use P1Bot\Domain\Exception\ValidationError;
 use P1Bot\Tests\Support\IntegrationTestCase;
 
 class NickTest extends IntegrationTestCase {
 
-	public function testSetOwnNickAndRejectTaken(): void {
+	public function testUserCannotSetOwnNick(): void {
 		$vasya = $this->player('vasya');
-		$petya = $this->player('petya');
 		$this->dispatch($this->privateMessage($vasya, '/nick Zoloto on heat'));
-		self::assertStringContainsString('Zoloto on heat', $this->http->lastText());
-		self::assertSame('Zoloto on heat', $this->app->players->find($vasya->id)->ign);
-
-		$this->dispatch($this->privateMessage($petya, '/nick zoloto on heat'));
-		self::assertStringContainsString('уже занят', $this->http->lastText());
-		self::assertNull($this->app->players->find($petya->id)->ign);
+		self::assertStringContainsString('Ник привязывает организатор', $this->http->lastText());
+		self::assertNull($this->app->players->find($vasya->id)->ign);
 
 		$this->dispatch($this->privateMessage($vasya, '/nick'));
-		self::assertStringContainsString('Твой игровой ник: <b>Zoloto on heat</b>', $this->http->lastText());
+		self::assertStringContainsString('Ник пока не привязан. Привязывает организатор', $this->http->lastText());
+
+		$this->dispatch($this->privateMessage($this->owner, '/nick @vasya Zoloto on heat'));
+		self::assertStringContainsString('Поставила ник «Zoloto on heat» игроку @vasya', $this->http->lastText());
+		self::assertSame('Zoloto on heat', $this->app->players->find($vasya->id)->ign);
+
+		$this->dispatch($this->privateMessage($vasya, '/nick'));
+		self::assertStringContainsString('Твой ник: <b>Zoloto on heat</b>', $this->http->lastText());
 
 		$this->dispatch($this->privateMessage($vasya, '/nick Masta_Sega.Ekb'));
-		self::assertSame('Masta_Sega.Ekb', $this->app->players->find($vasya->id)->ign);
+		self::assertStringContainsString('Ник привязывает организатор', $this->http->lastText());
+		self::assertSame('Zoloto on heat', $this->app->players->find($vasya->id)->ign);
 	}
 
 	public function testOwnerAssignTakesFromOther(): void {
@@ -37,6 +39,17 @@ class NickTest extends IntegrationTestCase {
 		self::assertStringContainsString('@vasya', $text);
 		self::assertNull($this->app->players->find($vasya->id)->ign);
 		self::assertSame('CAT_RRRRRRRAGE_RU', $this->app->players->find($petya->id)->ign);
+	}
+
+	public function testOwnerCanSetOwnNickBare(): void {
+		$this->dispatch($this->privateMessage($this->owner, '/nick OwnerIgn'));
+		self::assertStringContainsString('Поставила тебе ник «OwnerIgn»', $this->http->lastText());
+		self::assertSame('OwnerIgn', $this->app->players->find($this->owner->id)->ign);
+
+		$this->dispatch($this->privateMessage($this->owner, '/nick'));
+		$text = $this->http->lastText();
+		self::assertStringContainsString('Твой ник: <b>OwnerIgn</b>', $text);
+		self::assertStringContainsString('/nick @user', $text);
 	}
 
 	public function testNonOwnerCannotAssign(): void {
@@ -95,11 +108,10 @@ class NickTest extends IntegrationTestCase {
 		self::assertSame('OldNick', $row['ign']);
 	}
 
-	public function testInvalidNickRejected(): void {
-		$vasya = $this->player('vasya');
-		$this->dispatch($this->privateMessage($vasya, '/nick a'));
+	public function testInvalidNickRejectedForOwner(): void {
+		$this->dispatch($this->privateMessage($this->owner, '/nick a'));
 		self::assertStringContainsString('от 2 до 32', $this->http->lastText());
-		$this->dispatch($this->privateMessage($vasya, '/nick bad#nick'));
+		$this->dispatch($this->privateMessage($this->owner, '/nick bad#nick'));
 		self::assertStringContainsString('можно буквы', $this->http->lastText());
 	}
 }

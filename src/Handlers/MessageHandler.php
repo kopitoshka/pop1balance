@@ -75,7 +75,7 @@ class MessageHandler {
 			$message_id = $this->sendHistory($ctx);
 		}
 		if (!empty($reply['levels'])) {
-			$message_id = $this->api->sendMessage($chat_id, Texts::levels($ctx->is_owner), $reply_to);
+			$message_id = $this->api->sendMessage($chat_id, Texts::levels($ctx->isPrivate() && $ctx->is_owner), $reply_to);
 		}
 		$groups = $reply['groups'] ?? [];
 		if ($reply['text'] !== '' || $message_id === null || $groups !== []) {
