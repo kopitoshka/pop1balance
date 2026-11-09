@@ -100,18 +100,23 @@ final class TournamentRepository
     }
 
     /**
-     * Tournaments that start within the window and have not been reminded yet (for cron).
+     * Tournaments with one of $statuses whose start is within [$from, $to].
      *
+     * @param list<string> $statuses
      * @return list<Tournament>
      */
-    public function listDueForReminder(DateTimeImmutable $from, DateTimeImmutable $to): array
+    public function listStartingBetween(array $statuses, DateTimeImmutable $from, DateTimeImmutable $to): array
     {
+        $params = ['from' => DateFormat::toDb($from), 'to' => DateFormat::toDb($to)];
+        $placeholders = [];
+        foreach (array_values($statuses) as $i => $status) {
+            $placeholders[] = ":s$i";
+            $params["s$i"] = TournamentStatus::assertValid($status);
+        }
         $rows = $this->db->fetchAll(
-            "SELECT * FROM tournaments
-             WHERE status IN ('registration', 'closed') AND reminded_at IS NULL
-               AND starts_at >= :from AND starts_at <= :to
-             ORDER BY starts_at, id",
-            ['from' => DateFormat::toDb($from), 'to' => DateFormat::toDb($to)],
+            'SELECT * FROM tournaments WHERE status IN (' . implode(', ', $placeholders) . ')
+               AND starts_at >= :from AND starts_at <= :to ORDER BY starts_at, id',
+            $params,
         );
         return array_map([Tournament::class, 'fromRow'], $rows);
     }

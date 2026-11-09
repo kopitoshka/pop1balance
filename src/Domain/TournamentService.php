@@ -140,6 +140,63 @@ final class TournamentService
         );
     }
 
+    /**
+     * Automatic status changes made by cron (no actor, no permission check).
+     *
+     * @return list<Tournament> tournaments whose status changed
+     */
+    public function autoAdvance(int $finishAfterHours): array
+    {
+        $now = $this->clock->now();
+        $changed = [];
+        $past = new DateTimeImmutable('2000-01-01 00:00:00', new \DateTimeZone('UTC'));
+        foreach ($this->tournaments->listStartingBetween([TournamentStatus::REGISTRATION, TournamentStatus::CLOSED], $past, $now) as $t) {
+            $this->tournaments->update($t->id, ['status' => TournamentStatus::RUNNING]);
+            $changed[] = $this->get($t->id);
+        }
+        $finishBefore = $now->modify("-{$finishAfterHours} hours");
+        foreach ($this->tournaments->listStartingBetween([TournamentStatus::RUNNING], $past, $finishBefore) as $t) {
+            $this->tournaments->update($t->id, ['status' => TournamentStatus::FINISHED]);
+            $changed[] = $this->get($t->id);
+        }
+        return $changed;
+    }
+
+    /**
+     * Upcoming tournaments that are due for a reminder: for the smallest offset whose moment
+     * has passed and that was not reminded at or after that moment. Returns [tournament, minutes].
+     *
+     * @param list<int> $offsetsMinutes e.g. [60, 15]
+     * @return list<array{0: Tournament, 1: int}>
+     */
+    public function dueReminders(array $offsetsMinutes): array
+    {
+        if ($offsetsMinutes === []) {
+            return [];
+        }
+        rsort($offsetsMinutes);
+        $now = $this->clock->now();
+        $result = [];
+        $upcoming = $this->tournaments->listStartingBetween(
+            [TournamentStatus::REGISTRATION, TournamentStatus::CLOSED],
+            $now,
+            $now->modify('+' . $offsetsMinutes[0] . ' minutes'),
+        );
+        foreach ($upcoming as $t) {
+            $due = null;
+            foreach ($offsetsMinutes as $minutes) {
+                $moment = $t->startsAt->modify("-{$minutes} minutes");
+                if ($now >= $moment && ($t->remindedAt === null || $t->remindedAt < $moment)) {
+                    $due = $minutes;
+                }
+            }
+            if ($due !== null) {
+                $result[] = [$t, $due];
+            }
+        }
+        return $result;
+    }
+
     public function setAnnounceMessage(int $tournamentId, int $messageId): void
     {
         $this->tournaments->update($tournamentId, ['announce_msg_id' => $messageId]);
@@ -148,13 +205,6 @@ final class TournamentService
     public function markReminded(int $tournamentId): void
     {
         $this->tournaments->update($tournamentId, ['reminded_at' => $this->clock->now()]);
-    }
-
-    /** @return list<Tournament> tournaments to remind about: start within $minutesAhead, not reminded yet */
-    public function dueForReminder(int $minutesAhead): array
-    {
-        $now = $this->clock->now();
-        return $this->tournaments->listDueForReminder($now, $now->modify("+{$minutesAhead} minutes"));
     }
 
     /** @return list<Tournament> registration / closed / running, soonest first */

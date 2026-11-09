@@ -9,6 +9,7 @@ use P1Bot\Ai\Assistant;
 use P1Bot\Ai\Dispatcher;
 use P1Bot\Ai\OpenAiClient;
 use P1Bot\App\Announcer;
+use P1Bot\App\CronRunner;
 use P1Bot\App\PlayerResolver;
 use P1Bot\App\TournamentResolver;
 use P1Bot\Domain\AccessPolicy;
@@ -188,6 +189,22 @@ final class Bootstrap
             $commands,
             new MessageHandler($this->telegram, $this->bot, $this->assistant, $this->logger),
             new CallbackHandler($this->telegram, $this->bot, $this->tournaments, $this->teams, $this->announcer),
+        );
+    }
+
+    public function cron(): CronRunner
+    {
+        $cron = $this->config['cron'] ?? [];
+        return new CronRunner(
+            $this->tournaments,
+            $this->conversations,
+            $this->players,
+            $this->announcer,
+            $this->telegram,
+            $this->clock,
+            $this->logger,
+            array_map('intval', (array) ($cron['reminder_minutes'] ?? [60, 15])),
+            (int) ($cron['finish_after_hours'] ?? 4),
         );
     }
 

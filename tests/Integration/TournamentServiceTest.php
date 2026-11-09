@@ -158,11 +158,13 @@ final class TournamentServiceTest extends IntegrationTestCase
     public function testReminderWindow(): void
     {
         $t = $this->openTournament(); // starts 2026-11-14 16:00 UTC, clock is 2026-11-09 12:00 UTC
-        self::assertSame([], $this->app->tournaments->dueForReminder(60));
+        self::assertSame([], $this->app->tournaments->dueReminders([60, 15]));
 
         $this->clock->advance('+5 days +3 hours +30 minutes'); // 15:30 UTC on the 14th
-        self::assertCount(1, $this->app->tournaments->dueForReminder(60));
+        $due = $this->app->tournaments->dueReminders([15, 60]);
+        self::assertCount(1, $due);
+        self::assertSame([$t->id, 60], [$due[0][0]->id, $due[0][1]]);
         $this->app->tournaments->markReminded($t->id);
-        self::assertSame([], $this->app->tournaments->dueForReminder(60));
+        self::assertSame([], $this->app->tournaments->dueReminders([60, 15]));
     }
 }
