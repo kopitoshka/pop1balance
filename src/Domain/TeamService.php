@@ -18,6 +18,7 @@ use P1Bot\Repository\TeamRepository;
 use P1Bot\Repository\TournamentRepository;
 use P1Bot\Support\Clock;
 use P1Bot\Support\Database;
+use P1Bot\Support\RuPlural;
 
 /**
 	Team and solo registration. A player is in at most one entry per tournament:
@@ -38,6 +39,7 @@ class TeamService {
 		protected AccessPolicy $access,
 		protected Database $db,
 		protected Clock $clock,
+		protected int $registration_close_minutes = 20,
 	) {
 	}
 
@@ -66,7 +68,7 @@ class TeamService {
 	*/
 	public function createTeam(int $tournament_id, int $captain_id, string $name, array $player_ids = []): TeamEntry {
 		return $this->db->transactional(function () use ($tournament_id, $captain_id, $name, $player_ids): TeamEntry {
-			$tournament = $this->openTournament($tournament_id);
+			$tournament = $this->openTournament($tournament_id, $captain_id);
 			$name = $this->validName($tournament_id, $name, null);
 
 			$roster = array_values(array_unique(array_merge([$captain_id], $player_ids)));
@@ -171,7 +173,7 @@ class TeamService {
 	public function leaveTeam(int $player_id, int $team_id): TeamEntry {
 		return $this->db->transactional(function () use ($player_id, $team_id): TeamEntry {
 			$team = $this->teams->find($team_id) ?? throw new NotFound('Такой команды нет.');
-			$tournament = $this->changeableTournament($team->tournament_id);
+			$tournament = $this->changeableTournament($team->tournament_id, $player_id);
 			if ($player_id === $team->captain_id) {
 				throw new ValidationError('Капитан не может просто выйти: передай капитанство или распусти команду.');
 			}
@@ -208,7 +210,7 @@ class TeamService {
 	public function withdrawTeam(int $actor_id, int $team_id): void {
 		$this->db->transactional(function () use ($actor_id, $team_id): void {
 			$team = $this->teams->find($team_id) ?? throw new NotFound('Такой команды нет.');
-			$tournament = $this->changeableTournament($team->tournament_id);
+			$tournament = $this->changeableTournament($team->tournament_id, $actor_id);
 			if ($team->captain_id !== $actor_id && !$this->access->canManageTournament($tournament, $actor_id)) {
 				throw new PermissionDenied(sprintf(
 					'Распустить команду «%s» может только её капитан или организатор.',
@@ -224,7 +226,7 @@ class TeamService {
 	*/
 	public function joinSolo(int $tournament_id, int $player_id): void {
 		$this->db->transactional(function () use ($tournament_id, $player_id): void {
-			$tournament = $this->openTournament($tournament_id);
+			$tournament = $this->openTournament($tournament_id, $player_id);
 			$team = $this->teamOf($tournament->id, $player_id);
 			if ($team !== null) {
 				throw new ValidationError(sprintf(
@@ -241,7 +243,7 @@ class TeamService {
 	}
 
 	public function leaveSolo(int $tournament_id, int $player_id): void {
-		$this->changeableTournament($tournament_id);
+		$this->changeableTournament($tournament_id, $player_id);
 		if (!$this->solos->remove($tournament_id, $player_id)) {
 			throw new NotFound('Ты не записан соло на этот турнир.');
 		}
@@ -254,15 +256,15 @@ class TeamService {
 		$team = $this->teams->find($team_id) ?? throw new NotFound('Такой команды нет.');
 		$this->access->assertCaptain($team, $actor_id);
 		$tournament = $needs_open_registration
-			? $this->openTournament($team->tournament_id)
-			: $this->changeableTournament($team->tournament_id);
+			? $this->openTournament($team->tournament_id, $actor_id)
+			: $this->changeableTournament($team->tournament_id, $actor_id);
 		return [$team, $tournament];
 	}
 
 	/**
 		Registration must be open to join or grow a roster.
 	*/
-	protected function openTournament(int $tournament_id): Tournament {
+	protected function openTournament(int $tournament_id, int $actor_id): Tournament {
 		$tournament = $this->tournaments->find($tournament_id) ?? throw new NotFound('Такого турнира нет.');
 		if (!$tournament->isRegistrationOpen()) {
 			throw new ValidationError(sprintf(
@@ -271,13 +273,15 @@ class TeamService {
 				TournamentStatus::label($tournament->status),
 			));
 		}
+		$this->assertLineupEditable($tournament, $actor_id);
 		return $tournament;
 	}
 
 	/**
-		Leaving, renaming and withdrawing are allowed until the tournament starts.
+		Leaving, renaming and withdrawing are allowed until the tournament starts
+		(and until the registration time lock for regular players).
 	*/
-	protected function changeableTournament(int $tournament_id): Tournament {
+	protected function changeableTournament(int $tournament_id, int $actor_id): Tournament {
 		$tournament = $this->tournaments->find($tournament_id) ?? throw new NotFound('Такого турнира нет.');
 		if (!in_array($tournament->status, [TournamentStatus::REGISTRATION, TournamentStatus::CLOSED], true)) {
 			throw new ValidationError(sprintf(
@@ -286,7 +290,30 @@ class TeamService {
 				TournamentStatus::label($tournament->status),
 			));
 		}
+		$this->assertLineupEditable($tournament, $actor_id);
 		return $tournament;
+	}
+
+	/**
+		REGISTRATION_CLOSE_MINUTES before start: regular players cannot change lineups.
+		Organizer and chat admins still can.
+	*/
+	protected function assertLineupEditable(Tournament $tournament, int $actor_id): void {
+		if ($this->registration_close_minutes <= 0) {
+			return;
+		}
+		$closes_at = $tournament->starts_at->modify("-{$this->registration_close_minutes} minutes");
+		if ($this->clock->now() < $closes_at) {
+			return;
+		}
+		if ($this->access->canManageTournament($tournament, $actor_id)) {
+			return;
+		}
+		throw new ValidationError(sprintf(
+			'Регистрация закрылась за %d %s до старта — составы уже не меняются.',
+			$this->registration_close_minutes,
+			RuPlural::choose($this->registration_close_minutes, ['минуту', 'минуты', 'минут']),
+		));
 	}
 
 	protected function assertFreeForTeam(Tournament $tournament, int $player_id, ?int $own_team_id): void {

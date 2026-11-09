@@ -48,12 +48,16 @@ class AnnouncementView {
 
 	/**
 		The announcement in the chat.
+
+		@param bool|null $registration_open null = derive from status; false hides the sign-up footer
+		(e.g. when the registration time lock has already kicked in).
 	*/
-	public function render(Tournament $t, Lineup $lineup): string {
-		$footer = $t->status === TournamentStatus::REGISTRATION
+	public function render(Tournament $t, Lineup $lineup, ?bool $registration_open = null): string {
+		$open = $registration_open ?? ($t->status === TournamentStatus::REGISTRATION);
+		$footer = $open
 			? 'Записаться командой или соло, задать вопрос — в личке у @' . Html::e($this->bot_username) . ': жми кнопку ниже 👇'
 			: '';
-		return $this->compose($t, $lineup, $footer, self::MESSAGE_LIMIT, false);
+		return $this->compose($t, $lineup, $footer, self::MESSAGE_LIMIT, false, $open);
 	}
 
 	/**
@@ -95,14 +99,21 @@ class AnnouncementView {
 		return $messages;
 	}
 
-	public function header(Tournament $t, Lineup $lineup): string {
+	/**
+		@param bool|null $registration_open when false and status is still registration, show as closed
+	*/
+	public function header(Tournament $t, Lineup $lineup, ?bool $registration_open = null): string {
+		$status = $t->status;
+		if ($registration_open === false && $status === TournamentStatus::REGISTRATION) {
+			$status = TournamentStatus::CLOSED;
+		}
 		$lines = [
 			'🏆 ' . Html::b($t->title) . ($t->number !== null ? ' · №' . $t->number : ''),
 			self::when($t),
 			'👤 Организатор: ' . $this->name($t->organizer_id),
 			'⚖️ Уровень: ' . Html::e($t->levelLabel()),
 			'👥 Команды по ' . $t->team_size . ' ' . RuPlural::choose($t->team_size, ['игроку', 'игрока', 'игроков']),
-			(self::STATUS_ICONS[$t->status] ?? '📌') . ' ' . Html::e(self::ucfirst(TournamentStatus::label($t->status))),
+			(self::STATUS_ICONS[$status] ?? '📌') . ' ' . Html::e(self::ucfirst(TournamentStatus::label($status))),
 			'🎟 Занято ' . $lineup->occupied() . '/' . $lineup->max_players . ' · резерв ' . $lineup->reserveCount(),
 		];
 		return implode("\n", $lines);
@@ -123,8 +134,15 @@ class AnnouncementView {
 		return $this->join($this->sections($lineup, $team_size));
 	}
 
-	protected function compose(Tournament $t, Lineup $lineup, string $footer, int $limit, bool $empty_hint): string {
-		$head = $this->header($t, $lineup);
+	protected function compose(
+		Tournament $t,
+		Lineup $lineup,
+		string $footer,
+		int $limit,
+		bool $empty_hint,
+		?bool $registration_open = null,
+	): string {
+		$head = $this->header($t, $lineup, $registration_open);
 		$sections = $this->sections($lineup, $t->team_size);
 		if ($sections === [] && $empty_hint) {
 			$sections = [['<i>Пока никто не записался.</i>']];

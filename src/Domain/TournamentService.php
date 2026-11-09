@@ -37,6 +37,7 @@ class TournamentService {
 		protected Database $db,
 		protected Clock $clock,
 		protected int $default_max_players = 24,
+		protected int $registration_close_minutes = 20,
 	) {
 	}
 
@@ -197,13 +198,30 @@ class TournamentService {
 
 	/**
 		Automatic status changes made by cron (no actor, no permission check).
+		Closes registration REGISTRATION_CLOSE_MINUTES before start, then registration/closed → running
+		at starts_at, then running → finished after $finish_after_hours.
 
 		@return list<Tournament> tournaments whose status changed
 	*/
-	public function autoAdvance(int $finish_after_hours): array {
+	public function autoAdvance(int $finish_after_hours, ?int $registration_close_minutes = null): array {
 		$now = $this->clock->now();
 		$changed = [];
 		$past = new DateTimeImmutable('2000-01-01 00:00:00', new \DateTimeZone('UTC'));
+		$close_minutes = $registration_close_minutes ?? $this->registration_close_minutes;
+		if ($close_minutes > 0) {
+			$close_until = $now->modify("+{$close_minutes} minutes");
+			foreach ($this->tournaments->listStartingBetween(
+				[TournamentStatus::REGISTRATION],
+				$past,
+				$close_until,
+			) as $t) {
+				// Past the start → RUNNING below; only lock the ones still upcoming.
+				if ($t->starts_at > $now) {
+					$this->tournaments->update($t->id, ['status' => TournamentStatus::CLOSED]);
+					$changed[] = $this->get($t->id);
+				}
+			}
+		}
 		foreach ($this->tournaments->listStartingBetween(
 			[TournamentStatus::REGISTRATION, TournamentStatus::CLOSED],
 			$past,
@@ -218,6 +236,28 @@ class TournamentService {
 			$changed[] = $this->get($t->id);
 		}
 		return $changed;
+	}
+
+	/**
+		True when now is within REGISTRATION_CLOSE_MINUTES of starts_at (players may not change lineups).
+	*/
+	public function isRegistrationTimeLocked(Tournament $t): bool {
+		if ($this->registration_close_minutes <= 0) {
+			return false;
+		}
+		$closes_at = $t->starts_at->modify("-{$this->registration_close_minutes} minutes");
+		return $this->clock->now() >= $closes_at;
+	}
+
+	/**
+		Registration is open for regular players (status + time lock).
+	*/
+	public function isUserRegistrationOpen(Tournament $t): bool {
+		return $t->status === TournamentStatus::REGISTRATION && !$this->isRegistrationTimeLocked($t);
+	}
+
+	public function registrationCloseMinutes(): int {
+		return $this->registration_close_minutes;
 	}
 
 	/**

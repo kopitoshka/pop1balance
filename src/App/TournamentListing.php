@@ -51,8 +51,8 @@ class TournamentListing {
 
 	/**
 		The list for a private chat: published tournaments of every group the bot is in, plus drafts
-		of this player (all drafts for the owner). Numbers are the group's own short numbers, so with
-		several groups each group gets a header with its name.
+		of this player (all drafts for the owner). Numbers are global (tournament ids); with several
+		groups each group still gets a header with its name.
 
 		@param array<int, string> $groups chat_id => title
 		@return list<string> HTML messages; empty when there is nothing to show

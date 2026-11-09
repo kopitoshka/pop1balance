@@ -18,7 +18,7 @@ PHP 8.0+ (tested on 8.0 and 8.3), MySQL 8 / MariaDB 10.5+, no framework.
   tools (`src/Ai`): the model calls functions, PHP executes them through the domain services (`src/Domain`)
   and checks all permissions itself. Any next message within `CONVERSATION_TTL_MINUTES` continues the dialog.
 - Without `OPENAI_API_KEY` free text in private gets a short hint; slash commands and buttons always work.
-- Cron (`bin/cron.php`, every minute): reminders, `registration → running → finished`, cleanup.
+- Cron (`bin/cron.php`, every minute): reminders, auto-close registration `REGISTRATION_CLOSE_MINUTES` before start, `registration/closed → running → finished`, cleanup.
 
 ## Deployment: AlmaLinux 8 + PHP-FPM 8.0 (Remi)
 
@@ -127,7 +127,7 @@ and `sudo setsebool -P httpd_can_network_connect 1` (the bot calls Telegram and 
 Optional: `DEFAULT_MAX_PLAYERS` (24), `ANYONE_CAN_CREATE_TOURNAMENT` (0), `ADMINS_CACHE_MINUTES` (10),
 `CONVERSATION_TTL_MINUTES` (30), `REMINDER_MINUTES` (`60,15`), `FINISH_AFTER_HOURS` (4), `OPENAI_TIMEOUT` (30),
 `LOG_LEVEL` (`info`; `debug` | `info` | `error`, see Logs), `DIALOG_LOG` (1, see Dialog logs),
-`BOT_PERSONA_NAME` (empty; see below), `REMIND_ALL_GROUPS` (1; see Usage → Group).
+`BOT_PERSONA_NAME` (empty; see below), `REMIND_ALL_GROUPS` (1; see Usage → Group), `REGISTRATION_CLOSE_MINUTES` (20; registration auto-closes for players this many minutes before start; organizer/admins can still change lineups; 0 = only manual `/close`).
 
 **Voice.** The bot speaks about herself in the feminine gender («записала», «поняла», «рада») — both the AI
 (`config/prompts/system.md`) and all fixed texts. `BOT_PERSONA_NAME` (e.g. `Фемида`) is optional: when set, the
@@ -246,8 +246,8 @@ for the webhook too, e.g. `sudo -u apache php bin/diag.php`.
   `chats` table: added when the bot joins or sees a message there, marked inactive by `my_chat_member` when the bot
   leaves or is removed. If cron was down past the first mark, only the latest due reminder goes out and other groups
   get nothing. `REMIND_ALL_GROUPS=0` turns it off.
-- Answered in the group: `/tournaments` (published only, no drafts), `/info N`, `/levels`, `/help` (short: everything
-  else is in private), `/start` (= `/help`).
+- Answered in the group: `/tournaments` (published only, no drafts), `/info N`, `/levels`, `/help` (only these
+  commands + «manage in private» with a deep-link button), `/start` (= `/help`).
 - Anything else addressed to the bot → one «Давай в личке 👉» with a button. The link opens the tournament
   (`start=t_<id>`) when it is clear: a reply to its announcement/card, or its number (`/edit 2 …`, «№2», «турнир 2»);
   otherwise `start=g_<group chat id>`. Nothing is auto-deleted.
@@ -263,19 +263,26 @@ for the webhook too, e.g. `sudo -u apache php bin/diag.php`.
 - «Собрать команду» asks for the name and players; the answer goes to the AI (the question is saved as dialog
   memory), e.g. «Wolves: @vasya, @petya». Adding/removing/replacing players, renaming, captain transfer — in plain text.
 - Plain text: «какие турниры скоро?», «запиши команду Wolves: я, @vasya, @petya», «хочу участвовать соло»,
-  «замени @vasya на @kolya», «где я записан?». Commands: `/tournaments`, `/info N`, `/levels`, `/help`, `/group`.
+  «замени @vasya на @kolya», «где я записан?». Commands: `/tournaments`, `/info N`, `/levels`, `/help`.
 - Joining checks that the user is in the tournament's group (`getChatMember`: `left`/`kicked` → refused). If Telegram
   can't tell (error), joining is allowed. Unseen users can join via the deep link.
 - Every private message marks the player as having started the bot (`players.dm_ok`, `dm_started_at`, migration 006).
   No private reminders yet; reminders stay in the group.
 - Edited messages in private get «Исправленные сообщения я не вижу…» once.
 
-**Groups in private.** Tournament numbers and admin rights belong to a group. The player's current group is
-`players.dm_group_id`: set by a deep link / «open» button / group button, or automatically when the bot is in one
-group only. With several groups and none chosen, group-specific commands and free text first ask «С какой
-работаем?» with buttons (`grp:<chat id>`); `/group` switches. Lists in private show all groups with headers.
+**Groups in private.** Tournament numbers are **global** (the tournament id). The player's current group
+(`players.dm_group_id`) is only for creating a tournament and membership checks: set by a deep link / «open»
+button / group picker, or automatically when the bot is in one group. With several groups, `/new` (and AI create)
+asks «В какой группе создаём турнир?» with buttons (`grp:<chat id>`). Lists in private show all groups with headers.
+Deep link `g_<chat id>` still opens the private chat and remembers that group for creation.
 
-Admins (rights are still per group, synced from Telegram chat admins):
+**Who may create / manage:**
+- **Create** (`/new`, AI create): Telegram chat admins of the group (and the owner); or anyone if
+  `ANYONE_CAN_CREATE_TOURNAMENT=1`. Chat admins are synced from Telegram.
+- **Manage** (`/edit`, `/open`, `/close`, `/cancel`, publish): only the tournament's **author** (organizer) and
+  the bot **owner** (`BOT_OWNER_TG_ID`). Group admins have no special rights to manage someone else's tournament.
+
+Admins of a group (for creation):
 - `/new 23.11 20:00 | Кубок | 3 | 10 | 24` — date/time MSK | title | team size |
   tournament level (required, see «Tournament level» below) | player limit (default 24).
   Creates a **draft** in the group where the admin may create (the current one; the only one; or the bot asks with
@@ -310,16 +317,11 @@ webhook's `allowed_updates`, so after updating rerun `php bin/set_webhook.php`.
 
 ### Tournament numbers
 
-Users never see database ids. `№N` everywhere (lists, cards, announcements, `/info N`, `/edit N`, `/open N`,
-`/close N`, `/cancel N`, the AI's `tournament_id`) is a short per-group number: the position among the group's
-tournaments that are not finished or cancelled (drafts included), ordered by start time, then id: 1, 2, 3...
-It is computed on the fly (`App\TournamentResolver::numbers()`), nothing is stored.
-
-Numbers are stable while the set of tournaments is unchanged, but **can shift** when an earlier tournament
-finishes or is cancelled, or a new/moved tournament starts earlier. The bot then re-renders the other
-announcements (`Announcer::renumber`) so they show the current numbers; always check `/tournaments`.
-Players may see gaps in the numbering, because drafts are numbered but only visible to admins.
-Inline buttons keep using real ids internally, so old buttons stay correct.
+`№N` everywhere (lists, cards, announcements, `/info N`, `/edit N`, `/open N`, `/close N`, `/cancel N`, the AI's
+`tournament_id`) is the tournament's **database id** — the same number in every group. Finished and cancelled
+tournaments drop out of the active list (their number is no longer accepted). Numbers do **not** shift when
+another tournament finishes. No extra column or migration: the id is the number.
+Inline buttons also use that id, so old buttons stay correct.
 
 ### Output format
 

@@ -12,12 +12,10 @@ use P1Bot\Domain\TournamentStatus;
 use P1Bot\Repository\TournamentRepository;
 
 /**
-	Short tournament numbers and lookup.
+	Global tournament numbers and lookup.
 
-	Users never see real ids: a tournament's number is its position (1, 2, 3, ...) among the chat's
-	not finished/cancelled tournaments (drafts included), ordered by start time, then id.
-	Numbers can shift when an earlier tournament finishes, is cancelled or a new one starts earlier;
-	announcements are re-rendered then (Announcer::renumber).
+	The number users see and type (№1, №2, /edit 1) is the tournament's database id — the same
+	in every group. Finished and cancelled tournaments drop out of the numbering (null).
 */
 class TournamentResolver {
 
@@ -25,12 +23,17 @@ class TournamentResolver {
 	}
 
 	/**
-		@return array<int, int> real id => short number
+		@param int|null $chat_id when set, only that group's numbered tournaments (for renumber maps)
+
+		@return array<int, int> real id => number (always equal to the id)
 	*/
-	public function numbers(int $chat_id): array {
+	public function numbers(?int $chat_id = null): array {
 		$numbers = [];
-		foreach ($this->tournaments->listByChat($chat_id, TournamentStatus::numbered()) as $i => $t) {
-			$numbers[$t->id] = $i + 1;
+		$list = $chat_id !== null
+			? $this->tournaments->listByChat($chat_id, TournamentStatus::numbered())
+			: $this->tournaments->listByStatuses(TournamentStatus::numbered());
+		foreach ($list as $t) {
+			$numbers[$t->id] = $t->id;
 		}
 		return $numbers;
 	}
@@ -39,7 +42,7 @@ class TournamentResolver {
 		Sets $t->number (null for finished/cancelled) and returns the same object.
 	*/
 	public function number(Tournament $t): Tournament {
-		$t->number = $this->numbers($t->chat_id)[$t->id] ?? null;
+		$t->number = in_array($t->status, TournamentStatus::numbered(), true) ? $t->id : null;
 		return $t;
 	}
 
@@ -51,27 +54,31 @@ class TournamentResolver {
 	}
 
 	/**
-		@param list<string> $statuses candidates when $id is null
+		Resolve by the global number (tournament id). $chat_id is only used when no number is given:
+		then candidates are taken from that group; pass null to search every group.
+
+		@param list<string> $statuses candidates when $number is null
 	*/
-	public function resolve(int $chat_id, ?int $number, array $statuses): Tournament {
+	public function resolve(?int $chat_id, ?int $number, array $statuses): Tournament {
 		if ($number !== null) {
-			$real_id = array_search($number, $this->numbers($chat_id), true);
-			$t = $real_id !== false ? $this->tournaments->find((int) $real_id) : null;
-			if ($t === null) {
+			$t = $this->tournaments->find($number);
+			if ($t === null || !in_array($t->status, TournamentStatus::numbered(), true)) {
 				throw new NotFound(sprintf('Турнира №%d сейчас нет. Список: /tournaments', $number));
 			}
 			return $this->number($t);
 		}
-		$candidates = $this->tournaments->listByChat($chat_id, $statuses);
+		$candidates = $chat_id !== null
+			? $this->tournaments->listByChat($chat_id, $statuses)
+			: $this->tournaments->listByStatuses($statuses);
 		if (count($candidates) === 1) {
 			return $this->number($candidates[0]);
 		}
 		if ($candidates === []) {
 			throw new NotFound('Подходящих турниров сейчас нет.');
 		}
-		$numbers = $this->numbers($chat_id);
-		$lines = array_map(static function (Tournament $t) use ($numbers): string {
-			return sprintf('№%d — %s, %s', $numbers[$t->id] ?? 0, $t->title, MoscowTime::format($t->starts_at));
+		$lines = array_map(function (Tournament $t): string {
+			$this->number($t);
+			return sprintf('№%d — %s, %s', (int) $t->number, $t->title, MoscowTime::format($t->starts_at));
 		}, $candidates);
 		throw new ValidationError("Уточни номер турнира:\n" . implode("\n", $lines));
 	}

@@ -134,9 +134,9 @@ class CallbackHandlerTest extends IntegrationTestCase {
 		// Someone else cannot publish or fix.
 		$vasya = $this->player('vasya');
 		$this->dispatch($this->press($vasya, 'pub:1', $card_id));
-		self::assertStringContainsString('только его организатор', $this->lastAnswer());
+		self::assertStringContainsString('автор или главный админ', $this->lastAnswer());
 		$this->dispatch($this->press($vasya, 'fix:1', $card_id));
-		self::assertStringContainsString('только его организатор', $this->lastAnswer());
+		self::assertStringContainsString('автор или главный админ', $this->lastAnswer());
 		self::assertSame('draft', $this->app->tournament_repo->find(1)->status);
 
 		// «Поправить» explains how to correct, publishes nothing.

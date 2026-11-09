@@ -130,6 +130,29 @@ class TournamentRepository {
 		return array_map([Tournament::class, 'fromRow'], $rows);
 	}
 
+
+	/**
+		@param list<string> $statuses
+		@return list<Tournament>
+	*/
+	public function listByStatuses(array $statuses): array {
+		if ($statuses === []) {
+			return [];
+		}
+		$params = [];
+		$placeholders = [];
+		foreach (array_values($statuses) as $i => $status) {
+			$placeholders[] = ":s$i";
+			$params["s$i"] = TournamentStatus::assertValid($status);
+		}
+		$rows = $this->db->fetchAll(
+			'SELECT * FROM tournaments WHERE status IN (' . implode(', ', $placeholders) . ')
+				ORDER BY starts_at, id',
+			$params,
+		);
+		return array_map([Tournament::class, 'fromRow'], $rows);
+	}
+
 	/**
 		Tournaments with one of $statuses whose start is within [$from, $to].
 

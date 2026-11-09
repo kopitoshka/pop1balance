@@ -16,6 +16,7 @@ use P1Bot\Domain\TournamentService;
 use P1Bot\Domain\TournamentStatus;
 use P1Bot\Repository\ConversationRepository;
 use P1Bot\Support\Clock;
+use P1Bot\Support\RuPlural;
 use P1Bot\Telegram\BotIdentity;
 use P1Bot\Telegram\CallbackQuery;
 use P1Bot\Telegram\TelegramApi;
@@ -117,7 +118,7 @@ class CallbackHandler {
 				if (!$this->drafts->canConfirm($t, $player->id)) {
 					$this->api->answerCallbackQuery(
 						$query->id,
-						'Править черновик может только его организатор или тот, кто попросил показать карточку.',
+						'Править черновик может только его автор или главный админ.',
 						true,
 					);
 					return;
@@ -195,8 +196,16 @@ class CallbackHandler {
 	*/
 	protected function askTeam(CallbackQuery $query, Player $player, Tournament $t): void {
 		$this->assertMember($t, $player);
-		if ($t->status !== TournamentStatus::REGISTRATION) {
-			$this->api->answerCallbackQuery($query->id, 'Регистрация на этот турнир сейчас закрыта.', true);
+		if (!$this->tournaments->isUserRegistrationOpen($t)) {
+			$minutes = $this->tournaments->registrationCloseMinutes();
+			$hint = $this->tournaments->isRegistrationTimeLocked($t) && $minutes > 0
+				? sprintf(
+					'Регистрация закрылась за %d %s до старта — составы уже не меняются.',
+					$minutes,
+					RuPlural::choose($minutes, ['минуту', 'минуты', 'минут']),
+				)
+				: 'Регистрация на этот турнир сейчас закрыта.';
+			$this->api->answerCallbackQuery($query->id, $hint, true);
 			return;
 		}
 		$existing = $this->teams->teamOf($t->id, $player->id);

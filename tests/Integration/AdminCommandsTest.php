@@ -123,7 +123,7 @@ class AdminCommandsTest extends IntegrationTestCase {
 	public function testRegularPlayerCannotUseAdminCommands(): void {
 		$vasya = $this->player('vasya');
 		$this->dispatch($this->privateMessage($vasya, '/new 23.11 20:00 | Кубок | 3'));
-		self::assertStringContainsString('только для админов', $this->http->lastText());
+		self::assertStringContainsString('админы группы', $this->http->lastText());
 		self::assertNull($this->app->tournament_repo->find(1));
 	}
 
@@ -173,46 +173,35 @@ class AdminCommandsTest extends IntegrationTestCase {
 		self::assertSame(1002, $t->announce_msg_id, 'after the /new card and the /open card');
 	}
 
-	public function testOpenByAnotherAdminLetsThemOrTheOrganizerConfirm(): void {
+	public function testOtherAdminCannotManageSomeoneElsesTournament(): void {
 		$organizer = $this->admin;
 		$other = $this->player('helper');
 		$this->chatAdmins([$organizer, $other]);
 		$this->dispatch($this->privateMessage($organizer, '/new 23.11 20:00 | Кубок | 3 | 3,3,4'));
 		self::assertSame($organizer->id, $this->app->tournament_repo->find(1)->organizer_id);
 
-		// A regular player can neither confirm by reply nor by the button.
 		$this->confirmCard($this->player('vasya'));
 		self::assertSame(TournamentStatus::DRAFT, $this->app->tournament_repo->find(1)->status);
 
-		// Another admin runs /open: a fresh card for them; now they may confirm.
 		$this->dispatch($this->privateMessage($other, '/open 1'));
-		$t = $this->app->tournament_repo->find(1);
-		self::assertSame($other->id, $t->card_shown_to);
-		self::assertSame(TournamentStatus::DRAFT, $t->status);
-		$this->confirmCard($other, 'давай, публикуем');
+		self::assertStringContainsString('автор или главный админ', $this->http->lastText());
+		self::assertSame(TournamentStatus::DRAFT, $this->app->tournament_repo->find(1)->status);
+
+		$this->confirmCard($organizer);
+		self::assertSame(TournamentStatus::REGISTRATION, $this->app->tournament_repo->find(1)->status);
+
+		$this->dispatch($this->privateMessage($other, '/close 1'));
+		self::assertStringContainsString('автор или главный админ', $this->http->lastText());
 		self::assertSame(TournamentStatus::REGISTRATION, $this->app->tournament_repo->find(1)->status);
 	}
 
-	public function testOrganizerMayConfirmCardShownToAnotherAdmin(): void {
+	public function testOwnerCanManageSomeoneElsesTournament(): void {
 		$organizer = $this->admin;
-		$other = $this->player('helper');
-		$this->chatAdmins([$organizer, $other]);
+		$this->chatAdmins([$organizer]);
 		$this->dispatch($this->privateMessage($organizer, '/new 23.11 20:00 | Кубок | 3 | 3,3,4'));
-		$first_card = $this->app->tournament_repo->find(1)->card_msg_id;
-		$this->dispatch($this->privateMessage($other, '/open'));
-		self::assertSame($other->id, $this->app->tournament_repo->find(1)->card_shown_to);
-
-		// The card lives in the other admin's private chat; the organizer's old card is outdated.
-		$this->dispatch($this->privateMessage($organizer, 'да', ['reply_to_message' => [
-			'message_id' => $first_card,
-			'from' => ['id' => self::BOT_ID, 'is_bot' => true, 'first_name' => 'Bot'],
-		]]));
-		self::assertSame(TournamentStatus::DRAFT, $this->app->tournament_repo->find(1)->status);
-
-		// The organizer may still confirm a fresh card of his own.
-		$this->dispatch($this->privateMessage($organizer, '/open'));
-		$this->confirmCard($organizer, 'ок');
-		self::assertSame(TournamentStatus::REGISTRATION, $this->app->tournament_repo->find(1)->status);
+		$this->confirmCard($organizer);
+		$this->dispatch($this->privateMessage($this->owner, '/close 1'));
+		self::assertSame(TournamentStatus::CLOSED, $this->app->tournament_repo->find(1)->status);
 	}
 
 	public function testThirdAdminCannotConfirmSomeoneElsesCard(): void {
@@ -418,45 +407,32 @@ class AdminCommandsTest extends IntegrationTestCase {
 		]]));
 	}
 
-	public function testShortNumbersFollowStartOrderAndShift(): void {
-		// Real ids: 1 = later tournament, 2 = earlier one. Users see №1 = earlier, №2 = later.
+	public function testGlobalNumbersAreTournamentIds(): void {
+		// Number = database id, same in every group; does not shift when another tournament is cancelled.
 		$this->dispatch($this->privateMessage($this->owner, '/new 25.11 20:00 | Поздний | 2 | 3,3'));
 		$this->confirmCardOf(1);
 		$this->dispatch($this->privateMessage($this->owner, '/new 23.11 20:00 | Ранний | 2 | 3,3'));
-		self::assertStringContainsString('Турнир №1 (черновик)', $this->http->lastText());
+		self::assertStringContainsString('Турнир №2 (черновик)', $this->http->lastText());
 		$this->confirmCardOf(2);
 
 		$later = $this->app->tournament_repo->find(1);
-		$edits = array_values(array_filter(
-			$this->http->sent('editMessageText'),
-			static fn (array $e): bool => $e['message_id'] === $later->announce_msg_id,
-		));
-		self::assertStringContainsString(
-			'🏆 <b>Поздний</b> · №2',
-			end($edits)['text'],
-			'the older announcement was renumbered',
-		);
+		self::assertStringContainsString('🏆 <b>Поздний</b> · №1', $this->app->announcer->text($later));
 
 		$this->http->reset();
-		$this->dispatch($this->privateMessage($this->owner, '/info 1'));
-		self::assertStringContainsString('🏆 <b>Ранний</b> · №1', $this->http->lastText());
-		$this->dispatch($this->privateMessage($this->owner, '/edit 2 лимит 30'));
-		self::assertSame(30, $this->app->tournament_repo->find(1)->max_players, '№2 is real id 1');
-		self::assertStringContainsString('№2 Поздний', $this->http->lastText());
+		$this->dispatch($this->privateMessage($this->owner, '/info 2'));
+		self::assertStringContainsString('🏆 <b>Ранний</b> · №2', $this->http->lastText());
+		$this->dispatch($this->privateMessage($this->owner, '/edit 1 лимит 30'));
+		self::assertSame(30, $this->app->tournament_repo->find(1)->max_players);
+		self::assertStringContainsString('№1 Поздний', $this->http->lastText());
 
 		$this->dispatch($this->privateMessage($this->owner, '/tournaments'));
 		$list = $this->http->lastText();
 		self::assertLessThan(strpos($list, 'Поздний'), strpos($list, 'Ранний'));
 
-		// Cancelling №1 shifts the later one to №1 and refreshes its announcement.
 		$this->http->reset();
-		$this->dispatch($this->privateMessage($this->owner, '/cancel 1'));
+		$this->dispatch($this->privateMessage($this->owner, '/cancel 2'));
 		self::assertSame(TournamentStatus::CANCELLED, $this->app->tournament_repo->find(2)->status);
-		$edits = array_values(array_filter(
-			$this->http->sent('editMessageText'),
-			static fn (array $e): bool => $e['message_id'] === $later->announce_msg_id,
-		));
-		self::assertStringContainsString('🏆 <b>Поздний</b> · №1', end($edits)['text']);
+		self::assertStringContainsString('🏆 <b>Поздний</b> · №1', $this->app->announcer->text($this->app->tournaments->get(1)));
 		$this->dispatch($this->privateMessage($this->owner, '/info 2'));
 		self::assertStringContainsString('Турнира №2 сейчас нет', $this->http->lastText());
 	}

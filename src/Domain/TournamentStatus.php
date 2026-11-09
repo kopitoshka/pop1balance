@@ -44,7 +44,7 @@ class TournamentStatus {
 	}
 
 	/**
-		Statuses that get a short per-chat number (№1, №2, ...): everything not finished or cancelled.
+		Statuses that get a global number (the tournament id): everything not finished or cancelled.
 
 		@return list<string>
 	*/

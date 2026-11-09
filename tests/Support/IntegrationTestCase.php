@@ -84,7 +84,11 @@ abstract class IntegrationTestCase extends TestCase {
 			'owner_tg_id' => self::OWNER_TG_ID,
 			'telegram' => ['token' => self::BOT_ID . ':TEST', 'username' => self::BOT_USERNAME],
 			'openai' => ['api_key' => '', 'model' => 'gpt-6-luna', 'reasoning_effort' => 'low'],
-			'tournament' => ['default_max_players' => 24, 'anyone_can_create' => false],
+			'tournament' => [
+				'default_max_players' => 24,
+				'anyone_can_create' => false,
+				'registration_close_minutes' => 20,
+			],
 			'cron' => ['reminder_minutes' => [60, 15], 'finish_after_hours' => 4],
 		];
 	}

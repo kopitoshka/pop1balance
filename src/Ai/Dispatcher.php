@@ -73,15 +73,8 @@ class Dispatcher {
 			}
 			$result = $this->run($tool, $args, $ctx);
 			if (in_array($tool, Tools::MUTATING, true) && isset($result['tournament_id'])) {
-				// tournament_id in results is the short number the user sees; map it back.
-				$real_id = array_search(
-					(int) $result['tournament_id'],
-					$this->resolver->numbers($ctx->groupId()),
-					true,
-				);
-				if ($real_id !== false) {
-					$this->announcer->refresh((int) $real_id);
-				}
+				// tournament_id in results is the global number (= database id).
+				$this->announcer->refresh((int) $result['tournament_id']);
 			}
 			return ['ok' => true] + $result;
 		} catch (InvalidLevel $e) {
@@ -115,7 +108,7 @@ class Dispatcher {
 		$actor = $ctx->actor;
 		switch ($tool) {
 			case 'list_tournaments':
-				$active = $this->tournaments->listActive($ctx->groupId());
+				$active = $this->listVisible($ctx);
 				if ($active === []) {
 					return ['tournaments' => []];
 				}
@@ -422,7 +415,7 @@ class Dispatcher {
 	protected function tournament(Context $ctx, array $a, ?array $statuses = null): Tournament {
 		$id = isset($a['tournament_id']) && $a['tournament_id'] !== '' ? (int) $a['tournament_id'] : null;
 		return $this->resolver->resolve(
-			$ctx->groupId(),
+			$ctx->isPrivate() ? null : $ctx->groupId(),
 			$id,
 			$statuses ?? [TournamentStatus::REGISTRATION, TournamentStatus::CLOSED],
 		);
@@ -522,7 +515,7 @@ class Dispatcher {
 	}
 
 	/**
-		Short per-group number the user sees (null once finished/cancelled).
+		Global tournament number (= id) the user sees (null once finished/cancelled).
 	*/
 	protected function no(Tournament $t): ?int {
 		return $this->resolver->number($t)->number;
@@ -530,6 +523,41 @@ class Dispatcher {
 
 	protected function botUsername(): string {
 		return $this->bot_username;
+	}
+
+
+	/**
+		Active tournaments visible in this context: one group in a group chat, every group in private.
+
+		@return list<Tournament>
+	*/
+	protected function listVisible(Context $ctx): array {
+		if (!$ctx->isPrivate() || $this->groups === null) {
+			return $this->tournaments->listActive($ctx->groupId());
+		}
+		$result = [];
+		foreach (array_keys($this->groups->all()) as $chat_id) {
+			foreach ($this->tournaments->listActive($chat_id) as $t) {
+				$result[] = $t;
+			}
+		}
+		return $result;
+	}
+
+	/**
+		@return list<Tournament>
+	*/
+	protected function draftCandidates(Context $ctx): array {
+		if (!$ctx->isPrivate() || $this->groups === null) {
+			return $this->tournaments->listByStatus($ctx->groupId(), [TournamentStatus::DRAFT]);
+		}
+		$result = [];
+		foreach (array_keys($this->groups->all()) as $chat_id) {
+			foreach ($this->tournaments->listByStatus($chat_id, [TournamentStatus::DRAFT]) as $t) {
+				$result[] = $t;
+			}
+		}
+		return $result;
 	}
 
 	protected function placementLabel(Tournament $t, int $player_id): string {
@@ -544,7 +572,7 @@ class Dispatcher {
 	*/
 	public function draftLines(Context $ctx): array {
 		$lines = [];
-		foreach ($this->tournaments->listByStatus($ctx->groupId(), [TournamentStatus::DRAFT]) as $t) {
+		foreach ($this->draftCandidates($ctx) as $t) {
 			if ($t->organizer_id !== $ctx->actor->id && $t->card_shown_to !== $ctx->actor->id) {
 				continue;
 			}
@@ -559,7 +587,7 @@ class Dispatcher {
 	*/
 	public function statusLines(Context $ctx): array {
 		$lines = [];
-		foreach ($this->tournaments->listActive($ctx->groupId()) as $t) {
+		foreach ($this->listVisible($ctx) as $t) {
 			$entry = $this->teams->teamOf($t->id, $ctx->actor->id);
 			$placement = $this->tournaments->lineup($t->id)->placementOf($ctx->actor->id);
 			if ($placement === null) {

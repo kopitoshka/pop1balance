@@ -29,6 +29,7 @@ use P1Bot\Repository\PlayerRepository;
 use P1Bot\Support\Clock;
 use P1Bot\Telegram\BotIdentity;
 use P1Bot\Telegram\TelegramApi;
+use P1Bot\View\DeepLink;
 use P1Bot\View\Html;
 use P1Bot\View\Messages;
 use P1Bot\View\Texts;
@@ -37,12 +38,14 @@ use P1Bot\View\Texts;
 	Slash commands: the fallback that works without AI.
 */
 class AdminCommands {
-	protected const PUBLIC = ['help', 'start', 'tournaments', 'info', 'levels', 'group'];
+	protected const PUBLIC = ['help', 'start', 'tournaments', 'info', 'levels'];
 
 	/**
 		«уровень», «уровень турнира», «максимальный уровень», «макс. уровень» — one field (old «эталон» still works).
 	*/
 	protected const LEVEL_FIELD = '/^(?:(?:максимальный|макс\.?)\s*уровень(?:\s+турнира)?|уровень(?:\s+турнира)?|эталон|reference|level)(?=\s|$)\s*(.*)$/us';
+	protected const CREATE = ['new'];
+	protected const MANAGE = ['edit', 'cancel', 'open', 'close'];
 	protected const ADMIN = ['new', 'edit', 'cancel', 'open', 'close', 'level', 'balance'];
 
 	/**
@@ -93,8 +96,10 @@ class AdminCommands {
 			if (in_array($command, self::OWNER, true) && !$ctx->is_owner) {
 				throw new PermissionDenied($command === 'level' ? AccessPolicy::LEVELS_OWNER_ONLY : AccessPolicy::OWNER_ONLY);
 			}
-			if (in_array($command, self::ADMIN, true) && !$ctx->is_admin) {
-				throw new PermissionDenied('Эта команда только для админов чата. Посмотреть турниры: /tournaments');
+			// /new: chat admins (domain re-checks the chosen group). Manage commands: author or owner only
+			// (AccessPolicy::assertCanManageTournament) — group admins have no special rights there.
+			if (in_array($command, self::CREATE, true) && !$ctx->is_admin) {
+				throw new PermissionDenied('Создавать турниры могут админы группы. Посмотреть турниры: /tournaments');
 			}
 			$reply = $this->run($ctx, $command, $args);
 		} catch (NeedGroupChoice $e) {
@@ -121,18 +126,21 @@ class AdminCommands {
 		switch ($command) {
 			case 'help':
 			case 'start':
-				return $ctx->isPrivate()
-					? Texts::help($this->bot->username, $ctx->is_admin, $ctx->is_owner)
-					: Texts::groupHelp($this->bot->username);
-			case 'group':
-				return $this->chooseGroup($ctx);
+				if ($ctx->isPrivate()) {
+					return Texts::help($this->bot->username, $ctx->is_admin, $ctx->is_owner);
+				}
+				$this->reply_extra = DeepLink::button(
+					Messages::GROUP_REDIRECT_BUTTON,
+					DeepLink::url($this->bot->username),
+				);
+				return Texts::groupHelp($this->bot->username);
 			case 'tournaments':
 				return $this->listTournaments($ctx);
 			case 'levels':
 				return Texts::levels();
 			case 'info':
 				[$id] = self::splitId($args);
-				$t = $this->resolver->resolve($ctx->groupId(), $id, TournamentStatus::active());
+				$t = $this->resolver->resolve($this->resolveScope($ctx), $id, TournamentStatus::active());
 				return $this->sendAllButLast($ctx, $this->announcer->infoMessages($t));
 			case 'new':
 				return $this->create($ctx, $args);
@@ -179,24 +187,6 @@ class AdminCommands {
 			return 'Сейчас активных турниров нет.' . ($ctx->is_admin ? ' Создать: /new 23.11 20:00 | Название | 3 | средний, средний, средний+ | 24' : '');
 		}
 		return $this->sendAllButLast($ctx, $messages);
-	}
-
-	/**
-		/group in private: pick the group tournament numbers and admin commands refer to.
-	*/
-	protected function chooseGroup(Context $ctx): string {
-		if (!$ctx->isPrivate() || $this->groups === null) {
-			return '';
-		}
-		$groups = $this->groups->all();
-		if ($groups === []) {
-			return 'Я пока не состою ни в одной группе.';
-		}
-		$current = $this->groups->current($ctx->actor->id);
-		$this->reply_extra = PrivateGroups::buttons($groups);
-		return $current !== null
-			? 'Сейчас работаем с группой ' . Html::b($this->groups->title($current)) . '. Переключиться:'
-			: 'Выбери группу:';
 	}
 
 	/**
@@ -274,7 +264,7 @@ class AdminCommands {
 			$field = 'уровень';
 			$value = trim(mb_substr($rest, mb_strlen($rest) - mb_strlen($lm[1])));
 		}
-		$t = $this->resolver->resolve($ctx->groupId(), $id, self::MANAGEABLE);
+		$t = $this->resolver->resolve($this->resolveScope($ctx), $id, self::MANAGEABLE);
 
 		switch ($field) {
 			case 'название':
@@ -438,11 +428,18 @@ class AdminCommands {
 	}
 
 	/**
+		Private chat: look up tournaments globally. In a group: candidates without an id stay group-local.
+	*/
+	protected function resolveScope(Context $ctx): ?int {
+		return $ctx->isPrivate() ? null : $ctx->groupId();
+	}
+
+	/**
 		@param list<string>|null $statuses
 	*/
 	protected function target(Context $ctx, string $args, ?array $statuses = null): Tournament {
 		[$id] = self::splitId($args);
-		return $this->resolver->resolve($ctx->groupId(), $id, $statuses ?? self::MANAGEABLE);
+		return $this->resolver->resolve($this->resolveScope($ctx), $id, $statuses ?? self::MANAGEABLE);
 	}
 
 	/**

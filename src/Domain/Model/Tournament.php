@@ -32,8 +32,8 @@ class Tournament {
 	}
 
 	/**
-		Short per-chat number users see and type (№1, №2, ...), set by TournamentResolver::number().
-		Not stored: it is the position among the chat's not finished/cancelled tournaments.
+		Global number users see and type (№1, №2, ...): the tournament id, set by TournamentResolver::number().
+		Null for finished/cancelled tournaments.
 	*/
 	public ?int $number = null;
 

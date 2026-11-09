@@ -40,7 +40,7 @@ class DraftCards {
 	}
 
 	/**
-		Short per-chat number users type (/edit N).
+		Global tournament number users type (/edit N): the tournament id.
 	*/
 	public function numberOf(Tournament $t): ?int {
 		return $this->announcer->number($t)->number;
@@ -104,7 +104,7 @@ class DraftCards {
 			throw new ValidationError('Эта карточка устарела: турнир с тех пор меняли. Подтверди последнюю карточку.');
 		}
 		if (!$this->canConfirm($t, $actor_id)) {
-			throw new PermissionDenied('Опубликовать турнир может только его организатор или тот, кто попросил показать карточку.');
+			throw new PermissionDenied('Опубликовать турнир может только его автор или главный админ.');
 		}
 
 		$card = $this->cardText($t);
@@ -125,13 +125,10 @@ class DraftCards {
 	}
 
 	/**
-		Who may confirm a draft card: the organizer, the admin the current card was shown to
-		(e.g. who ran /open or /edit) and the bot owner.
+		Who may confirm a draft card: the author (organizer) or the bot owner.
 	*/
 	public function canConfirm(Tournament $t, int $actor_id): bool {
-		return $t->organizer_id === $actor_id
-			|| ($t->card_shown_to !== null && $t->card_shown_to === $actor_id)
-			|| $this->access->isOwner($actor_id);
+		return $t->organizer_id === $actor_id || $this->access->isOwner($actor_id);
 	}
 
 	/**

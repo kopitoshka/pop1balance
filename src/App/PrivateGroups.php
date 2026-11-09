@@ -14,9 +14,9 @@ use P1Bot\Telegram\TelegramApi;
 use Throwable;
 
 /**
-	Which group a private conversation is about. Tournament numbers and admin rights are per group:
-	the player's current group is remembered (players.dm_group_id); with a single group it is chosen
-	automatically, otherwise the player picks it with inline buttons.
+	Which group a private conversation creates tournaments in. Tournament numbers are global (ids);
+	the player's current group (players.dm_group_id) is remembered for /new and membership checks.
+	With a single group it is chosen automatically; with several, forCreate asks via inline buttons.
 */
 class PrivateGroups {
 	public const NOT_MEMBER = 'Записаться можно только участникам группы турнира. Сначала вступи в группу, потом возвращайся 🙂';

@@ -118,6 +118,7 @@ class Bootstrap {
 			(bool) ($config['tournament']['anyone_can_create'] ?? false),
 		);
 		$this->balances = new BalanceService($this->balance_repo, $this->players, $this->access, $db, $clock);
+		$registration_close_minutes = (int) ($config['tournament']['registration_close_minutes'] ?? 20);
 		$this->tournaments = new TournamentService(
 			$this->tournament_repo,
 			$this->team_repo,
@@ -127,6 +128,7 @@ class Bootstrap {
 			$db,
 			$clock,
 			(int) ($config['tournament']['default_max_players'] ?? 24),
+			$registration_close_minutes,
 		);
 		$this->teams = new TeamService(
 			$this->team_repo,
@@ -137,6 +139,7 @@ class Bootstrap {
 			$this->access,
 			$db,
 			$clock,
+			$registration_close_minutes,
 		);
 
 		$token = (string) ($config['telegram']['token'] ?? '');
@@ -253,6 +256,7 @@ class Bootstrap {
 			$this->announcer,
 			$this->listing,
 			$this->private_groups,
+			$this->access,
 		);
 		$this->router = new UpdateRouter(
 			$this->telegram,

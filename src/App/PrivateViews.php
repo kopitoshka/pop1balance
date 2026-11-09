@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace P1Bot\App;
 
+use P1Bot\Domain\AccessPolicy;
 use P1Bot\Domain\Model\Player;
 use P1Bot\Domain\Model\Tournament;
 use P1Bot\Domain\TeamService;
@@ -26,6 +27,7 @@ class PrivateViews {
 		protected Announcer $announcer,
 		protected TournamentListing $listing,
 		protected PrivateGroups $groups,
+		protected AccessPolicy $access,
 	) {
 	}
 
@@ -64,6 +66,12 @@ class PrivateViews {
 		if (!in_array($t->status, TournamentStatus::active(), true)) {
 			return [];
 		}
+		$time_locked = $this->tournaments->isRegistrationTimeLocked($t);
+		$can_manage = $this->access->canManageTournament($t, $player->id);
+		// Time lock: regular players cannot change lineups; organizer/admins still can.
+		if ($time_locked && !$can_manage) {
+			return [];
+		}
 		$team = $this->teams->teamOf($t->id, $player->id);
 		if ($team !== null) {
 			return $team->team->captain_id === $player->id
@@ -80,7 +88,7 @@ class PrivateViews {
 		if ($placement !== null) {
 			return [[['text' => '❌ Отписаться', 'callback_data' => 'punsolo:' . $t->id]]];
 		}
-		if ($t->status !== TournamentStatus::REGISTRATION) {
+		if (!$this->tournaments->isUserRegistrationOpen($t)) {
 			return [];
 		}
 		return [

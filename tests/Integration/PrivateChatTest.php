@@ -138,9 +138,14 @@ class PrivateChatTest extends IntegrationTestCase {
 		self::assertStringContainsString('Пиши мне обычным языком', $reply);
 		self::assertStringNotContainsString('Для админов', $reply);
 		self::assertStringNotContainsString('/level @', $reply);
-		self::assertStringContainsString('Для админов', $this->say($this->admin, '/help'));
+		self::assertStringNotContainsString('/group', $reply);
+		$admin_help = $this->say($this->admin, '/help');
+		self::assertStringContainsString('Для админов группы', $admin_help);
+		self::assertStringContainsString('только его автор и главный админ', $admin_help);
+		self::assertStringNotContainsString('Только для главного админа', $admin_help);
 		$owner_help = $this->say($this->owner, '/help');
 		self::assertStringContainsString('Только для главного админа', $owner_help);
+		self::assertStringContainsString('/level @user 4', $owner_help);
 		self::assertStringContainsString('Уровни игроков', $this->say($vasya, '/levels'));
 	}
 
@@ -167,9 +172,9 @@ class PrivateChatTest extends IntegrationTestCase {
 		self::assertSame(['popen:1', 'popen:2'], $this->lastButtons());
 	}
 
-	public function testSeveralGroupsAskForTheGroupAndKeepTheirNumbers(): void {
+	public function testSeveralGroupsUseGlobalNumbers(): void {
 		$vasya = $this->player('vasya');
-		$this->openTournament(3);
+		$this->openTournament(3); // id 1
 		$this->app->chats->ensure(self::SECOND_CHAT, 'Вторая группа');
 		$t = $this->app->tournaments->create(new CreateTournament(
 			self::SECOND_CHAT,
@@ -179,35 +184,34 @@ class PrivateChatTest extends IntegrationTestCase {
 			2,
 			'6',
 		));
-		$this->app->tournaments->openRegistration($this->owner->id, $t->id);
+		$this->app->tournaments->openRegistration($this->owner->id, $t->id); // id 2
 
 		$reply = $this->say($vasya, '/tournaments');
 		self::assertStringContainsString('👥 Группа <b>P1 турниры</b>', $reply);
 		self::assertStringContainsString('👥 Группа <b>Вторая группа</b>', $reply);
-		self::assertSame(2, substr_count($reply, '№1'), 'each group keeps its own numbering');
+		self::assertStringContainsString('· №1', $reply);
+		self::assertStringContainsString('· №2', $reply);
 
-		// /info 1 is ambiguous until a group is chosen.
-		self::assertStringContainsString('С какой работаем', $this->say($vasya, '/info 1'));
-		self::assertSame(['grp:' . self::CHAT_ID, 'grp:' . self::SECOND_CHAT], $this->lastButtons());
-		self::assertStringContainsString('private: ask group (/info)', $this->log->text());
-
-		$this->dispatch($this->press($vasya, 'grp:' . self::SECOND_CHAT));
-		self::assertStringContainsString('Кубок второй группы', $this->say($vasya, '/info 1'));
-
-		// A deep link switches the group.
-		$this->say($vasya, '/start t_1');
+		// Global numbers: /info N works without picking a group.
 		self::assertStringContainsString('Субботний кубок', $this->say($vasya, '/info 1'));
-		self::assertStringContainsString('<b>P1 турниры</b>', $this->say($vasya, '/group'));
+		self::assertStringContainsString('Кубок второй группы', $this->say($vasya, '/info 2'));
+
+		$this->say($vasya, '/start t_1');
+		self::assertStringContainsString('Субботний кубок', $this->http->lastText());
+		self::assertStringContainsString('Такой команды я не знаю', $this->say($vasya, '/group'));
 	}
 
 	public function testAdminCommandsWorkInPrivate(): void {
 		$this->openTournament(3);
-		self::assertStringContainsString('закрыта', $this->say($this->admin, '/close 1'));
+		// Chat admin who is not the author cannot manage the tournament.
+		self::assertStringContainsString('автор или главный админ', $this->say($this->admin, '/close 1'));
+		self::assertSame('registration', $this->app->tournament_repo->find(1)->status);
+
+		self::assertStringContainsString('закрыта', $this->say($this->owner, '/close 1'));
 		self::assertSame('closed', $this->app->tournament_repo->find(1)->status);
-		self::assertStringContainsString('private: command /close', $this->log->text());
 
 		$vasya = $this->player('vasya');
-		self::assertStringContainsString('только для админов', $this->say($vasya, '/cancel 1'));
+		self::assertStringContainsString('автор или главный админ', $this->say($vasya, '/cancel 1'));
 		self::assertSame('closed', $this->app->tournament_repo->find(1)->status);
 	}
 
@@ -268,7 +272,7 @@ class PrivateChatTest extends IntegrationTestCase {
 
 		$vasya = $this->player('vasya');
 		self::assertStringContainsString(
-			'только для админов',
+			'админы группы',
 			$this->say($vasya, '/new 23.11 20:00 | Кубок | 2 | 3,4'),
 		);
 	}
@@ -287,16 +291,25 @@ class PrivateChatTest extends IntegrationTestCase {
 		self::assertStringContainsString('Публикуем или что-то поправить?', $card);
 		self::assertSame(self::CHAT_ID, $this->app->tournament_repo->find(1)->chat_id);
 		self::assertStringContainsString(
-			'Разговор в личке. Группа турниров: P1 турниры',
+			'Номера турниров общие для всех групп',
 			$this->aiRequests()[0]['json']['input'][0]['content'],
 		);
 	}
 
 	public function testAiCreationWithoutCurrentGroupShowsGroupButtons(): void {
 		$this->app->chats->ensure(self::SECOND_CHAT, 'Вторая группа');
-		// The admin of both groups, no group chosen yet: ask before the AI.
-		self::assertStringContainsString('С какой работаем', $this->say($this->owner, 'создай кубок'));
-		self::assertSame([], $this->aiRequests());
+		// Free text always goes to the AI; create_tournament without a creatable current group asks with buttons.
+		$this->http->queueOpenAi($this->functionCall('create_tournament', [
+			'title' => 'Кубок',
+			'starts_at_msk' => '23.11 20:00',
+			'team_size' => 2,
+			'level' => '7',
+		]));
+		$this->http->queueOpenAi($this->text('Выбери группу, пожалуйста.'));
+		$reply = $this->say($this->owner, 'создай кубок');
+		self::assertSame('Выбери группу, пожалуйста.', $reply);
+		self::assertSame(['grp:' . self::CHAT_ID, 'grp:' . self::SECOND_CHAT], $this->lastButtons());
+		self::assertNull($this->app->tournament_repo->find(1));
 
 		// The current group is one where he is not an admin: creation offers the groups he can use.
 		$third = -100333;
@@ -334,7 +347,7 @@ class PrivateChatTest extends IntegrationTestCase {
 		self::assertContains('register_team', array_column($first['tools'], 'name'));
 		self::assertNotContains('create_tournament', array_column($first['tools'], 'name'));
 		self::assertStringContainsString(
-			'Разговор в личке. Группа турниров: P1 турниры',
+			'Номера турниров общие для всех групп',
 			$first['input'][0]['content'],
 		);
 		self::assertStringContainsString('private: ai', $this->log->text());

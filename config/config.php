@@ -52,6 +52,8 @@ return [
 	'tournament' => [
 		'default_max_players' => Env::int('DEFAULT_MAX_PLAYERS', 24),
 		'anyone_can_create'   => Env::bool('ANYONE_CAN_CREATE_TOURNAMENT', false),
+		// Minutes before start when registration auto-closes for players (0 = only manual /close)
+		'registration_close_minutes' => Env::int('REGISTRATION_CLOSE_MINUTES', 20),
 	],
 	'admins_cache_minutes'     => Env::int('ADMINS_CACHE_MINUTES', 10),
 	'conversation_ttl_minutes' => Env::int('CONVERSATION_TTL_MINUTES', 30),

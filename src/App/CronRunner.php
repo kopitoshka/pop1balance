@@ -153,7 +153,7 @@ class CronRunner {
 			'⚖️ Уровень: ' . Html::e($t->levelLabel()),
 			sprintf('🎟 Занято %d/%d', $lineup->occupied(), $t->max_players),
 			'',
-			$t->status === TournamentStatus::REGISTRATION
+			$this->tournaments->isUserRegistrationOpen($t)
 				? 'Ещё можно успеть! Записаться соло или командой — у меня в личке 👇'
 				: 'Регистрация уже закрыта, но вопросы можно задать мне в личке 👇',
 		];

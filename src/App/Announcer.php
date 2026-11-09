@@ -42,8 +42,8 @@ class Announcer {
 	}
 
 	/**
-		Numbers depend on the order of the chat's tournaments: after a tournament was created,
-		published, moved, finished or cancelled, re-render the other announcements. Never throws.
+		After a tournament was created, published, finished or cancelled, re-render the other
+		announcements in the chat (status lines). Numbers are global ids and do not shift. Never throws.
 	*/
 	public function renumber(int $chat_id, ?int $except_id = null): void {
 		try {
@@ -88,7 +88,7 @@ class Announcer {
 
 	public function text(Tournament $t, ?Lineup $lineup = null): string {
 		$lineup = $lineup ?? $this->tournaments->lineup($t->id);
-		return $this->view($t, $lineup)->render($t, $lineup);
+		return $this->view($t, $lineup)->render($t, $lineup, $this->tournaments->isUserRegistrationOpen($t));
 	}
 
 	/**

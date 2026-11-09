@@ -284,7 +284,7 @@ class AssistantTest extends IntegrationTestCase {
 		self::assertStringStartsWith('📋 <b>Турниры</b>', $sent[0]['text']);
 	}
 
-	public function testToolsUseShortNumbers(): void {
+	public function testToolsUseGlobalNumbers(): void {
 		$later = $this->app->tournaments->create(new \P1Bot\Domain\CreateTournament(
 			self::CHAT_ID,
 			$this->owner->id,
@@ -293,25 +293,22 @@ class AssistantTest extends IntegrationTestCase {
 			2,
 			'3,3',
 		));
-		$this->app->tournaments->openRegistration($this->owner->id, $later->id);
-		$earlier = $this->openTournament(2, '3,3'); // real id 2, starts 14.11 => №1
+		$this->app->tournaments->openRegistration($this->owner->id, $later->id); // id 1
+		$earlier = $this->openTournament(2, '3,3'); // id 2
 		$vasya = $this->player('vasya');
 
-		$this->http->queueOpenAi($this->functionCall('r1', 'c1', 'join_solo', ['tournament_id' => 2]));
+		$this->http->queueOpenAi($this->functionCall('r1', 'c1', 'join_solo', ['tournament_id' => 1]));
 		$this->http->queueOpenAi($this->text('r2', 'Записала!'));
-		$this->dispatch($this->privateMessage($vasya, '@' . self::BOT_USERNAME . ' запиши меня соло на №2'));
+		$this->dispatch($this->privateMessage($vasya, '@' . self::BOT_USERNAME . ' запиши меня соло на №1'));
 
-		self::assertSame(
-			'main',
-			$this->app->tournaments->lineup($later->id)->placementOf($vasya->id),
-			'№2 = the later tournament (real id 1)',
-		);
+		self::assertSame('main', $this->app->tournaments->lineup($later->id)->placementOf($vasya->id));
 		self::assertNull($this->app->tournaments->lineup($earlier->id)->placementOf($vasya->id));
 		$output = json_decode($this->lastOpenAiRequest()['input'][0]['output'], true);
-		self::assertSame(2, $output['tournament_id']);
+		self::assertSame(1, $output['tournament_id']);
 		$context = $this->firstOpenAiRequest()['input'][0]['content'];
-		self::assertStringContainsString('№1 Субботний кубок', $context);
-		self::assertStringContainsString('№2 Поздний', $context);
+		self::assertStringContainsString('№1 Поздний', $context);
+		self::assertStringContainsString('№2 Субботний кубок', $context);
+		self::assertStringContainsString('Номера турниров общие', $context);
 	}
 
 	/**

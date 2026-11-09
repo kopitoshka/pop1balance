@@ -19,13 +19,12 @@ use P1Bot\Telegram\ChatAdminSync;
 use P1Bot\Telegram\Message;
 use P1Bot\Telegram\TelegramApi;
 use P1Bot\View\DeepLink;
-use P1Bot\View\Html;
 use P1Bot\View\Texts;
 
 /**
 	Private chat with the bot: everything happens here. Deep links from the group (/start t_<id>,
-	/start g_<chat id>), all commands, buttons and the AI with all tools. Tournament numbers and
-	admin rights belong to a group: the player's current group (PrivateGroups).
+	/start g_<chat id>), all commands, buttons and the AI with all tools. Tournament numbers are
+	global (the tournament id). Creating a tournament still picks a group (PrivateGroups::forCreate).
 */
 class PrivateChatHandler {
 	public const START = 'start';
@@ -33,7 +32,6 @@ class PrivateChatHandler {
 	public const START_GROUP = 'start group';
 	public const COMMAND = 'command';
 	public const UNKNOWN_COMMAND = 'unknown command';
-	public const ASK_GROUP = 'ask group';
 	public const CARD_REPLY = 'card reply';
 	public const HELP = 'help';
 	public const LEVELS = 'levels';
@@ -57,8 +55,7 @@ class PrivateChatHandler {
 	/**
 		Commands that refer to tournaments by the group's numbers: they need the current group.
 	*/
-	protected const GROUP_COMMANDS = ['info', 'edit', 'open', 'close', 'cancel', 'level', 'balance'];
-
+	
 	public function __construct(
 		protected TelegramApi $api,
 		protected BotIdentity $bot,
@@ -100,9 +97,6 @@ class PrivateChatHandler {
 			if (!$this->commands->supports($name)) {
 				return ['kind' => self::UNKNOWN_COMMAND] + $decision;
 			}
-			if (in_array($name, self::GROUP_COMMANDS, true) && $this->needsGroupChoice($actor)) {
-				return ['kind' => self::ASK_GROUP] + $decision;
-			}
 			return ['kind' => self::COMMAND] + $decision;
 		}
 		if ($this->isCardReply($message, $actor)) {
@@ -112,9 +106,8 @@ class PrivateChatHandler {
 			$words = mb_strtolower(trim((string) preg_replace('/[\s.,!?…]+/u', ' ', $message->text)));
 			return ['kind' => self::KEYWORDS[$words] ?? self::FALLBACK] + $decision;
 		}
-		if ($this->needsGroupChoice($actor)) {
-			return ['kind' => self::ASK_GROUP] + $decision;
-		}
+		// Tournament numbers are global: free-text AI does not need a chosen group.
+		// /new still asks via GROUP_COMMANDS + NeedGroupChoice from forCreate.
 		return $decision;
 	}
 
@@ -140,13 +133,11 @@ class PrivateChatHandler {
 			case self::UNKNOWN_COMMAND:
 				$this->api->sendMessage($chat_id, 'Такой команды я не знаю 🤔 Подсказка: /help', $message->message_id);
 				return;
-			case self::ASK_GROUP:
-				$this->askGroup($chat_id, $message->message_id);
-				return;
 			case self::HELP:
+				$ctx = $this->context($message, $actor);
 				$this->api->sendMessage(
 					$chat_id,
-					Texts::help($this->bot->username, $this->context($message, $actor)->is_admin, $is_owner),
+					Texts::help($this->bot->username, $ctx->is_admin, $is_owner),
 				);
 				return;
 			case self::LEVELS:
@@ -198,8 +189,6 @@ class PrivateChatHandler {
 			case self::COMMAND:
 			case self::UNKNOWN_COMMAND:
 				return $decision['kind'] . ' /' . $decision['command'];
-			case self::ASK_GROUP:
-				return 'ask group' . ($decision['command'] !== null ? ' (/' . $decision['command'] . ')' : '');
 			case self::FALLBACK:
 				return 'fallback text (AI off: OPENAI_API_KEY is empty)';
 		}
@@ -235,19 +224,6 @@ class PrivateChatHandler {
 		}
 		$this->api->sendMessage($chat_id, Texts::welcomeTournament($first_name));
 		$this->views->tournament($chat_id, $t, $actor);
-	}
-
-	protected function askGroup(int $chat_id, ?int $reply_to): void {
-		$this->api->sendMessage(
-			$chat_id,
-			Html::e('Я состою в нескольких группах. С какой работаем? Выбери кнопкой и повтори запрос.'),
-			$reply_to,
-			PrivateGroups::buttons($this->groups->all()),
-		);
-	}
-
-	protected function needsGroupChoice(Player $actor): bool {
-		return $this->groups->current($actor->id) === null && count($this->groups->all()) > 1;
 	}
 
 	protected function isCardReply(Message $message, Player $actor): bool {

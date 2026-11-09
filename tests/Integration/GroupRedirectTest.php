@@ -58,8 +58,18 @@ class GroupRedirectTest extends IntegrationTestCase {
 		self::assertStringContainsString('Уровни игроков', $this->http->lastText());
 		$this->dispatch($this->groupMessage($vasya, '/help'));
 		$help = $this->http->lastText();
-		self::assertStringContainsString('в личке у @pop1_bot', $help);
+		self::assertStringContainsString('пишите мне в личку', $help);
+		self::assertStringContainsString('@pop1_bot', $help);
+		self::assertStringContainsString('/tournaments', $help);
+		self::assertStringContainsString('/info', $help);
+		self::assertStringContainsString('/levels', $help);
 		self::assertStringNotContainsString('/new', $help);
+		self::assertStringNotContainsString('/group', $help);
+		self::assertStringNotContainsString('/level @', $help);
+		$help_msg = $this->http->sent('sendMessage');
+		$markup = end($help_msg)['reply_markup']['inline_keyboard'][0][0];
+		self::assertSame(Messages::GROUP_REDIRECT_BUTTON, $markup['text']);
+		self::assertSame('https://t.me/pop1_bot', $markup['url']);
 		foreach ($this->http->sent('sendMessage') as $message) {
 			self::assertSame(self::CHAT_ID, $message['chat_id']);
 		}

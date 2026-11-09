@@ -38,7 +38,7 @@ class AnnouncementViewTest extends TestCase {
 			null,
 			null,
 		);
-		$t->number = 2; // short per-chat number, not the real id 7
+		$t->number = 2; // global number (= id) shown on the card
 
 		$players = [1 => new Player(1, 10, 'andrey', 'Андрей')];
 		for ($i = 2; $i <= 9; $i++) {

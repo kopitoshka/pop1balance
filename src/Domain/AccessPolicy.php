@@ -21,6 +21,7 @@ class AccessPolicy {
 	*/
 	public const LEVELS_OWNER_ONLY = 'Уровни игроков меняет только главный админ.';
 	public const OWNER_ONLY = 'Это доступно только главному админу.';
+	public const MANAGE_ONLY = 'Менять турнир может только его автор или главный админ.';
 
 	public function __construct(
 		protected AdminRepository $admins,
@@ -56,19 +57,27 @@ class AccessPolicy {
 		}
 	}
 
+	/**
+		Who may create a tournament in a group: chat admins (and the owner), unless
+		ANYONE_CAN_CREATE_TOURNAMENT is on — then any player.
+	*/
 	public function assertCanCreateTournament(int $chat_id, int $player_id): void {
 		if (!$this->anyone_can_create_tournament) {
 			$this->assertChatAdmin($chat_id, $player_id);
 		}
 	}
 
+	/**
+		Edit / open / close / cancel: only the tournament's author (organizer) or the bot owner.
+		Group admins have no special rights here.
+	*/
 	public function canManageTournament(Tournament $tournament, int $player_id): bool {
-		return $tournament->organizer_id === $player_id || $this->isChatAdmin($tournament->chat_id, $player_id);
+		return $tournament->organizer_id === $player_id || $this->isOwner($player_id);
 	}
 
 	public function assertCanManageTournament(Tournament $tournament, int $player_id): void {
 		if (!$this->canManageTournament($tournament, $player_id)) {
-			throw new PermissionDenied('Менять турнир может только его организатор или админ чата.');
+			throw new PermissionDenied(self::MANAGE_ONLY);
 		}
 	}
 

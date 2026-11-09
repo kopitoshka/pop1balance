@@ -153,10 +153,17 @@ class TournamentServiceTest extends IntegrationTestCase {
 			$this->app->tournaments->closeRegistration($vasya->id, $t->id);
 			self::fail('Regular player must not close registration');
 		} catch (PermissionDenied $e) {
-			self::assertStringContainsString('организатор', $e->getMessage());
+			self::assertStringContainsString('автор', $e->getMessage());
 		}
 
-		$t = $this->app->tournaments->closeRegistration($this->admin->id, $t->id);
+		try {
+			$this->app->tournaments->closeRegistration($this->admin->id, $t->id);
+			self::fail('Chat admin who is not the author must not manage the tournament');
+		} catch (PermissionDenied $e) {
+			self::assertStringContainsString('автор', $e->getMessage());
+		}
+
+		$t = $this->app->tournaments->closeRegistration($this->owner->id, $t->id);
 		self::assertSame(TournamentStatus::CLOSED, $t->status);
 		$t = $this->app->tournaments->start($this->owner->id, $t->id);
 		$t = $this->app->tournaments->finish($this->owner->id, $t->id);
