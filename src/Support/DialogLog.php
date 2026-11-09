@@ -12,7 +12,7 @@ use P1Bot\Telegram\TgUser;
 	One entry per line, continuation lines indented with a tab:
 
 		[2026-11-09 18:42:07 MSK] личка @vasya: хочу соло
-		[2026-11-09 18:42:09 MSK] личка бот → @vasya: Записал тебя соло!
+		[2026-11-09 18:42:09 MSK] личка бот → @vasya: Записала тебя соло!
 
 	The router opens an interaction (begin) for every user message or button the bot processes;
 	DialogLoggingApi then writes the bot's replies to it. Broadcasts (announcements, reminders) happen
@@ -94,7 +94,7 @@ class DialogLog {
 	public function onEditMessage(int $chat_id, string $text): void {
 		$c = $this->current;
 		if ($c !== null && $c['private'] && $chat_id === $c['chat_id']) {
-			$this->bot('(исправил сообщение) ' . $text);
+			$this->bot('(исправила сообщение) ' . $text);
 		}
 	}
 

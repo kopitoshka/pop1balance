@@ -125,7 +125,12 @@ and `sudo setsebool -P httpd_can_network_connect 1` (the bot calls Telegram and 
 
 Optional: `DEFAULT_MAX_PLAYERS` (24), `ANYONE_CAN_CREATE_TOURNAMENT` (0), `ADMINS_CACHE_MINUTES` (10),
 `CONVERSATION_TTL_MINUTES` (30), `REMINDER_MINUTES` (`60,15`), `FINISH_AFTER_HOURS` (4), `OPENAI_TIMEOUT` (30),
-`LOG_LEVEL` (`info`; `debug` | `info` | `error`, see Logs).
+`LOG_LEVEL` (`info`; `debug` | `info` | `error`, see Logs), `DIALOG_LOG` (1, see Dialog logs),
+`BOT_PERSONA_NAME` (empty; see below).
+
+**Voice.** The bot speaks about herself in the feminine gender («записала», «поняла», «рада») — both the AI
+(`config/prompts/system.md`) and all fixed texts. `BOT_PERSONA_NAME` (e.g. `Фемида`) is optional: when set, the
+prompt tells the AI that this is her name; fixed texts never contain a name.
 
 ### 6. BotFather
 
@@ -194,7 +199,7 @@ Decisions: `ignored: no mention/reply`, `ignored: wrong bot username in mention`
 without a username: the readable history of one user with the bot. Logged: every message the bot processes (group
 mentions, replies and commands addressed to it, all private messages, edited messages it answers as `[исправлено] …`,
 buttons as `[кнопка] <label>`) and every reply to that interaction (messages, edits of private messages as
-`(исправил сообщение) …`, button popups as `(всплывающее) …`). Plain text, HTML stripped, continuation lines start with a tab:
+`(исправила сообщение) …`, button popups as `(всплывающее) …`). Plain text, HTML stripped, continuation lines start with a tab:
 
 ```
 [2026-11-09 18:42:07 MSK] группа «P1 турниры» @vasya: @pop1_bot запиши меня
@@ -205,7 +210,7 @@ buttons as `[кнопка] <label>`) and every reply to that interaction (messag
 	🗓 14.11.2026 ⏰ 19:00 МСК
 	…
 [2026-11-09 18:42:20 MSK] личка @vasya: [кнопка] 🙋 Записаться соло
-[2026-11-09 18:42:20 MSK] личка бот → @vasya: (всплывающее) Записал тебя соло! Команду соберёте уже в игре.
+[2026-11-09 18:42:20 MSK] личка бот → @vasya: (всплывающее) Записала тебя соло! Команду соберёте уже в игре.
 ```
 
 Announcements, their edits and cron reminders are broadcasts and are not written there; the AI's tool calls stay

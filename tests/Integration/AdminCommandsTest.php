@@ -63,7 +63,7 @@ class AdminCommandsTest extends IntegrationTestCase {
 		self::assertSame($card_id, $edit['message_id']);
 		self::assertStringContainsString('Опубликовано', $edit['text']);
 		self::assertStringNotContainsString('Публикуем или', $edit['text']);
-		self::assertStringContainsString('Опубликовал', $this->http->lastText());
+		self::assertStringContainsString('Опубликовала', $this->http->lastText());
 	}
 
 	public function testUnclearReplyToCardDoesNotPublish(): void {

@@ -346,7 +346,21 @@ class Bootstrap {
 	protected function systemPrompt(): string {
 		$path = (string) ($this->config['paths']['prompt'] ?? dirname(__DIR__) . '/config/prompts/system.md');
 		$prompt = is_file($path) ? (string) file_get_contents($path) : '';
-		return str_replace('{bot_username}', $this->bot->username, $prompt);
+		$prompt = str_replace('{bot_username}', $this->bot->username, $prompt);
+		return self::withPersonaName($prompt, (string) ($this->config['persona_name'] ?? ''));
+	}
+
+	/**
+		BOT_PERSONA_NAME: when set, the prompt tells the model her name (after the first line).
+	*/
+	public static function withPersonaName(string $prompt, string $name): string {
+		$name = mb_substr(trim((string) preg_replace('/\s+/u', ' ', $name)), 0, 50);
+		if ($name === '') {
+			return $prompt;
+		}
+		$line = sprintf('Тебя зовут %s. Если спрашивают, как тебя зовут, представляйся так.', $name);
+		$parts = explode("\n", $prompt, 2);
+		return $parts[0] . "\n" . $line . (isset($parts[1]) ? "\n" . $parts[1] : '');
 	}
 
 	/**

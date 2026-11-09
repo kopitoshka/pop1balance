@@ -32,7 +32,7 @@ class CallbackHandlerTest extends IntegrationTestCase {
 		$vasya = $this->player('vasya');
 		$this->dispatch($this->press($vasya, 'psolo:' . $t->id));
 		self::assertSame('main', $this->app->tournaments->lineup($t->id)->placementOf($vasya->id));
-		self::assertStringContainsString('Записал тебя соло', $this->lastAnswer());
+		self::assertStringContainsString('Записала тебя соло', $this->lastAnswer());
 		$edit = $this->http->sent('editMessageText')[0];
 		self::assertSame(self::CHAT_ID, $edit['chat_id'], 'the group card is edited');
 		self::assertStringContainsString("🙋 <b>Ищут команду:</b>\n@vasya", $edit['text']);
@@ -48,7 +48,7 @@ class CallbackHandlerTest extends IntegrationTestCase {
 		self::assertStringContainsString('ты в резерве', $this->lastAnswer());
 
 		$this->dispatch($this->press($vasya, 'punsolo:' . $t->id));
-		self::assertStringContainsString('Снял тебя', $this->lastAnswer());
+		self::assertStringContainsString('Сняла тебя', $this->lastAnswer());
 		self::assertNull($this->app->tournaments->lineup($t->id)->placementOf($vasya->id));
 		$sent = $this->http->sent('sendMessage');
 		self::assertSame('psolo:' . $t->id, end($sent)['reply_markup']['inline_keyboard'][0][0]['callback_data']);

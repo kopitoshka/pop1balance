@@ -213,7 +213,7 @@ class PrivateChatTest extends IntegrationTestCase {
 
 	public function testOwnerCommandsWorkInPrivate(): void {
 		$vasya = $this->player('vasya');
-		self::assertSame('Записал: @vasya — высокий (5).', $this->say($this->owner, '/level @vasya 5'));
+		self::assertSame('Записала: @vasya — высокий (5).', $this->say($this->owner, '/level @vasya 5'));
 		self::assertSame(5, $this->app->balances->levelOf($this->app->balances->findDefault()->id, $vasya->id));
 		self::assertStringContainsString('@vasya — высокий (5)', $this->say($this->owner, '/balance'));
 		self::assertStringContainsString('только главный админ', $this->say($this->admin, '/level @vasya 2'));
@@ -235,7 +235,7 @@ class PrivateChatTest extends IntegrationTestCase {
 		$sent = $this->http->sent('sendMessage');
 		self::assertSame(self::CHAT_ID, $sent[0]['chat_id']);
 		self::assertSame('💬 Записаться / вопросы в личке', $sent[0]['reply_markup']['inline_keyboard'][0][0]['text']);
-		self::assertStringContainsString('Опубликовал! Анонс уже в группе <b>P1 турниры</b>', end($sent)['text']);
+		self::assertStringContainsString('Опубликовала! Анонс уже в группе <b>P1 турниры</b>', end($sent)['text']);
 		self::assertStringContainsString('private: card reply', $this->log->text());
 	}
 
@@ -341,7 +341,7 @@ class PrivateChatTest extends IntegrationTestCase {
 
 		// The next message continues the dialog without a reply.
 		$this->http->queueOpenAi($this->functionCall('join_solo', ['tournament_id' => 1]));
-		$this->http->queueOpenAi($this->text('Записал!'));
+		$this->http->queueOpenAi($this->text('Записала!'));
 		$this->say($vasya, 'на субботний');
 		$input = $this->aiRequests()[0]['json']['input'];
 		self::assertSame(['role' => 'user', 'content' => 'хочу поиграть соло'], $input[1]);

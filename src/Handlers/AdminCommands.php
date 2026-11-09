@@ -345,7 +345,7 @@ class AdminCommands {
 			return '';
 		}
 		$this->announcer->refresh($t->id);
-		return "Обновил:\n" . $this->line($t);
+		return "Обновила:\n" . $this->line($t);
 	}
 
 	protected function open(Context $ctx, string $args): string {
@@ -390,7 +390,7 @@ class AdminCommands {
 
 		$this->balances->setLevel($ctx->groupId(), $ctx->actor->id, $player->id, $level, $balance_id);
 		return sprintf(
-			'Записал: %s — %s (%d).',
+			'Записала: %s — %s (%d).',
 			Html::e($player->mention()),
 			Levels::name($level),
 			$level,
@@ -458,7 +458,7 @@ class AdminCommands {
 
 	protected static function intArg(string $value, string $what): int {
 		if (!preg_match('/^\d{1,4}$/', trim($value))) {
-			throw new ValidationError(sprintf('Не понял %s: «%s». Нужно число.', $what, $value));
+			throw new ValidationError(sprintf('Не поняла %s: «%s». Нужно число.', $what, $value));
 		}
 		return (int) $value;
 	}

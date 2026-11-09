@@ -169,6 +169,6 @@ class MessageHandler {
 
 	public function publishedText(int $group_id): string {
 		$where = $this->groups !== null ? ' в группе ' . Html::b($this->groups->title($group_id)) : ' в группе';
-		return 'Опубликовал! Анонс уже' . $where . ', регистрация открыта 🎉';
+		return 'Опубликовала! Анонс уже' . $where . ', регистрация открыта 🎉';
 	}
 }

@@ -80,7 +80,7 @@ class ScaleHiddenTest extends IntegrationTestCase {
 		self::assertSame('Это доступно только главному админу.', $this->http->lastText());
 
 		$this->dispatch($this->privateMessage($this->owner, '/level @vasya 5'));
-		self::assertSame('Записал: @vasya — высокий (5).', $this->http->lastText());
+		self::assertSame('Записала: @vasya — высокий (5).', $this->http->lastText());
 		self::assertSame(5, $this->app->balances->levelOf($this->app->balances->findDefault()->id, $vasya->id));
 	}
 

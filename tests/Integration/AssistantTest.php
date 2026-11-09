@@ -26,7 +26,7 @@ class AssistantTest extends IntegrationTestCase {
 		]));
 		$this->http->queueOpenAi($this->text(
 			'resp_2',
-			'Записал Wolves: ты, @vasya и @petya. Вы в основном составе <3',
+			'Записала Wolves: ты, @vasya и @petya. Вы в основном составе <3',
 		));
 
 		$update = $this->privateMessage($cap, '@' . self::BOT_USERNAME . ' запиши нас Wolves с @vasya и @petya');
@@ -68,7 +68,7 @@ class AssistantTest extends IntegrationTestCase {
 
 		$reply = $this->http->sent('sendMessage');
 		$last = end($reply);
-		self::assertSame('Записал Wolves: ты, @vasya и @petya. Вы в основном составе &lt;3', $last['text']);
+		self::assertSame('Записала Wolves: ты, @vasya и @petya. Вы в основном составе &lt;3', $last['text']);
 		self::assertSame($update['message']['message_id'], $last['reply_parameters']['message_id']);
 	}
 
@@ -79,7 +79,7 @@ class AssistantTest extends IntegrationTestCase {
 		$this->dispatch($this->privateMessage($vasya, '@' . self::BOT_USERNAME . ' хочу играть'));
 		$bot_message_id = $this->lastSentMessageId();
 
-		$this->http->queueOpenAi($this->text('r2', 'Записал!'));
+		$this->http->queueOpenAi($this->text('r2', 'Записала!'));
 		$this->dispatch($this->privateMessage($vasya, 'на субботний', ['reply_to_message' => [
 			'message_id' => $bot_message_id,
 			'from' => ['id' => self::BOT_ID, 'is_bot' => true, 'first_name' => 'Bot'],
@@ -248,13 +248,13 @@ class AssistantTest extends IntegrationTestCase {
 		));
 
 		$this->http->queueOpenAi($this->functionCall('r2', 'c2', 'publish_tournament', ['tournament_id' => 1]));
-		$this->http->queueOpenAi($this->text('r3', 'Опубликовал, анонс в чате!'));
+		$this->http->queueOpenAi($this->text('r3', 'Опубликовала, анонс в чате!'));
 		$this->dispatch($this->privateMessage($this->owner, '@' . self::BOT_USERNAME . ' да, публикуем'));
 
 		$t = $this->app->tournament_repo->find(1);
 		self::assertSame('registration', $t->status);
 		self::assertNotNull($t->announce_msg_id);
-		self::assertSame('Опубликовал, анонс в чате!', $this->http->lastText());
+		self::assertSame('Опубликовала, анонс в чате!', $this->http->lastText());
 	}
 
 	public function testListTournamentsSendsPrettyBlockAndShortText(): void {
@@ -298,7 +298,7 @@ class AssistantTest extends IntegrationTestCase {
 		$vasya = $this->player('vasya');
 
 		$this->http->queueOpenAi($this->functionCall('r1', 'c1', 'join_solo', ['tournament_id' => 2]));
-		$this->http->queueOpenAi($this->text('r2', 'Записал!'));
+		$this->http->queueOpenAi($this->text('r2', 'Записала!'));
 		$this->dispatch($this->privateMessage($vasya, '@' . self::BOT_USERNAME . ' запиши меня соло на №2'));
 
 		self::assertSame(

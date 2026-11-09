@@ -138,15 +138,15 @@ class CallbackHandler {
 				$this->announcer->refresh($t->id);
 				$placement = $this->tournaments->lineup($t->id)->placementOf($player->id);
 				$text = $placement === 'reserve'
-					? 'Записал тебя соло, но мест уже нет: ты в резерве. Если кто-то снимется, поднимешься сам.'
-					: 'Записал тебя соло! Команду соберёте уже в игре.';
+					? 'Записала тебя соло, но мест уже нет: ты в резерве. Если кто-то снимется, поднимешься сам.'
+					: 'Записала тебя соло! Команду соберёте уже в игре.';
 				$this->done($query, $t, $player, $text);
 				return;
 			case 'punsolo':
 				$t = $this->tournaments->get($id);
 				$this->teams->leaveSolo($t->id, $player->id);
 				$this->announcer->refresh($t->id);
-				$this->done($query, $t, $player, 'Снял тебя с турнира. Передумаешь — кнопки ниже.');
+				$this->done($query, $t, $player, 'Сняла тебя с турнира. Передумаешь — кнопки ниже.');
 				return;
 			case 'pteam':
 				$this->askTeam($query, $player, $this->tournaments->get($id));
@@ -267,6 +267,6 @@ class CallbackHandler {
 
 	protected function publishedText(Tournament $t): string {
 		$where = $this->groups !== null ? ' в группе ' . Html::b($this->groups->title($t->chat_id)) : ' в группе';
-		return 'Опубликовал! Анонс уже' . $where . ', регистрация открыта 🎉';
+		return 'Опубликовала! Анонс уже' . $where . ', регистрация открыта 🎉';
 	}
 }

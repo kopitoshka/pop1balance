@@ -55,6 +55,8 @@ return [
 	],
 	'admins_cache_minutes'     => Env::int('ADMINS_CACHE_MINUTES', 10),
 	'conversation_ttl_minutes' => Env::int('CONVERSATION_TTL_MINUTES', 30),
+	// The bot's name for the AI (she speaks in the feminine gender); empty = no name
+	'persona_name' => Env::get('BOT_PERSONA_NAME', ''),
 	'cron' => [
 		'reminder_minutes'   => $reminders === [] ? [60, 15] : $reminders,
 		'finish_after_hours' => Env::int('FINISH_AFTER_HOURS', 4),
