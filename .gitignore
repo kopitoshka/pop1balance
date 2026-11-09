@@ -5,3 +5,4 @@
 /.phpunit.cache/
 /storage/runtime/*
 !/storage/runtime/.gitkeep
+/bin/__pycache__/
