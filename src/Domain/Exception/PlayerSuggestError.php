@@ -46,6 +46,10 @@ class PlayerSuggestError extends ValidationError {
 			}
 			$rows[] = [['text' => 'Может, ты про ' . $label . '?', 'callback_data' => $data]];
 		}
-		return $rows === [] ? [] : ['reply_markup' => ['inline_keyboard' => $rows]];
+		if ($rows === []) {
+			return [];
+		}
+		$rows[] = [['text' => '✖️ Отмена', 'callback_data' => 'pcancel']];
+		return ['reply_markup' => ['inline_keyboard' => $rows]];
 	}
 }

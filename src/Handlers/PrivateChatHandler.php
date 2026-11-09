@@ -8,6 +8,7 @@ use P1Bot\App\CreateAccess;
 use P1Bot\App\DraftCards;
 use P1Bot\App\PrivateGroups;
 use P1Bot\App\OrganizerTeams;
+use P1Bot\App\PendingTextGuard;
 use P1Bot\App\TeamAddFlow;
 use P1Bot\App\PrivateViews;
 use P1Bot\Domain\AccessPolicy;
@@ -87,6 +88,7 @@ class PrivateChatHandler {
 		protected ?CreateAccess $create_access = null,
 		protected ?TeamAddFlow $team_add = null,
 		protected ?OrganizerTeams $organizer = null,
+		protected ?PendingTextGuard $pending_guard = null,
 	) {
 	}
 
@@ -183,6 +185,18 @@ class PrivateChatHandler {
 	public function handle(Message $message, Player $actor, array $decision): void {
 		$this->players->markDmStarted($actor->id, $this->clock->now());
 		$chat_id = $message->chat_id;
+		if (
+			$this->pending_guard !== null
+			&& in_array($decision['kind'], [
+				self::COMMAND,
+				self::UNKNOWN_COMMAND,
+				self::START,
+				self::START_TOURNAMENT,
+				self::START_GROUP,
+			], true)
+		) {
+			$this->pending_guard->abortOnCommand($actor->id, $chat_id);
+		}
 		$is_owner = $this->access->isOwner($actor->id);
 		$first_name = $message->from !== null ? $message->from->first_name : '';
 		switch ($decision['kind']) {

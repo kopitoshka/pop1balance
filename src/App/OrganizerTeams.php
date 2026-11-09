@@ -98,7 +98,12 @@ class OrganizerTeams {
 			throw new DomainError('Команды турнира правит только организатор или главный админ.');
 		}
 		$this->storePending($actor->id, $chat_id, ['op' => 'org_team_name', 'tournament_id' => $tournament_id]);
-		$this->api->sendMessage($chat_id, 'Как назовём новую команду? Напиши название одним сообщением.', $reply_to);
+		$this->api->sendMessage(
+			$chat_id,
+			'Как назовём новую команду? Напиши название одним сообщением.',
+			$reply_to,
+			['reply_markup' => ['inline_keyboard' => PendingTextGuard::withCancel()]],
+		);
 	}
 
 	public function startRename(int $chat_id, Player $actor, int $team_id, ?int $reply_to = null): void {
@@ -112,6 +117,7 @@ class OrganizerTeams {
 			$chat_id,
 			'Новое название для «' . Html::e($entry->team->name) . '»? Напиши одним сообщением.',
 			$reply_to,
+			['reply_markup' => ['inline_keyboard' => PendingTextGuard::withCancel()]],
 		);
 	}
 
@@ -314,7 +320,7 @@ class OrganizerTeams {
 			$chat_id,
 			'Кто капитан команды «' . Html::e($name) . '»? Выбери, напиши часть ника или из Telegram:',
 			$reply_to,
-			$rows === [] ? [] : ['reply_markup' => ['inline_keyboard' => $rows]],
+			['reply_markup' => ['inline_keyboard' => PendingTextGuard::withCancel($rows)]],
 		);
 		$this->api->sendMessage($chat_id, 'Можно выбрать капитана в Telegram:', null, [
 			'reply_markup' => [
@@ -363,7 +369,7 @@ class OrganizerTeams {
 			$chat_id,
 			'Капитан для «' . Html::e($name) . '» — выбери:',
 			$reply_to,
-			['reply_markup' => ['inline_keyboard' => $rows]],
+			['reply_markup' => ['inline_keyboard' => PendingTextGuard::withCancel($rows)]],
 		);
 		return true;
 	}
@@ -427,6 +433,7 @@ class OrganizerTeams {
 	*/
 	protected function storePending(int $actor_id, int $chat_id, array $action): void {
 		$now = $this->clock->now();
+		$this->pending->clearChat($actor_id, $chat_id);
 		$this->pending->create(
 			$actor_id,
 			$chat_id,

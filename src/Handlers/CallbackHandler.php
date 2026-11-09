@@ -11,6 +11,7 @@ use P1Bot\App\DraftCards;
 use P1Bot\App\PrivateGroups;
 use P1Bot\App\PrivateViews;
 use P1Bot\App\OrganizerTeams;
+use P1Bot\App\PendingTextGuard;
 use P1Bot\App\TeamAddFlow;
 use P1Bot\App\TeamCards;
 use P1Bot\Domain\Exception\DomainError;
@@ -56,6 +57,7 @@ class CallbackHandler {
 		protected ?TeamCards $team_cards = null,
 		protected ?PlayerRepository $players = null,
 		protected ?OrganizerTeams $organizer = null,
+		protected ?PendingTextGuard $pending_guard = null,
 	) {
 	}
 
@@ -77,6 +79,15 @@ class CallbackHandler {
 	}
 
 	public function handle(CallbackQuery $query, Player $player): void {
+		if (
+			$query->chat_id !== null
+			&& $query->chat_id > 0
+			&& $query->data === PendingTextGuard::CANCEL_DATA
+			&& $this->pending_guard !== null
+		) {
+			$this->pending_guard->handleCancel($query, $player);
+			return;
+		}
 		if (preg_match('/^sug:(\d+):(\d+)$/', $query->data, $sm) && $this->pending_runner !== null) {
 			$this->pending_runner->handle(
 				(int) $sm[1],
@@ -87,6 +98,9 @@ class CallbackHandler {
 				$query->message_id,
 			);
 			return;
+		}
+		if ($query->chat_id !== null && $query->chat_id > 0 && $this->pending_guard !== null) {
+			$this->pending_guard->abortIfForeignCallback($player->id, (int) $query->chat_id, $query->data);
 		}
 		if ($query->chat_id !== null && $query->chat_id > 0 && $this->handleTeamAddCallbacks($query, $player)) {
 			return;

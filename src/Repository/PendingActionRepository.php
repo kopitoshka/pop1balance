@@ -68,6 +68,16 @@ class PendingActionRepository {
 	}
 
 	/**
+		Remove all pending actions for this actor in this chat.
+	*/
+	public function clearChat(int $actor_player_id, int $chat_id): int {
+		return $this->db->run(
+			'DELETE FROM pending_player_actions WHERE actor_player_id = :a AND chat_id = :c',
+			['a' => $actor_player_id, 'c' => $chat_id],
+		)->rowCount();
+	}
+
+	/**
 		Latest non-expired pending action for this actor in this chat (deleted on take).
 		When $op is set, only rows whose action.op matches.
 

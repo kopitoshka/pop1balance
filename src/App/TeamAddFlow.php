@@ -55,6 +55,7 @@ class TeamAddFlow {
 			));
 		}
 		$now = $this->clock->now();
+		$this->pending->clearChat($actor->id, $chat_id);
 		$this->pending->create(
 			$actor->id,
 			$chat_id,
@@ -75,7 +76,7 @@ class TeamAddFlow {
 			. "\n<i>или напиши часть ника</i>";
 		$extra = [
 			'reply_markup' => [
-				'inline_keyboard' => $rows,
+				'inline_keyboard' => PendingTextGuard::withCancel($rows),
 			],
 		];
 		// Reply keyboard with Telegram user picker under the message (separate send).
@@ -121,24 +122,23 @@ class TeamAddFlow {
 		}
 		$query = trim($text);
 		if ($query === '' || mb_strlen($query) > 64) {
-			$this->api->sendMessage($chat_id, 'Напиши часть ника (или @username).', $reply_to);
+			$this->restoreTeamAddPending($actor->id, $chat_id, $team_id);
+			$this->api->sendMessage(
+				$chat_id,
+				'Напиши часть ника (или @username).',
+				$reply_to,
+				['reply_markup' => ['inline_keyboard' => PendingTextGuard::withCancel()]],
+			);
 			return true;
 		}
-		// Restore pending so another try / picker still works briefly.
-		$now = $this->clock->now();
-		$this->pending->create(
-			$actor->id,
-			$chat_id,
-			['op' => 'team_add', 'team_id' => $team_id],
-			$now->add(new DateInterval('PT' . self::SEARCH_TTL_SECONDS . 'S')),
-			$now,
-		);
+		$this->restoreTeamAddPending($actor->id, $chat_id, $team_id);
 		$found = $this->players->searchPartial($query, 8, $this->takenPlayerIds($team_id));
 		if ($found === []) {
 			$this->api->sendMessage(
 				$chat_id,
 				'Никого не нашла по «' . Html::e($query) . '». Попробуй иначе или выбери из Telegram.',
 				$reply_to,
+				['reply_markup' => ['inline_keyboard' => PendingTextGuard::withCancel()]],
 			);
 			return true;
 		}
@@ -153,7 +153,7 @@ class TeamAddFlow {
 			$chat_id,
 			'Нашла по «' . Html::e($query) . '» — выбери:',
 			$reply_to,
-			['reply_markup' => ['inline_keyboard' => $rows]],
+			['reply_markup' => ['inline_keyboard' => PendingTextGuard::withCancel($rows)]],
 		);
 		return true;
 	}
@@ -162,6 +162,7 @@ class TeamAddFlow {
 		Add a known player from a candidate button; refresh the team card.
 	*/
 	public function addKnown(int $chat_id, Player $actor, int $team_id, int $player_id, ?int $reply_to = null): string {
+		$this->pending->clearChat($actor->id, $chat_id);
 		$entry = $this->teams->addPlayer($actor->id, $team_id, $player_id);
 		$t = $this->tournaments->get($entry->team->tournament_id);
 		$this->announcer->refresh($t->id);
@@ -218,14 +219,7 @@ class TeamAddFlow {
 		@return array<string, mixed>
 	*/
 	public function suggestMarkup(Player $actor, int $team_id, int $chat_id): array {
-		$now = $this->clock->now();
-		$this->pending->create(
-			$actor->id,
-			$chat_id,
-			['op' => 'team_add', 'team_id' => $team_id],
-			$now->add(new DateInterval('PT' . self::SEARCH_TTL_SECONDS . 'S')),
-			$now,
-		);
+		$this->restoreTeamAddPending($actor->id, $chat_id, $team_id);
 		$entry = $this->teams->get($team_id);
 		$t = $this->tournaments->get($entry->team->tournament_id);
 		$candidates = $this->players->teamAddCandidates($actor->id, $t->id, self::CANDIDATE_LIMIT);
@@ -236,7 +230,19 @@ class TeamAddFlow {
 				'callback_data' => 'tadd:' . $team_id . ':' . $player->id,
 			]];
 		}
-		return $rows === [] ? [] : ['reply_markup' => ['inline_keyboard' => $rows]];
+		return ['reply_markup' => ['inline_keyboard' => PendingTextGuard::withCancel($rows)]];
+	}
+
+	protected function restoreTeamAddPending(int $actor_id, int $chat_id, int $team_id): void {
+		$now = $this->clock->now();
+		$this->pending->clearChat($actor_id, $chat_id);
+		$this->pending->create(
+			$actor_id,
+			$chat_id,
+			['op' => 'team_add', 'team_id' => $team_id],
+			$now->add(new DateInterval('PT' . self::SEARCH_TTL_SECONDS . 'S')),
+			$now,
+		);
 	}
 
 	protected function buttonLabel(Player $player): string {
