@@ -298,20 +298,25 @@ class PlayerRepository {
 			$scores[$pid] = max($scores[$pid] ?? 0, 80);
 		}
 		if ($chat_ids !== []) {
+			// Native MySQL prepares forbid reusing the same named placeholder twice in one SQL.
 			$params = [];
-			$keys = [];
+			$keys_a = [];
+			$keys_b = [];
 			foreach ($chat_ids as $i => $cid) {
-				$key = 'c' . $i;
-				$keys[] = ':' . $key;
-				$params[$key] = $cid;
+				$ka = 'ca' . $i;
+				$kb = 'cb' . $i;
+				$keys_a[] = ':' . $ka;
+				$keys_b[] = ':' . $kb;
+				$params[$ka] = $cid;
+				$params[$kb] = $cid;
 			}
 			$sql = 'SELECT DISTINCT tm.player_id AS pid FROM team_members tm
 				INNER JOIN tournaments tr ON tr.id = tm.tournament_id
-				WHERE tr.chat_id IN (' . implode(',', $keys) . ')
+				WHERE tr.chat_id IN (' . implode(',', $keys_a) . ')
 				UNION
 				SELECT DISTINCT sp.player_id FROM solo_players sp
 				INNER JOIN tournaments tr ON tr.id = sp.tournament_id
-				WHERE tr.chat_id IN (' . implode(',', $keys) . ')';
+				WHERE tr.chat_id IN (' . implode(',', $keys_b) . ')';
 			foreach ($this->db->fetchAll($sql, $params) as $row) {
 				$pid = (int) $row['pid'];
 				$scores[$pid] = max($scores[$pid] ?? 0, 40);

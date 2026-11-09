@@ -40,9 +40,37 @@ class Database {
 		@param array<string, scalar|null> $params
 	*/
 	public function run(string $sql, array $params = []): PDOStatement {
+		self::assertUniqueNamedPlaceholders($sql);
 		$stmt = $this->pdo->prepare($sql);
 		$stmt->execute($params);
 		return $stmt;
+	}
+
+	/**
+		Native PDO MySQL prepares (ATTR_EMULATE_PREPARES=false) reject a named placeholder
+		used more than once in one statement (HY093). SQLite is lenient — catch it here.
+	*/
+	public static function assertUniqueNamedPlaceholders(string $sql): void {
+		if (!preg_match_all('/:([a-zA-Z_][a-zA-Z0-9_]*)/', $sql, $m)) {
+			return;
+		}
+		$seen = [];
+		foreach ($m[1] as $name) {
+			if (isset($seen[$name])) {
+				throw new \InvalidArgumentException(
+					'Duplicate named placeholder :' . $name . ' in SQL (MySQL native prepares forbid reuse)',
+				);
+			}
+			$seen[$name] = true;
+		}
+	}
+
+	/**
+		@return list<string> placeholder names in order of appearance (may contain duplicates)
+	*/
+	public static function namedPlaceholders(string $sql): array {
+		preg_match_all('/:([a-zA-Z_][a-zA-Z0-9_]*)/', $sql, $m);
+		return $m[1];
 	}
 
 	/**

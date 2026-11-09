@@ -100,6 +100,11 @@ class TeamAddFlow {
 		]);
 	}
 
+	/** Whether a team_add search pending is waiting (does not consume). */
+	public function hasPending(int $actor_id, int $chat_id): bool {
+		return $this->pending->peekLatest($actor_id, $chat_id, $this->clock->now(), 'team_add') !== null;
+	}
+
 	/**
 		Partial-match search after the offer (pending team_add).
 		@return bool true if pending was consumed (even on empty results)

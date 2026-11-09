@@ -179,6 +179,19 @@ class OrganizerTeams {
 	}
 
 	/**
+		Whether a name/captain/rename pending is waiting (for decide/log, does not consume).
+	*/
+	public function hasPending(int $actor_id, int $chat_id): ?string {
+		foreach (['org_team_name', 'org_team_captain', 'org_rename'] as $op) {
+			$row = $this->pending->peekLatest($actor_id, $chat_id, $this->clock->now(), $op);
+			if ($row !== null) {
+				return $op;
+			}
+		}
+		return null;
+	}
+
+	/**
 		Handle pending text for org_team_name / org_team_captain / org_rename.
 	*/
 	public function handlePendingText(int $chat_id, Player $actor, string $text, ?int $reply_to = null): bool {
@@ -279,12 +292,17 @@ class OrganizerTeams {
 			$this->api->sendMessage($chat_id, 'Название не должно быть пустым — напиши ещё раз.', $reply_to);
 			return true;
 		}
+		try {
+			$candidates = $this->players->teamAddCandidates($actor->id, $tournament_id, 8);
+		} catch (\Throwable $e) {
+			$this->storePending($actor->id, $chat_id, $action);
+			throw $e;
+		}
 		$this->storePending($actor->id, $chat_id, [
 			'op' => 'org_team_captain',
 			'tournament_id' => $tournament_id,
 			'name' => $name,
 		]);
-		$candidates = $this->players->teamAddCandidates($actor->id, $tournament_id, 8);
 		$rows = [];
 		foreach ($candidates as $player) {
 			$rows[] = [[

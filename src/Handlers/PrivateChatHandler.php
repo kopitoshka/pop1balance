@@ -43,6 +43,7 @@ class PrivateChatHandler {
 	public const AI = 'ai';
 	public const FALLBACK = 'fallback';
 	public const USERS_SHARED = 'users_shared';
+	public const PENDING = 'pending';
 
 	/**
 		Plain phrases handled without the AI (matched before the model, even when AI is on).
@@ -127,12 +128,35 @@ class PrivateChatHandler {
 			// Help / levels / tournaments: always deterministic, never via the model.
 			return ['kind' => $keyword] + $decision;
 		}
+		$pending = $this->pendingKind($actor, $message);
+		if ($pending !== null) {
+			return ['kind' => self::PENDING, 'command' => $pending] + $decision;
+		}
 		if (!$this->messages->hasAi()) {
 			return ['kind' => self::FALLBACK] + $decision;
 		}
 		// Tournament numbers are global: free-text AI does not need a chosen group.
 		// Tournaments are global: free-text AI does not need a chosen group to create.
 		return $decision;
+	}
+
+	/**
+		Pending text flow (organizer create/rename or team-add search), if any.
+	*/
+	protected function pendingKind(Player $actor, Message $message): ?string {
+		if ($message->text === '') {
+			return null;
+		}
+		if ($this->organizer !== null) {
+			$op = $this->organizer->hasPending($actor->id, $message->chat_id);
+			if ($op !== null) {
+				return $op;
+			}
+		}
+		if ($this->team_add !== null && $this->team_add->hasPending($actor->id, $message->chat_id)) {
+			return 'team_add';
+		}
+		return null;
 	}
 
 	/**
@@ -201,7 +225,7 @@ class PrivateChatHandler {
 		}
 		if (
 			$this->organizer !== null
-			&& in_array($decision['kind'], [self::AI, self::FALLBACK], true)
+			&& in_array($decision['kind'], [self::AI, self::FALLBACK, self::PENDING], true)
 			&& $message->text !== ''
 			&& $this->organizer->handlePendingText($chat_id, $actor, $message->text, $message->message_id)
 		) {
@@ -209,7 +233,7 @@ class PrivateChatHandler {
 		}
 		if (
 			$this->team_add !== null
-			&& in_array($decision['kind'], [self::AI, self::FALLBACK], true)
+			&& in_array($decision['kind'], [self::AI, self::FALLBACK, self::PENDING], true)
 			&& $message->text !== ''
 			&& $this->team_add->handleSearchText($chat_id, $actor, $message->text, $message->message_id)
 		) {
@@ -261,6 +285,8 @@ class PrivateChatHandler {
 				return 'fallback text (AI off: OPENAI_API_KEY is empty)';
 			case self::USERS_SHARED:
 				return 'users_shared';
+			case self::PENDING:
+				return 'pending ' . (string) ($decision['command'] ?? '');
 		}
 		return $decision['kind'];
 	}

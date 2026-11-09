@@ -101,6 +101,29 @@ class OrganizerTeamsTest extends IntegrationTestCase {
 		unset($other);
 	}
 
+
+	public function testCreateTeamNameWithSharedGroupCandidates(): void {
+		// Regression: teamAddCandidates UNION reused :cN — MySQL HY093; SQLite hid it.
+		$t = $this->openTournament(3);
+		$cap = $this->player('candcap');
+		$this->rate($cap, 3);
+		// Shared group history so chat_ids branch (UNION) runs.
+		$past = $this->openTournament(2, '3,3');
+		$this->app->teams->createTeam($past->id, $this->owner->id, 'Past', [$cap->id]);
+
+		$this->dispatch($this->press($this->owner, 'otnew:' . $t->id));
+		$this->http->reset();
+		$this->dispatch($this->privateMessage($this->owner, 'Весёлая семейка'));
+		$texts = array_column($this->http->sent('sendMessage'), 'text');
+		self::assertTrue(
+			(bool) array_filter($texts, static fn ($x) => str_contains((string) $x, 'Кто капитан')),
+			'expected captain prompt after team name',
+		);
+		self::assertContains('otcc:' . $t->id . ':' . $cap->id, $this->allCallbacks());
+		// Log path should be pending, not ai.
+		// (decide kind is visible via router log only when logger set; handler path is enough here.)
+	}
+
 	public function testCreateTeamAsOrganizerViaDomain(): void {
 		$t = $this->openTournament(2, null);
 		$cap = $this->player('solo_cap');
