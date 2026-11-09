@@ -71,6 +71,9 @@ class MessageHandler {
 			// The pretty list goes as is; the model only adds a short phrase.
 			$message_id = $this->sendList($ctx);
 		}
+		if (!empty($reply['past_list']) && $this->listing !== null) {
+			$message_id = $this->sendHistory($ctx);
+		}
 		if (!empty($reply['levels'])) {
 			$message_id = $this->api->sendMessage($chat_id, Texts::levels(), $reply_to);
 		}
@@ -95,6 +98,22 @@ class MessageHandler {
 	*/
 	public function mode(): string {
 		return $this->assistant !== null ? 'ai' : 'fallback text (AI off: OPENAI_API_KEY is empty)';
+	}
+
+	/**
+		/history list for the AI path.
+		@return int|null id of the last message sent
+	*/
+	protected function sendHistory(Context $ctx): ?int {
+		$message_id = null;
+		$messages = $this->listing->historyMessages();
+		if ($messages === []) {
+			return $this->api->sendMessage($ctx->chatId(), 'Пока прошедших турниров нет 🙂', $ctx->message->message_id);
+		}
+		foreach ($messages as $list) {
+			$message_id = $this->api->sendMessage($ctx->chatId(), $list, $ctx->message->message_id);
+		}
+		return $message_id;
 	}
 
 	/**

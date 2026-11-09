@@ -37,6 +37,15 @@ try {
 	}
 	$api->setWebhook($url, $secret, Update::ALLOWED_UPDATES);
 	fwrite(STDOUT, "Webhook set: $url\n");
+	$api->setMyCommands([
+		['command' => 'start', 'description' => 'Турниры с кнопками записи'],
+		['command' => 'tournaments', 'description' => 'Активные турниры'],
+		['command' => 'history', 'description' => 'Прошедшие турниры'],
+		['command' => 'info', 'description' => 'Состав турнира (/info N)'],
+		['command' => 'levels', 'description' => 'Уровни игроков'],
+		['command' => 'help', 'description' => 'Подсказка по командам'],
+	]);
+	fwrite(STDOUT, "Bot commands updated\n");
 } catch (Throwable $e) {
 	fwrite(STDERR, 'Error: ' . $e->getMessage() . "\n");
 	exit(1);

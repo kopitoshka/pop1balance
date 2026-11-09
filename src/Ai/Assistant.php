@@ -40,9 +40,11 @@ class Assistant {
 
 		'list' = the model asked for the tournament list: the caller sends the pretty list before the text.
 
+		'past_list' = the model asked for /history: the caller sends the past-tournaments list.
+
 		'groups' = the action needs a group choice (chat_id => title): the caller adds group buttons.
 
-		@return array{text: string, remember: callable(int): void, card: ?int, history: list<array<string, mixed>>, list: bool, levels: bool, groups: array<int, string>}
+		@return array{text: string, remember: callable(int): void, card: ?int, history: list<array<string, mixed>>, list: bool, past_list: bool, levels: bool, groups: array<int, string>}
 	*/
 	public function reply(Context $ctx): array {
 		$message = $ctx->message;
@@ -76,6 +78,7 @@ class Assistant {
 
 		$card = null;
 		$list = false;
+		$past_list = false;
 		$levels = false;
 		$groups = [];
 		$response = $this->ai->createResponse($this->system_prompt, $input, $tools);
@@ -92,6 +95,9 @@ class Assistant {
 				);
 				if (!empty($result['show_list'])) {
 					$list = true;
+				}
+				if (!empty($result['show_past_list'])) {
+					$past_list = true;
 				}
 				if (!empty($result['show_levels'])) {
 					$levels = true;
@@ -120,7 +126,7 @@ class Assistant {
 		if ($card === null && $response->text !== '') {
 			$text = $response->text;
 		} else {
-			$text = ($list || $levels) && $card === null ? '' : 'Готово!'; // the list / help speaks for itself
+			$text = ($list || $past_list || $levels) && $card === null ? '' : 'Готово!'; // the list / help speaks for itself
 		}
 		$new_history = array_slice(array_merge($history, [
 			['role' => 'user', 'content' => $user_text],
@@ -144,6 +150,7 @@ class Assistant {
 			'remember' => $remember,
 			'card' => $card,
 			'list' => $list,
+			'past_list' => $past_list,
 			'levels' => $levels,
 			'groups' => $groups,
 			'history' => array_slice(

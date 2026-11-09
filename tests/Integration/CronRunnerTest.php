@@ -74,7 +74,7 @@ class CronRunnerTest extends IntegrationTestCase {
 		$edits = $this->http->sent('editMessageText');
 		self::assertStringContainsString('🎮 Идёт', end($edits)['text']);
 
-		$this->clock->advance('+3 hours');
+		$this->clock->advance('+1 hour');
 		self::assertSame(0, $cron->run()['status_changes']);
 		$this->clock->advance('+1 hour');
 		self::assertSame(1, $cron->run()['status_changes']);

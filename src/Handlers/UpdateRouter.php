@@ -200,7 +200,7 @@ class UpdateRouter {
 		}
 
 		// Fallback when GroupChat is not wired: info commands or a fixed redirect.
-		if ($cmd !== null && in_array($cmd['name'], ['help', 'start', 'tournaments', 'info', 'levels'], true)) {
+		if ($cmd !== null && in_array($cmd['name'], ['help', 'start', 'tournaments', 'history', 'info', 'levels'], true)) {
 			$this->log($update, $message, 'group: info /' . $cmd['name']);
 			$this->commands->handle($ctx, $cmd['name'], $cmd['args']);
 			return;

@@ -14,8 +14,8 @@ use P1Bot\Repository\TournamentRepository;
 /**
 	Global tournament numbers and lookup.
 
-	The number users see and type (№1, №2, /edit 1) is the tournament's database id — the same
-	in every group. Finished and cancelled tournaments drop out of the numbering (null).
+	The number users see and type (№1, №2, /edit 1, /info 1, /history) is the tournament's
+	database id — the same in every group, including finished and cancelled.
 */
 class TournamentResolver {
 
@@ -39,10 +39,10 @@ class TournamentResolver {
 	}
 
 	/**
-		Sets $t->number (null for finished/cancelled) and returns the same object.
+		Sets $t->number (= id) and returns the same object. Past tournaments keep the id so /info N works.
 	*/
 	public function number(Tournament $t): Tournament {
-		$t->number = in_array($t->status, TournamentStatus::numbered(), true) ? $t->id : null;
+		$t->number = $t->id;
 		return $t;
 	}
 
@@ -62,10 +62,17 @@ class TournamentResolver {
 	public function resolve(?int $chat_id, ?int $number, array $statuses): Tournament {
 		if ($number !== null) {
 			$t = $this->tournaments->find($number);
-			if ($t === null || !in_array($t->status, TournamentStatus::numbered(), true)) {
+			if ($t === null) {
 				throw new NotFound(sprintf('Турнира №%d сейчас нет. Список: /tournaments', $number));
 			}
-			return $this->number($t);
+			if (in_array($t->status, TournamentStatus::numbered(), true)) {
+				return $this->number($t);
+			}
+			// Finished/cancelled: only when the caller asked for them (e.g. /info, history).
+			if (in_array($t->status, $statuses, true)) {
+				return $this->number($t);
+			}
+			throw new NotFound(sprintf('Турнира №%d сейчас нет. Список: /tournaments', $number));
 		}
 		$candidates = $chat_id !== null
 			? $this->tournaments->listByChat($chat_id, $statuses)

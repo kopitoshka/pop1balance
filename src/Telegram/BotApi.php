@@ -106,6 +106,13 @@ class BotApi implements TelegramApi {
 	}
 
 	/**
+		@param list<array{command: string, description: string}> $commands
+	*/
+	public function setMyCommands(array $commands): void {
+		$this->call('setMyCommands', ['commands' => $commands]);
+	}
+
+	/**
 		@param array<string, mixed> $params
 		@return array<string, mixed>
 	*/

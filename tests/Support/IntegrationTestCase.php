@@ -90,7 +90,7 @@ abstract class IntegrationTestCase extends TestCase {
 				'anyone_can_create' => false,
 				'registration_close_minutes' => 20,
 			],
-			'cron' => ['reminder_minutes' => [60, 15], 'finish_after_hours' => 4],
+			'cron' => ['reminder_minutes' => [60, 15], 'finish_after_hours' => 2],
 			'random' => new FixedRandom(0),
 		];
 	}

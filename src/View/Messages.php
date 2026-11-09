@@ -26,12 +26,8 @@ class Messages {
 
 	public const GROUP_HELP_HINT = 'А ещё больше умею в личке — записать, собрать команду, создать турнир 😉';
 
-	/** Hint under a compact tournament list when the group message was not a known action. */
-	public const GROUP_FALLBACK_HINT = 'Все мои команды — /help 😉';
-
-	public const GROUP_FALLBACK_EMPTY = 'Пока турниров нет 🙂 Все мои команды — /help 😉';
-
-	public const GROUP_FALLBACK_PREFIX = 'Вот что у нас ближайшее:';
+	/** Unrecognized group mention: no free chat, point to /help. */
+	public const GROUP_FALLBACK = 'Не поняла 🙅‍♀️ Что я умею — /help';
 
 	public const REGISTRATION_CLOSED = 'Регистрация уже закрыта, составы не меняются ⏰';
 

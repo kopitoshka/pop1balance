@@ -10,7 +10,7 @@ PHP 8.0+ (tested on 8.0 and 8.3), MySQL 8 / MariaDB 10.5+, no framework.
 ## How it works
 
 - Webhook: `public/webhook.php`. **Everything happens in the private chat with the bot.** The group gets only
-  announcements (cards), reminders and the info commands `/tournaments`, `/info N`, `/levels`, `/help`.
+  announcements (cards), reminders and the info commands `/tournaments`, `/history`, `/info N`, `/levels`, `/help`.
   Any other command, @mention or reply to the bot in the group (joining, creating, editing, questions — admins
   included) gets one reply «Давай в личке 👉» with a URL button `https://t.me/<bot>?start=…` (see «Group»).
   No AI in the group.
@@ -125,7 +125,7 @@ and `sudo setsebool -P httpd_can_network_connect 1` (the bot calls Telegram and 
 | `DB_HOST`, `DB_PORT`, `DB_NAME`, `DB_USER`, `DB_PASSWORD` | database (or `DB_DSN` with a full PDO DSN) |
 
 Optional: `DEFAULT_MAX_PLAYERS` (24), `ANYONE_CAN_CREATE_TOURNAMENT` (0), `ADMINS_CACHE_MINUTES` (10),
-`CONVERSATION_TTL_MINUTES` (30), `REMINDER_MINUTES` (`60,15`), `FINISH_AFTER_HOURS` (4), `OPENAI_TIMEOUT` (30),
+`CONVERSATION_TTL_MINUTES` (30), `REMINDER_MINUTES` (`60,15`), `FINISH_AFTER_HOURS` (2), `OPENAI_TIMEOUT` (30),
 `LOG_LEVEL` (`info`; `debug` | `info` | `error`, see Logs), `DIALOG_LOG` (1, see Dialog logs),
 `BOT_PERSONA_NAME` (empty; see below), `REMIND_ALL_GROUPS` (1; see Usage → Group), `REGISTRATION_CLOSE_MINUTES` (20; registration auto-closes for players this many minutes before start; organizer/admins can still change lineups; 0 = only manual `/close`).
 
@@ -153,6 +153,10 @@ prompt tells the AI that this is her name; fixed texts never contain a name.
 
 ```bash
 php bin/set_webhook.php
+```
+Also refreshes the Telegram command menu (`setMyCommands`: `/start`, `/tournaments`, `/history`, `/info`, `/levels`, `/help`).
+
+```
 # Bot: @pop1_tournament_bot (id ...)
 # Webhook set: https://pop1.example.com/webhook.php
 ```
@@ -241,11 +245,11 @@ for the webhook too, e.g. `sudo -u apache php bin/diag.php`.
   only the **largest** mark (60 = hour before) posts the short «⏰ Через час стартует турнир …» notice into **every**
   active group (deep-link button). The 15-minute mark does **not** broadcast to groups. Deduped via `group_notices`.
   `REMIND_ALL_GROUPS=0` turns group broadcasts off (no private DM reminders yet). `REMINDER_MINUTES` key unchanged.
-- In the group when mentioned/replied: info (`/tournaments`, `/info`, `/levels`, `/help`, «какие турниры?»,
-  «что нового?»…) is answered there (help ends with a private-chat hint + button); «запиши меня» / «удали меня»
-  join/leave solo when the tournament is unambiguous; management (`/new`, create/edit…) → random private redirect
-  phrase + deep link; anything else → fixed snapshot of nearest tournaments + «Все мои команды — /help 😉»
-  (no free-form AI chat in groups). Deep link is `t_<id>` when clear, else `g_<chat id>`.
+- In the group when mentioned/replied: info (`/tournaments`, `/history`, `/info`, `/levels`, `/help`, «какие турниры?»,
+  «что нового?», «прошлые турниры»…) is answered there (help ends with a private-chat hint + button); «запиши меня» /
+  «удали меня» join/leave solo when the tournament is unambiguous; management (`/new`, create/edit…) → random private
+  redirect phrase + deep link; anything else → fixed «Не поняла 🙅‍♀️ Что я умею — /help» (no free-form AI chat in
+  groups). Deep link is `t_<id>` when clear, else `g_<chat id>`.
 - Buttons of old group messages (`solo`, `unsolo`, `howto`, `pub`, `fix`) answer «Теперь это в личке…» and open
   the private chat via `answerCallbackQuery(url=t.me/<bot>?start=t_<id>)`.
 
@@ -300,7 +304,8 @@ tournament's scale; everyone else gets «Уровни игроков меняе�
 админу.», and tournaments created by others always use the owner's default scale. The scale tables and columns stay
 (see `AccessPolicy::LEVELS_OWNER_ONLY`), so this can be switched back on later.
 - `/tournaments` — pretty list of active tournaments with teams (👑 captain), solo players, reserve and forming teams
-  (in private also your own drafts; all drafts for the owner); `/info [N]` — full lineup of one tournament; `/help` — for everyone
+  (in private also your own drafts; all drafts for the owner); `/history` — last 10 finished/cancelled (compact, № = id);
+  `/info [N]` — full lineup of one tournament (works for finished too); `/help` — for everyone
 
 The number can be omitted when only one tournament fits.
 
@@ -313,7 +318,7 @@ webhook's `allowed_updates`, so after updating rerun `php bin/set_webhook.php`.
 
 `№N` everywhere (lists, cards, announcements, `/info N`, `/edit N`, `/open N`, `/close N`, `/cancel N`, the AI's
 `tournament_id`) is the tournament's **database id** — the same number in every group. Finished and cancelled
-tournaments drop out of the active list (their number is no longer accepted). Numbers do **not** shift when
+tournaments leave the active `/tournaments` list but keep their № for `/history` and `/info N`. Numbers do **not** shift when
 another tournament finishes. No extra column or migration: the id is the number.
 Inline buttons also use that id, so old buttons stay correct.
 

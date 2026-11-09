@@ -125,6 +125,30 @@ class Dispatcher {
 					'note' => 'Красивый список турниров с составами отправится в чат автоматически. Не пересказывай его: ответь одной короткой фразой (или ничего не добавляй, если нечего).',
 				];
 
+			case 'list_history':
+				$past = $this->tournaments->listRecentByStatus(TournamentStatus::past(), 10);
+				$lines = [];
+				foreach ($past as $t) {
+					$lineup = $this->tournaments->lineup($t->id);
+					$teams = count($lineup->main_teams) + count($lineup->reserve_teams);
+					$players = $lineup->occupied() + $lineup->reserveCount();
+					$lines[] = sprintf(
+						'№%d %s — %s, команды по %d, команд %d / игроков %d, %s',
+						$t->id,
+						$t->title,
+						MoscowTime::format($t->starts_at),
+						$t->team_size,
+						$teams,
+						$players,
+						TournamentStatus::label($t->status),
+					);
+				}
+				return [
+					'tournaments' => $lines,
+					'show_past_list' => true,
+					'note' => 'Список прошедших турниров отправится в чат автоматически. Не пересказывай его: максимум одна короткая фраза.',
+				];
+
 			case 'levels_help':
 				return [
 					'show_levels' => true,
@@ -132,7 +156,7 @@ class Dispatcher {
 				];
 
 			case 'tournament_info':
-				$t = $this->tournament($ctx, $a, TournamentStatus::active());
+				$t = $this->tournament($ctx, $a, TournamentStatus::infoable());
 				return [
 					'tournament_id' => $this->no($t),
 					'info' => $this->line($t),
@@ -525,7 +549,7 @@ class Dispatcher {
 	}
 
 	/**
-		Global tournament number (= id) the user sees (null once finished/cancelled).
+		Global tournament number (= id) the user sees (including finished/cancelled).
 	*/
 	protected function no(Tournament $t): ?int {
 		return $this->resolver->number($t)->number;

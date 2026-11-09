@@ -26,7 +26,7 @@ use P1Bot\View\Texts;
 
 /**
 	What to do with a group message addressed to the bot: info answers, solo join/leave,
-	management redirects (random phrase), or a fixed tournaments snapshot + /help hint.
+	management redirects (random phrase), or a short «не поняла» + /help hint.
 	No free-form AI chat in groups.
 */
 class GroupChat {
@@ -44,7 +44,6 @@ class GroupChat {
 		protected TournamentResolver $resolver,
 		protected GroupRedirect $redirect,
 		protected AdminCommands $commands,
-		protected TournamentListing $listing,
 		protected RandomSource $random,
 		protected Logger $logger,
 		protected ?Announcer $announcer = null,
@@ -79,7 +78,7 @@ class GroupChat {
 		$message = $ctx->message;
 		if ($command !== null) {
 			$name = mb_strtolower($command['name']);
-			if (in_array($name, ['help', 'start', 'tournaments', 'info', 'levels'], true)) {
+			if (in_array($name, ['help', 'start', 'tournaments', 'history', 'info', 'levels'], true)) {
 				$this->commands->handle($ctx, $name, $command['args']);
 				return;
 			}
@@ -119,6 +118,10 @@ class GroupChat {
 		}
 		if ($this->isTournamentsAsk($t)) {
 			$this->commands->handle($ctx, 'tournaments', '');
+			return;
+		}
+		if ($this->isHistoryAsk($t)) {
+			$this->commands->handle($ctx, 'history', '');
 			return;
 		}
 		$number = GroupRedirect::numberFrom($ctx->message);
@@ -245,19 +248,10 @@ class GroupChat {
 	}
 
 	/**
-		Unrecognized group mention: compact tournament list (or «нет») + /help hint. No AI chatter.
+		Unrecognized group mention: short fixed hint, no AI chatter and no tournament dump.
 	*/
 	protected function fallback(Context $ctx): void {
-		$this->api->sendMessage($ctx->chatId(), $this->fallbackText(), $ctx->message->message_id);
-	}
-
-	public function fallbackText(): string {
-		$messages = $this->listing->messages(0, false);
-		if ($messages === []) {
-			return Messages::GROUP_FALLBACK_EMPTY;
-		}
-		return Messages::GROUP_FALLBACK_PREFIX . "\n\n" . implode("\n\n", $messages)
-			. "\n\n" . Messages::GROUP_FALLBACK_HINT;
+		$this->api->sendMessage($ctx->chatId(), Messages::GROUP_FALLBACK, $ctx->message->message_id);
 	}
 
 	/**
@@ -375,7 +369,17 @@ class GroupChat {
 		if ($this->isTournamentsAsk($t)) {
 			return true;
 		}
+		if ($this->isHistoryAsk($t)) {
+			return true;
+		}
 		return false;
+	}
+
+	protected function isHistoryAsk(string $t): bool {
+		return (bool) preg_match(
+			'/\b(история|прошлые турниры|прошедшие турниры|что было|бывшие турниры|history)\b/u',
+			$t,
+		);
 	}
 
 	protected function isTournamentsAsk(string $t): bool {

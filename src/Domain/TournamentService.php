@@ -347,6 +347,14 @@ class TournamentService {
 	}
 
 	/**
+		@param list<string> $statuses
+		@return list<Tournament>
+	*/
+	public function listRecentByStatus(array $statuses, int $limit): array {
+		return $this->tournaments->listRecentByStatuses($statuses, $limit);
+	}
+
+	/**
 		Kept for callers that still pass a chat; tournaments are global so this equals listAllActive.
 		@return list<Tournament>
 	*/

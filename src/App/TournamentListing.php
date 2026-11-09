@@ -5,9 +5,11 @@ declare(strict_types=1);
 namespace P1Bot\App;
 
 use P1Bot\Domain\Model\Tournament;
+use P1Bot\Domain\MoscowTime;
 use P1Bot\Domain\TournamentService;
 use P1Bot\Domain\TournamentStatus;
 use P1Bot\View\AnnouncementView;
+use P1Bot\View\Html;
 
 /**
 	The pretty tournament list for /tournaments and the AI: one block per tournament,
@@ -16,6 +18,10 @@ use P1Bot\View\AnnouncementView;
 class TournamentListing {
 	protected const TITLE = '📋 <b>Турниры</b>';
 	protected const SEPARATOR = "\n\n➖➖➖➖➖\n\n";
+
+
+	protected const HISTORY_TITLE = '📜 <b>Прошедшие турниры</b>';
+	protected const HISTORY_LIMIT = 10;
 
 	protected const PRIVATE_DRAFT = '<i>Черновик, его видишь только ты. Опубликовать: /open %d</i>';
 
@@ -90,12 +96,54 @@ class TournamentListing {
 	}
 
 	/**
+		Recent finished/cancelled tournaments, newest first. Number (= id) stays so /info N works.
+
+		@return list<string> HTML messages; empty when there is nothing to show
+	*/
+	public function historyMessages(int $limit = self::HISTORY_LIMIT): array {
+		$blocks = [];
+		foreach ($this->tournaments->listRecentByStatus(TournamentStatus::past(), $limit) as $t) {
+			$lineup = $this->tournaments->lineup($t->id);
+			$teams = count($lineup->main_teams) + count($lineup->reserve_teams);
+			$players = $lineup->occupied() + $lineup->reserveCount();
+			$blocks[] = sprintf(
+				'№%d %s — %s, команды по %d, команд %d / игроков %d, %s',
+				$t->id,
+				Html::b($t->title),
+				MoscowTime::format($t->starts_at),
+				$t->team_size,
+				$teams,
+				$players,
+				TournamentStatus::label($t->status),
+			);
+		}
+		if ($blocks === []) {
+			return [];
+		}
+		$hint = "\n\n<i>Состав: /info N</i>";
+		$messages = [];
+		$current = self::HISTORY_TITLE;
+		foreach ($blocks as $block) {
+			$piece = ($current === self::HISTORY_TITLE ? "\n\n" : "\n") . $block;
+			if (mb_strlen($current . $piece . $hint) > AnnouncementView::MESSAGE_LIMIT) {
+				$messages[] = $current . $hint;
+				$current = $block;
+				continue;
+			}
+			$current .= $piece;
+		}
+		$messages[] = $current . $hint;
+		return $messages;
+	}
+
+	/**
 		Inline buttons «№N Title» that open a tournament in private (callback popen:<id>).
 
 		@param list<Tournament> $tournaments
 		@param array<int, string> $groups
 		@return array<string, mixed>
 	*/
+
 	public static function openButtons(array $tournaments, array $groups): array {
 		unset($groups);
 		$rows = [];

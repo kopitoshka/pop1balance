@@ -266,7 +266,13 @@ class TeamService {
 	*/
 	protected function captainContext(int $actor_id, int $team_id, bool $needs_open_registration): array {
 		$team = $this->teams->find($team_id) ?? throw new NotFound('Такой команды нет.');
-		$this->access->assertCaptain($team, $actor_id);
+		$tournament = $this->tournaments->find($team->tournament_id) ?? throw new NotFound('Такого турнира нет.');
+		if ($team->captain_id !== $actor_id && !$this->access->canManageTournament($tournament, $actor_id)) {
+			throw new PermissionDenied(sprintf(
+				'Состав команды «%s» меняет только капитан или организатор.',
+				$team->name,
+			));
+		}
 		$tournament = $needs_open_registration
 			? $this->openTournament($team->tournament_id, $actor_id)
 			: $this->changeableTournament($team->tournament_id, $actor_id);
@@ -274,19 +280,26 @@ class TeamService {
 	}
 
 	/**
-		Registration must be open to join or grow a roster.
+		Join or grow a roster: registration open for everyone; when CLOSED, only the
+		organizer/owner until the tournament starts (RUNNING).
 	*/
 	protected function openTournament(int $tournament_id, int $actor_id): Tournament {
 		$tournament = $this->tournaments->find($tournament_id) ?? throw new NotFound('Такого турнира нет.');
-		if (!$tournament->isRegistrationOpen()) {
-			throw new ValidationError(sprintf(
-				'Регистрация на турнир «%s» сейчас не идёт (%s).',
-				$tournament->title,
-				TournamentStatus::label($tournament->status),
-			));
+		if ($tournament->isRegistrationOpen()) {
+			$this->assertLineupEditable($tournament, $actor_id);
+			return $tournament;
 		}
-		$this->assertLineupEditable($tournament, $actor_id);
-		return $tournament;
+		if (
+			$tournament->status === TournamentStatus::CLOSED
+			&& $this->access->canManageTournament($tournament, $actor_id)
+		) {
+			return $tournament;
+		}
+		throw new ValidationError(sprintf(
+			'Регистрация на турнир «%s» сейчас не идёт (%s).',
+			$tournament->title,
+			TournamentStatus::label($tournament->status),
+		));
 	}
 
 	/**
@@ -308,7 +321,7 @@ class TeamService {
 
 	/**
 		REGISTRATION_CLOSE_MINUTES before start: regular players cannot change lineups.
-		Organizer and chat admins still can.
+		Organizer and owner still can (until the tournament is RUNNING).
 	*/
 	protected function assertLineupEditable(Tournament $tournament, int $actor_id): void {
 		if ($this->registration_close_minutes <= 0) {

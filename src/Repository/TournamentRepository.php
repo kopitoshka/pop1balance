@@ -163,6 +163,32 @@ class TournamentRepository {
 	}
 
 	/**
+		Newest first (by starts_at, then id), capped at $limit — for /history.
+
+		@param list<string> $statuses
+		@return list<Tournament>
+	*/
+	public function listRecentByStatuses(array $statuses, int $limit): array {
+		if ($statuses === [] || $limit <= 0) {
+			return [];
+		}
+		$limit = max(1, $limit);
+		$params = [];
+		$placeholders = [];
+		foreach (array_values($statuses) as $i => $status) {
+			$placeholders[] = ":s$i";
+			$params["s$i"] = TournamentStatus::assertValid($status);
+		}
+		// LIMIT is inlined: SQLite rejects bound LIMIT with native prepares.
+		$rows = $this->db->fetchAll(
+			'SELECT * FROM tournaments WHERE status IN (' . implode(', ', $placeholders) . ')
+				ORDER BY starts_at DESC, id DESC LIMIT ' . $limit,
+			$params,
+		);
+		return array_map([Tournament::class, 'fromRow'], $rows);
+	}
+
+	/**
 		Tournaments with one of $statuses whose start is within [$from, $to].
 
 		@param list<string> $statuses

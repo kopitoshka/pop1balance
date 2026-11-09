@@ -61,7 +61,7 @@ return [
 	'persona_name' => Env::get('BOT_PERSONA_NAME', ''),
 	'cron' => [
 		'reminder_minutes'   => $reminders === [] ? [60, 15] : $reminders,
-		'finish_after_hours' => Env::int('FINISH_AFTER_HOURS', 4),
+		'finish_after_hours' => Env::int('FINISH_AFTER_HOURS', 2),
 		// At the first reminder (60 min) also post the tournament to every other group the bot is in
 		'remind_all_groups'  => Env::bool('REMIND_ALL_GROUPS', true),
 	],

@@ -436,7 +436,8 @@ class AdminCommandsTest extends IntegrationTestCase {
 		self::assertSame(TournamentStatus::CANCELLED, $this->app->tournament_repo->find(2)->status);
 		self::assertStringContainsString('🏆 <b>Поздний</b> · №1', $this->app->announcer->text($this->app->tournaments->get(1)));
 		$this->dispatch($this->privateMessage($this->owner, '/info 2'));
-		self::assertStringContainsString('Турнира №2 сейчас нет', $this->http->lastText());
+		self::assertStringContainsString('🏆 <b>Ранний</b> · №2', $this->http->lastText());
+		self::assertStringContainsString('Отменён', $this->http->lastText());
 	}
 
 	public function testEditLevelKeywordsAndValues(): void {
@@ -526,5 +527,33 @@ class AdminCommandsTest extends IntegrationTestCase {
 		foreach ([$help, $text] as $t) {
 			self::assertStringNotContainsStringIgnoringCase('эталон', $t);
 		}
+	}
+
+	public function testHistoryListsFinishedAndCancelled(): void {
+		$a = $this->openTournament(3); // starts 14.11
+		$b = $this->app->tournaments->create(new \P1Bot\Domain\CreateTournament(
+			self::CHAT_ID,
+			$this->owner->id,
+			'Отменённый кубок',
+			'2026-11-10 20:00',
+			3,
+			'3,3,4',
+		));
+		$b = $this->app->tournaments->openRegistration($this->owner->id, $b->id);
+		$this->app->tournaments->cancel($this->owner->id, $b->id);
+		$this->app->tournament_repo->update($a->id, ['status' => \P1Bot\Domain\TournamentStatus::FINISHED]);
+		$this->http->reset();
+		$this->dispatch($this->privateMessage($this->owner, '/history'));
+		$text = $this->http->lastText();
+		self::assertStringContainsString('Прошедшие турниры', $text);
+		self::assertStringContainsString('Субботний кубок', $text);
+		self::assertStringContainsString('Отменённый кубок', $text);
+		self::assertStringContainsString('завершён', $text);
+		self::assertStringContainsString('отменён', $text);
+		// newest first by starts_at: 14.11 before 10.11
+		self::assertLessThan(strpos($text, 'Отменённый кубок'), strpos($text, 'Субботний кубок'));
+		$this->dispatch($this->privateMessage($this->owner, '/info ' . $a->id));
+		self::assertStringContainsString('Субботний кубок', $this->http->lastText());
+		self::assertStringContainsString('№' . $a->id, $this->http->lastText());
 	}
 }

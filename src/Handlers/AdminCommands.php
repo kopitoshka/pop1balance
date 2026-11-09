@@ -39,7 +39,7 @@ use P1Bot\View\Texts;
 	Slash commands: the fallback that works without AI.
 */
 class AdminCommands {
-	protected const PUBLIC = ['help', 'start', 'tournaments', 'info', 'levels'];
+	protected const PUBLIC = ['help', 'start', 'tournaments', 'history', 'info', 'levels'];
 
 	/**
 		«уровень», «уровень турнира», «максимальный уровень», «макс. уровень» — one field (old «эталон» still works).
@@ -141,11 +141,13 @@ class AdminCommands {
 				return Texts::groupHelp($this->bot->username);
 			case 'tournaments':
 				return $this->listTournaments($ctx);
+			case 'history':
+				return $this->listHistory($ctx);
 			case 'levels':
 				return Texts::levels();
 			case 'info':
 				[$id] = self::splitId($args);
-				$t = $this->resolver->resolve($this->resolveScope($ctx), $id, TournamentStatus::active());
+				$t = $this->resolver->resolve($this->resolveScope($ctx), $id, TournamentStatus::infoable());
 				return $this->sendAllButLast($ctx, $this->announcer->infoMessages($t));
 			case 'new':
 				return $this->create($ctx, $args);
@@ -190,6 +192,14 @@ class AdminCommands {
 		$messages = $this->listing->messages($ctx->groupId(), false);
 		if ($messages === []) {
 			return 'Сейчас активных турниров нет.' . ($this->canCreate($ctx) ? ' Создать: /new 23.11 20:00 | Название | 3 | средний, средний, средний+ | 24' : '');
+		}
+		return $this->sendAllButLast($ctx, $messages);
+	}
+
+	protected function listHistory(Context $ctx): string {
+		$messages = $this->listing->historyMessages();
+		if ($messages === []) {
+			return 'Пока прошедших турниров нет 🙂';
 		}
 		return $this->sendAllButLast($ctx, $messages);
 	}

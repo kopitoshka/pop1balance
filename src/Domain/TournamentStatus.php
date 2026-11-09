@@ -52,6 +52,22 @@ class TournamentStatus {
 		return [self::DRAFT, self::REGISTRATION, self::CLOSED, self::RUNNING];
 	}
 
+	/**
+		Finished or cancelled — shown in /history; /info N still works by id.
+		@return list<string>
+	*/
+	public static function past(): array {
+		return [self::FINISHED, self::CANCELLED];
+	}
+
+	/**
+		Statuses /info may open by number (active + past; not drafts).
+		@return list<string>
+	*/
+	public static function infoable(): array {
+		return array_merge(self::active(), self::past());
+	}
+
 	public static function assertValid(string $status): string {
 		if (!isset(self::LABELS[$status])) {
 			throw new InvalidArgumentException("Unknown tournament status: $status");

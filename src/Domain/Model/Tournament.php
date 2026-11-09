@@ -33,7 +33,6 @@ class Tournament {
 
 	/**
 		Global number users see and type (№1, №2, ...): the tournament id, set by TournamentResolver::number().
-		Null for finished/cancelled tournaments.
 	*/
 	public ?int $number = null;
 

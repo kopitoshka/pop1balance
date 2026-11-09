@@ -107,4 +107,59 @@ class RegistrationCloseTest extends IntegrationTestCase {
 		self::assertStringContainsString('Регистрация уже закрыта', $text);
 		self::assertStringNotContainsString('Ещё можно успеть', $text);
 	}
+
+	public function testOrganizerCanAddWhenClosedButRegularCannot(): void {
+		$t = $this->openTournament(3);
+		[$cap, $a, $b] = [$this->player('cap'), $this->player('a'), $this->player('b')];
+		$entry = $this->app->teams->createTeam($t->id, $cap->id, 'Wolves', [$a->id]);
+		$this->app->tournaments->closeRegistration($this->owner->id, $t->id);
+		self::assertSame(TournamentStatus::CLOSED, $this->app->tournament_repo->find($t->id)->status);
+
+		try {
+			$this->app->teams->addPlayer($cap->id, $entry->team->id, $b->id);
+			self::fail('captain must not grow roster when CLOSED');
+		} catch (ValidationError $e) {
+			self::assertStringContainsString('не идёт', $e->getMessage());
+		}
+
+		$entry = $this->app->teams->addPlayer($this->owner->id, $entry->team->id, $b->id);
+		self::assertCount(3, $entry->members);
+
+		$solo = $this->player('solo');
+		$this->app->teams->joinSolo($t->id, $this->owner->id); // owner as solo ok when CLOSED
+		self::assertNotNull($this->app->solo_repo->find($t->id, $this->owner->id));
+
+		try {
+			$this->app->teams->joinSolo($t->id, $solo->id);
+			self::fail('regular solo join must fail when CLOSED');
+		} catch (ValidationError $e) {
+			self::assertStringContainsString('не идёт', $e->getMessage());
+		}
+	}
+
+	public function testOrganizerCanReplaceOnAnotherTeamWhenClosed(): void {
+		$t = $this->openTournament(3);
+		[$cap, $a, $b, $c] = [
+			$this->player('cap'), $this->player('a'), $this->player('b'), $this->player('c'),
+		];
+		$entry = $this->app->teams->createTeam($t->id, $cap->id, 'Wolves', [$a->id, $b->id]);
+		$this->app->tournaments->closeRegistration($this->owner->id, $t->id);
+		$entry = $this->app->teams->replacePlayer($this->owner->id, $entry->team->id, $b->id, $c->id);
+		$ids = array_map(static fn ($m) => $m->player_id, $entry->members);
+		self::assertContains($c->id, $ids);
+		self::assertNotContains($b->id, $ids);
+	}
+
+	public function testOrganizerCannotAddAfterStart(): void {
+		$t = $this->openTournament(3);
+		$entry = $this->app->teams->createTeam($t->id, $this->player('cap')->id, 'Wolves', [$this->player('a')->id]);
+		$this->app->tournaments->closeRegistration($this->owner->id, $t->id);
+		$this->app->tournaments->start($this->owner->id, $t->id);
+		try {
+			$this->app->teams->addPlayer($this->owner->id, $entry->team->id, $this->player('b')->id);
+			self::fail('expected ValidationError after start');
+		} catch (ValidationError $e) {
+			self::assertStringContainsString('не идёт', $e->getMessage());
+		}
+	}
 }

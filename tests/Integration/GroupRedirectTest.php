@@ -172,13 +172,12 @@ class GroupRedirectTest extends IntegrationTestCase {
 		self::assertNull($this->app->tournaments->lineup($t->id)->placementOf($mate->id));
 	}
 
-	public function testUnrecognizedShowsTournamentsAndHelpHint(): void {
+	public function testUnrecognizedPointsToHelp(): void {
 		$this->openTournament(3);
 		$vasya = $this->player('vasya');
 		$reply = $this->groupReply($vasya, '@pop1_bot привет как дела');
-		self::assertStringStartsWith(Messages::GROUP_FALLBACK_PREFIX, $reply['text']);
-		self::assertStringContainsString('Субботний кубок', $reply['text']);
-		self::assertStringEndsWith(Messages::GROUP_FALLBACK_HINT, $reply['text']);
+		self::assertSame(Messages::GROUP_FALLBACK, $reply['text']);
+		self::assertStringNotContainsString('Субботний кубок', $reply['text']);
 		self::assertNull($reply['url']);
 		self::assertSame([], array_filter($this->http->requests, static function (array $r): bool {
 			return str_ends_with($r['url'], '/responses');
@@ -195,9 +194,28 @@ class GroupRedirectTest extends IntegrationTestCase {
 		}));
 	}
 
-	public function testFallbackWhenNoTournaments(): void {
-		$reply = $this->groupReply($this->player('vasya'), '@pop1_bot привет');
-		self::assertSame(Messages::GROUP_FALLBACK_EMPTY, $reply['text']);
+	public function testHistoryCommandAndPhraseInGroup(): void {
+		$t = $this->openTournament(3);
+		$this->app->tournaments->start($this->owner->id, $t->id);
+		$this->app->tournaments->finish($this->owner->id, $t->id);
+		$vasya = $this->player('vasya');
+		$reply = $this->groupReply($vasya, '/history');
+		self::assertStringContainsString('Прошедшие турниры', $reply['text']);
+		self::assertStringContainsString('Субботний кубок', $reply['text']);
+		self::assertStringContainsString('№' . $t->id, $reply['text']);
+		self::assertStringContainsString('завершён', $reply['text']);
+		$reply = $this->groupReply($vasya, '@pop1_bot прошлые турниры');
+		self::assertStringContainsString('Субботний кубок', $reply['text']);
+	}
+
+	public function testInfoWorksForFinishedTournament(): void {
+		$t = $this->openTournament(2, null);
+		$this->app->teams->createTeam($t->id, $this->player('cap')->id, 'Wolves', [$this->player('mate')->id]);
+		$this->app->tournaments->start($this->owner->id, $t->id);
+		$this->app->tournaments->finish($this->owner->id, $t->id);
+		$reply = $this->groupReply($this->player('vasya'), '/info ' . $t->id);
+		self::assertStringContainsString('Wolves', $reply['text']);
+		self::assertStringContainsString('№' . $t->id, $reply['text']);
 	}
 
 	public function testUnaddressedMessagesAreIgnored(): void {
