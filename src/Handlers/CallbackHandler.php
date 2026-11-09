@@ -4,13 +4,19 @@ declare(strict_types=1);
 
 namespace P1Bot\Handlers;
 
-use P1Bot\Telegram\Update;
+use P1Bot\Domain\Model\Player;
+use P1Bot\Telegram\CallbackQuery;
+use P1Bot\Telegram\TelegramApi;
 
-/** Stub: implemented together with the Telegram/AI layers. */
+/** Inline button presses. */
 final class CallbackHandler
 {
-    public function handle(Update $update): void
+    public function __construct(private TelegramApi $api)
     {
-        throw new \LogicException('Not implemented yet');
+    }
+
+    public function handle(CallbackQuery $query, Player $player): void
+    {
+        $this->api->answerCallbackQuery($query->id);
     }
 }

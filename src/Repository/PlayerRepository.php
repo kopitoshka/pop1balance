@@ -79,6 +79,20 @@ final class PlayerRepository
         });
     }
 
+    /** Row for a known Telegram id without touching name fields (used for the bot owner). */
+    public function ensureTelegramId(int $tgUserId, string $displayName, DateTimeImmutable $now): Player
+    {
+        $existing = $this->findByTelegramId($tgUserId);
+        if ($existing !== null) {
+            return $existing;
+        }
+        $id = $this->db->insert(
+            'INSERT INTO players (tg_user_id, username, display_name, created_at) VALUES (:tg, NULL, :d, :c)',
+            ['tg' => $tgUserId, 'd' => $displayName, 'c' => DateFormat::toDb($now)],
+        );
+        return $this->find($id) ?? throw new \LogicException('Player insert failed');
+    }
+
     /** Player referenced by @username who may not have written to the chat yet. */
     public function ensureByUsername(string $username, DateTimeImmutable $now): Player
     {

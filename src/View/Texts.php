@@ -1,0 +1,52 @@
+<?php
+
+declare(strict_types=1);
+
+namespace P1Bot\View;
+
+/** Fixed user-facing texts (HTML). */
+final class Texts
+{
+    public static function greeting(string $botUsername): string
+    {
+        return "Всем привет! Я помогаю с турнирами по Population: One: собираю заявки команд и соло-игроков, "
+            . "слежу за лимитами и напоминаю о старте.\n\n"
+            . 'Просто напишите мне через @' . Html::e($botUsername) . ' или ответьте на моё сообщение. '
+            . 'Список команд: /help';
+    }
+
+    public static function help(string $botUsername, bool $isAdmin): string
+    {
+        $bot = '@' . Html::e($botUsername);
+        $text = "Я помогаю записываться на турниры по Population: One.\n\n"
+            . "Можно писать обычным языком, упомянув меня или ответив на моё сообщение. Например:\n"
+            . "• <i>{$bot} какие турниры скоро?</i>\n"
+            . "• <i>{$bot} запиши команду Wolves на субботу: я, @vasya и @petya</i>\n"
+            . "• <i>{$bot} хочу участвовать, но без команды</i>\n\n"
+            . "Команды для всех:\n"
+            . "/tournaments — активные турниры\n"
+            . "/help — эта подсказка";
+        if ($isAdmin) {
+            $text .= "\n\nДля админов:\n"
+                . "/new 23.11 20:00 | Название | 3 | 3,3,4 | 24 — создать турнир (дата и время по МСК | название | игроков в команде | эталонная команда или «-» | лимит участников)\n"
+                . "/edit 5 время 23.11 21:00 — изменить турнир (поля: название, время, размер, эталон, лимит, «без баланса»)\n"
+                . "/open 5 — открыть регистрацию и опубликовать анонс\n"
+                . "/close 5 — закрыть регистрацию\n"
+                . "/cancel 5 — отменить турнир\n"
+                . "/level @user 4 — поставить уровень игроку (1–6 или название, например «средний+»)\n"
+                . "/balance — показать шкалу баланса";
+        }
+        return $text;
+    }
+
+    /** Reply to a mention when the AI is not configured. */
+    public static function fallback(string $botUsername): string
+    {
+        return "Я пока понимаю только команды. Посмотреть турниры: /tournaments, подсказка: /help.";
+    }
+
+    public static function somethingWentWrong(): string
+    {
+        return 'Что-то пошло не так, попробуй ещё раз чуть позже.';
+    }
+}

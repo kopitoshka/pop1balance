@@ -41,4 +41,31 @@ final class AdminRepository
     {
         $this->db->run('DELETE FROM admins WHERE chat_id = :c AND player_id = :p', ['c' => $chatId, 'p' => $playerId]);
     }
+
+    /**
+     * Replaces the cached admin list of a chat.
+     *
+     * @param array<int, bool> $admins player_id => is_owner
+     */
+    public function replaceForChat(int $chatId, array $admins): void
+    {
+        $this->db->transactional(function () use ($chatId, $admins): void {
+            $this->db->run('DELETE FROM admins WHERE chat_id = :c', ['c' => $chatId]);
+            foreach ($admins as $playerId => $isOwner) {
+                $this->db->run(
+                    'INSERT INTO admins (player_id, chat_id, is_owner) VALUES (:p, :c, :o)',
+                    ['p' => $playerId, 'c' => $chatId, 'o' => (int) $isOwner],
+                );
+            }
+        });
+    }
+
+    /** @return list<int> player ids */
+    public function listForChat(int $chatId): array
+    {
+        return array_map('intval', array_column(
+            $this->db->fetchAll('SELECT player_id FROM admins WHERE chat_id = :c ORDER BY player_id', ['c' => $chatId]),
+            'player_id',
+        ));
+    }
 }

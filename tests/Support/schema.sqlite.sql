@@ -1,4 +1,4 @@
--- SQLite mirror of migrations/001_init.sql for the test suite.
+-- SQLite mirror of migrations/*.sql (all migrations applied) for the test suite.
 -- The MySQL file is the reference; keep both in sync.
 
 CREATE TABLE players (
@@ -12,7 +12,8 @@ CREATE TABLE players (
 CREATE TABLE chats (
   id            INTEGER PRIMARY KEY,
   title         TEXT NOT NULL DEFAULT '',
-  is_active     INTEGER NOT NULL DEFAULT 1
+  is_active     INTEGER NOT NULL DEFAULT 1,
+  admins_synced_at TEXT NULL
 );
 
 CREATE TABLE admins (
