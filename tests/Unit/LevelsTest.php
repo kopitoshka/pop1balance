@@ -33,6 +33,47 @@ final class LevelsTest extends TestCase
         self::assertNull(Levels::parse('нуб'));
     }
 
+    /** @dataProvider synonymProvider */
+    public function testSynonymsTyposAndPlus(string $input, ?int $expected): void
+    {
+        self::assertSame($expected, Levels::parse($input));
+    }
+
+    /** @return array<string, array{string, ?int}> */
+    public function synonymProvider(): array
+    {
+        return [
+            'слабый' => ['слабый', 1],
+            'базовый' => ['Базовый', 1],
+            'начинающий+' => ['начинающий+', 2],
+            'слабый плюс' => ['слабый плюс', 2],
+            'танк' => ['танк', 5],
+            'танк+' => ['ТАНК +', 6],
+            'typo выскоий' => ['выскоий', 5],
+            'typo выскоий+' => ['выскоий+', 6],
+            'typo срдений' => ['срдений', 3],
+            'средний плюс' => ['Средний Плюс', 4],
+            'ё' => ['начальный', 1],
+            'double plus' => ['высокий++', null],
+            'too short to guess' => ['ср', null],
+            'unknown word' => ['нормальный', null],
+            'out of range' => ['7', null],
+            'high plus beyond max' => ['высокий+', 6],
+        ];
+    }
+
+    public function testDescribeReferenceTeam(): void
+    {
+        self::assertSame('средний, средний, средний+', Levels::describeReferenceTeam([3, 3, 4]));
+    }
+
+    public function testParseReferenceTeamWithSpacesAndPlusWords(): void
+    {
+        self::assertSame([3, 3, 4], Levels::parseReferenceTeam('средний средний средний плюс'));
+        self::assertSame([1, 6, 3], Levels::parseReferenceTeam('слабый, танк + ,  3'));
+        self::assertSame([5, 6], Levels::parseReferenceTeam('Выскоий, выскоий+'));
+    }
+
     public function testParseReferenceTeam(): void
     {
         self::assertSame([3, 3, 4], Levels::parseReferenceTeam('3,3,4'));
