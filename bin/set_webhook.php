@@ -51,22 +51,21 @@ try {
 		[
 			['command' => 'history', 'description' => 'Прошедшие турниры'],
 			['command' => 'nick', 'description' => 'Свой игровой ник'],
+			['command' => 'adduser', 'description' => 'Добавить игроков (выбор в Telegram)'],
 		],
 		array_slice($common, 2),
 	);
-	// Default + groups: without /history; private chats: with /history.
+	// Default + groups: without /history|/adduser; private: with them.
 	$api->setMyCommands($common);
 	$api->setMyCommands($common, ['type' => 'all_group_chats']);
 	$api->setMyCommands($private, ['type' => 'all_private_chats']);
+	// Chat scope overrides all_private_chats for the owner — keep /adduser there too.
 	$owner_tg_id = (int) ($config['owner_tg_id'] ?? 0);
 	if ($owner_tg_id > 0) {
-		$owner_private = array_merge($private, [
-			['command' => 'adduser', 'description' => 'Добавить игроков (выбор в Telegram)'],
-		]);
-		$api->setMyCommands($owner_private, ['type' => 'chat', 'chat_id' => $owner_tg_id]);
-		fwrite(STDOUT, "Owner commands updated (/adduser in private for chat {$owner_tg_id})\n");
+		$api->setMyCommands($private, ['type' => 'chat', 'chat_id' => $owner_tg_id]);
+		fwrite(STDOUT, "Owner private commands refreshed (chat {$owner_tg_id})\n");
 	}
-	fwrite(STDOUT, "Bot commands updated (history/nick = private only)\n");
+	fwrite(STDOUT, "Bot commands updated (history/nick/adduser = private only)\n");
 } catch (Throwable $e) {
 	fwrite(STDERR, 'Error: ' . $e->getMessage() . "\n");
 	exit(1);

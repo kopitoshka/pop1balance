@@ -271,20 +271,11 @@ class PrivateChatHandler {
 
 
 	/**
-		Owner picked users via KeyboardButtonRequestUsers.
+		User picked contacts via KeyboardButtonRequestUsers (/adduser).
 	*/
 	protected function onUsersShared(Message $message, Player $actor): void {
 		$chat_id = $message->chat_id;
 		$remove = ['reply_markup' => ['remove_keyboard' => true]];
-		if (!$this->access->isOwner($actor->id)) {
-			$this->api->sendMessage(
-				$chat_id,
-				Html::e(AccessPolicy::OWNER_ONLY),
-				$message->message_id,
-				$remove,
-			);
-			return;
-		}
 		$shared = $message->users_shared;
 		if ($shared === null || $shared['users'] === []) {
 			$this->api->sendMessage($chat_id, 'Никого не выбрали.', $message->message_id, $remove);

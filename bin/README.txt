@@ -15,7 +15,7 @@ diag.php
 set_webhook.php
   Ставит webhook по TELEGRAM_* из .env.
   Также обновляет меню команд (в т.ч.
-  /adduser только у владельца в личке).
+  /adduser и /history — только в личке).
   После обновления бота перезапусти скрипт —
   в allowed_updates появится inline_query.
 

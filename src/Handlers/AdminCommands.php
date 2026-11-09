@@ -42,7 +42,7 @@ use P1Bot\View\Texts;
 	Slash commands: the fallback that works without AI.
 */
 class AdminCommands {
-	protected const PUBLIC = ['help', 'start', 'tournaments', 'history', 'info', 'level', 'levels', 'nick'];
+	protected const PUBLIC = ['help', 'start', 'tournaments', 'history', 'info', 'level', 'levels', 'nick', 'adduser'];
 
 	/**
 		«уровень», «уровень турнира», «максимальный уровень», «макс. уровень» — one field (old «эталон» still works).
@@ -55,7 +55,7 @@ class AdminCommands {
 	/**
 		Owner only for now (scales are hidden from users, see AccessPolicy::LEVELS_OWNER_ONLY).
 	*/
-	protected const OWNER = ['balance', 'adduser'];
+	protected const OWNER = ['balance'];
 
 	protected const LEVEL_ALL_LIMIT = 80;
 
@@ -768,11 +768,16 @@ class AdminCommands {
 	}
 
 	/**
-		Owner-only private chat: reply keyboard with Telegram user picker.
+		Private chat: reply keyboard with Telegram user picker (any user).
+		In groups GroupChat redirects to private before this runs.
 	*/
 	protected function addUser(Context $ctx): string {
 		if (!$ctx->isPrivate()) {
-			return 'Команда /adduser работает только в личке со мной.';
+			$this->reply_extra = DeepLink::button(
+				Messages::GROUP_REDIRECT_BUTTON,
+				DeepLink::url($this->bot->username),
+			);
+			return Messages::GROUP_REDIRECT;
 		}
 		$this->reply_extra = [
 			'reply_markup' => [
