@@ -204,12 +204,21 @@ Admins:
   tournament level (required, see «Tournament level» below) | player limit (default 24).
   Creates a **draft** and shows its card ending with «Публикуем или что-то поправить?» and the buttons
   «✅ Публикуем» / «✏️ Поправить».
-- `/edit [N] время 23.11 21:00` (fields: название, время, размер, уровень, лимит, баланс N). Editing a draft shows a fresh card.
+- `/edit [N] время 23.11 21:00` (fields: название, время, размер, уровень, лимит; `баланс N` — owner only). Editing a draft shows a fresh card.
   `/edit 1 уровень 10`, `/edit 1 уровень средний, средний, высокий`, `/edit 1 размер 2 уровень 7`.
 - `/levels` — the six levels with points and synonyms and how the tournament level works (for everyone).
 - `/open [id]` — for a draft: shows the same card and publishes only after a clear confirmation (see below);
   for a closed tournament: reopens registration right away. `/close [id]`; `/cancel [id]`
-- `/level @user 4 [balance]`, `/balance [id]`
+
+Owner only (`BOT_OWNER_TG_ID`, shown in `/help` to the owner only):
+- `/level @user 4 [balance]`, `/balance [id]`, `/edit N баланс M`; in plain text: set a player's level, create/show scales,
+  pick a scale for a new tournament.
+
+**Scales are hidden for now** (temporary product decision): cards, announcements, lists, `/help`, `/levels`,
+the AI prompt and tool descriptions never mention rating scales. Only the owner changes player levels and a
+tournament's scale; everyone else gets «Уровни игроков меняет только главный админ.» / «Это доступно только главному
+админу.», and tournaments created by others always use the owner's default scale. The scale tables and columns stay
+(see `AccessPolicy::LEVELS_OWNER_ONLY`), so this can be switched back on later.
 - `/tournaments` — pretty list of active tournaments with teams (👑 captain), solo players, reserve and forming teams
   (admins also see drafts); `/info [N]` — full lineup of one tournament; `/help` — for everyone
 

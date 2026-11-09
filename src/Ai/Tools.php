@@ -8,6 +8,11 @@ namespace P1Bot\Ai;
 	Function tools offered to the model. Admin tools are offered to admins only (PHP re-checks anyway).
 */
 class Tools {
+	/**
+		Owner only for now: scales are hidden from users (see AccessPolicy::LEVELS_OWNER_ONLY).
+	*/
+	public const OWNER_TOOLS = ['set_level', 'create_balance', 'show_balance'];
+
 	public const ADMIN_TOOLS = [
 		'create_tournament', 'edit_tournament', 'cancel_tournament', 'open_registration',
 		'close_registration', 'set_max_players', 'set_level', 'create_balance', 'show_balance',
@@ -26,21 +31,65 @@ class Tools {
 	/**
 		@return list<array<string, mixed>>
 	*/
-	public static function definitions(bool $is_admin): array {
+	public static function definitions(bool $is_admin, bool $is_owner = false): array {
 		$tools = self::playerTools();
-		if ($is_admin) {
+		if ($is_admin || $is_owner) {
 			$tools = array_merge($tools, self::adminTools());
+		}
+		if ($is_owner) {
+			$tools = array_merge(self::withOwnerParams($tools), self::ownerTools());
 		}
 		return $tools;
 	}
 
 	/**
+		Owner only: create_tournament may pick a scale.
+
+		@param list<array<string, mixed>> $tools
+		@return list<array<string, mixed>>
+	*/
+	protected static function withOwnerParams(array $tools): array {
+		foreach ($tools as $i => $tool) {
+			if ($tool['name'] === 'create_tournament') {
+				$properties = clone $tools[$i]['parameters']['properties'];
+				$properties->balance_id = [
+					'type' => 'integer',
+					'description' => 'Номер шкалы уровней; по умолчанию основная шкала.',
+				];
+				$tools[$i]['parameters']['properties'] = $properties;
+			}
+		}
+		return $tools;
+	}
+
+	/**
+		@return list<array<string, mixed>>
+	*/
+	protected static function ownerTools(): array {
+		return [
+			self::fn('set_level', 'Поставить игроку уровень (только главный админ).', [
+				'player' => ['type' => 'string', 'description' => '"@username".'],
+				'level' => [
+					'type' => 'string',
+					'description' => '1–6 или название: начальный, начальный+, средний, средний+, высокий, высокий+.',
+				],
+				'balance_id' => ['type' => 'integer', 'description' => 'Номер шкалы; по умолчанию основная.'],
+			], ['player', 'level']),
+			self::fn('create_balance', 'Создать свою шкалу баланса.', [
+				'name' => ['type' => 'string'],
+				'based_on_balance_id' => ['type' => 'integer', 'description' => 'Унаследовать оценки из этой шкалы.'],
+			], ['name']),
+			self::fn('show_balance', 'Показать оценки игроков в шкале.', ['balance_id' => ['type' => 'integer']]),
+		];
+	}
+
+	/**
 		@return list<string>
 	*/
-	public static function names(bool $is_admin): array {
+	public static function names(bool $is_admin, bool $is_owner = false): array {
 		return array_map(static function (array $tool): string {
 			return (string) $tool['name'];
-		}, self::definitions($is_admin));
+		}, self::definitions($is_admin, $is_owner));
 	}
 
 	/**
@@ -145,10 +194,6 @@ class Tools {
 				'team_size' => ['type' => 'integer', 'minimum' => 2, 'maximum' => 4],
 				'level' => $level,
 				'max_players' => ['type' => 'integer', 'description' => 'Лимит участников, по умолчанию 24.'],
-				'balance_id' => [
-					'type' => 'integer',
-					'description' => 'Номер шкалы уровней; по умолчанию основная шкала.',
-				],
 			], ['title', 'starts_at_msk', 'team_size', 'level']),
 			self::fn('edit_tournament', 'Изменить турнир или черновик. Передавай только меняющиеся поля. Если меняешь размер команды, передай и уровень под новый размер. Для черновика карточка покажется снова.', [
 				'tournament_id' => $tid,
@@ -174,19 +219,6 @@ class Tools {
 				['tournament_id' => $tid, 'max_players' => ['type' => 'integer']],
 				['max_players'],
 			),
-			self::fn('set_level', 'Поставить игроку уровень в шкале баланса админа.', [
-				'player' => ['type' => 'string', 'description' => '"@username".'],
-				'level' => [
-					'type' => 'string',
-					'description' => '1–6 или название: начальный, начальный+, средний, средний+, высокий, высокий+.',
-				],
-				'balance_id' => ['type' => 'integer', 'description' => 'Номер шкалы; по умолчанию своя шкала админа.'],
-			], ['player', 'level']),
-			self::fn('create_balance', 'Создать свою шкалу баланса.', [
-				'name' => ['type' => 'string'],
-				'based_on_balance_id' => ['type' => 'integer', 'description' => 'Унаследовать оценки из этой шкалы.'],
-			], ['name']),
-			self::fn('show_balance', 'Показать оценки игроков в шкале.', ['balance_id' => ['type' => 'integer']]),
 		];
 	}
 

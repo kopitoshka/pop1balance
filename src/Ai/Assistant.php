@@ -65,8 +65,8 @@ class Assistant {
 			$history,
 			[['role' => 'user', 'content' => $user_text]],
 		);
-		$tools = Tools::definitions($ctx->is_admin);
-		$allowed = Tools::names($ctx->is_admin);
+		$tools = Tools::definitions($ctx->is_admin, $ctx->is_owner);
+		$allowed = Tools::names($ctx->is_admin, $ctx->is_owner);
 
 		$card = null;
 		$list = false;
@@ -158,11 +158,21 @@ class Assistant {
 				$author->display_name !== '' ? $author->display_name : 'игрок',
 				$author->username !== null ? ' (@' . $author->username . ')' : '',
 			),
-			'Автор — ' . ($ctx->is_admin ? 'админ чата: ему доступны действия админа.' : 'обычный игрок: действия админа ему недоступны.'),
+			'Автор — ' . self::role($ctx),
 			'Активные турниры: ' . ($tournaments === [] ? 'нет.' : "\n- " . implode("\n- ", $tournaments)),
 			'Заявки автора: ' . implode('; ', $status),
 			'Неопубликованные черновики автора: ' . ($drafts === [] ? 'нет.' : "\n- " . implode("\n- ", $drafts)),
 		]);
+	}
+
+	protected static function role(Context $ctx): string {
+		if ($ctx->is_owner) {
+			return 'главный админ: ему доступны все действия, только он меняет уровни игроков.';
+		}
+		if ($ctx->is_admin) {
+			return 'админ чата: ему доступны действия админа, кроме смены уровней игроков (это делает только главный админ).';
+		}
+		return 'обычный игрок: действия админа ему недоступны.';
 	}
 
 	protected static function weekday(\DateTimeImmutable $utc): string {

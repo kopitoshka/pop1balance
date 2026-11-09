@@ -33,28 +33,43 @@ class BalanceServiceTest extends IntegrationTestCase {
 		self::assertSame(5, $this->app->balances->levelOf($scale->id, $vasya->id));
 	}
 
-	public function testAdminGetsOwnInheritedScaleAndOverridesLevels(): void {
+	public function testInheritedScaleOverridesLevels(): void {
 		$vasya = $this->player('vasya');
 		$petya = $this->player('petya');
 		$this->rate($vasya, 5);
 		$this->rate($petya, 2);
-
-		$admin_scale = $this->app->balances->setLevel(self::CHAT_ID, $this->admin->id, $vasya->id, 4);
 		$default = $this->app->balances->findDefault();
 
-		self::assertFalse($admin_scale->is_default);
-		self::assertSame($this->admin->id, $admin_scale->owner_id);
-		self::assertSame($default->id, $admin_scale->parent_id);
-		self::assertSame(4, $this->app->balances->levelOf($admin_scale->id, $vasya->id), 'own rating wins');
-		self::assertSame(2, $this->app->balances->levelOf($admin_scale->id, $petya->id), 'inherited from parent');
+		$child = $this->app->balances->create(self::CHAT_ID, $this->owner->id, 'Своя шкала', $default->id);
+		$this->app->balances->setLevel(self::CHAT_ID, $this->owner->id, $vasya->id, 4, $child->id);
+
+		self::assertFalse($child->is_default);
+		self::assertSame($default->id, $child->parent_id);
+		self::assertSame(4, $this->app->balances->levelOf($child->id, $vasya->id), 'own rating wins');
+		self::assertSame(2, $this->app->balances->levelOf($child->id, $petya->id), 'inherited from parent');
 		self::assertSame(5, $this->app->balances->levelOf($default->id, $vasya->id), 'parent untouched');
 
-		$ratings = $this->app->balances->effectiveRatings($admin_scale->id);
-		self::assertSame(['level' => 4, 'balance_id' => $admin_scale->id], $ratings[$vasya->id]);
+		$ratings = $this->app->balances->effectiveRatings($child->id);
+		self::assertSame(['level' => 4, 'balance_id' => $child->id], $ratings[$vasya->id]);
 		self::assertSame(['level' => 2, 'balance_id' => $default->id], $ratings[$petya->id]);
 
-		$this->app->balances->resetLevel(self::CHAT_ID, $this->admin->id, $vasya->id, $admin_scale->id);
-		self::assertSame(5, $this->app->balances->levelOf($admin_scale->id, $vasya->id));
+		$this->app->balances->resetLevel(self::CHAT_ID, $this->owner->id, $vasya->id, $child->id);
+		self::assertSame(5, $this->app->balances->levelOf($child->id, $vasya->id));
+	}
+
+	/**
+		Temporary rule: only the owner changes levels and scales, chat admins included.
+	*/
+	public function testChatAdminCannotRateOrCreateScales(): void {
+		$vasya = $this->player('vasya');
+		try {
+			$this->app->balances->setLevel(self::CHAT_ID, $this->admin->id, $vasya->id, 4);
+			self::fail('admin must not rate');
+		} catch (PermissionDenied $e) {
+			self::assertSame('Уровни игроков меняет только главный админ.', $e->getMessage());
+		}
+		$this->expectException(PermissionDenied::class);
+		$this->app->balances->create(self::CHAT_ID, $this->admin->id, 'Своя шкала');
 	}
 
 	public function testAdminCannotEditSomeoneElsesScale(): void {
@@ -79,7 +94,7 @@ class BalanceServiceTest extends IntegrationTestCase {
 	public function testCreateScaleWithoutParent(): void {
 		$vasya = $this->player('vasya');
 		$this->rate($vasya, 6);
-		$scale = $this->app->balances->create(self::CHAT_ID, $this->admin->id, 'Своя шкала');
+		$scale = $this->app->balances->create(self::CHAT_ID, $this->owner->id, 'Своя шкала');
 		self::assertNull($scale->parent_id);
 		self::assertSame(Levels::DEFAULT, $this->app->balances->levelOf($scale->id, $vasya->id));
 	}

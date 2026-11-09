@@ -16,6 +16,7 @@ class Context {
 		public Message $message,
 		public Player $actor,
 		public bool $is_admin,
+		public bool $is_owner = false,
 	) {
 	}
 

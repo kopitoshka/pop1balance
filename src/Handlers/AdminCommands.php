@@ -9,6 +9,7 @@ use P1Bot\App\DraftCards;
 use P1Bot\App\PlayerResolver;
 use P1Bot\App\TournamentListing;
 use P1Bot\App\TournamentResolver;
+use P1Bot\Domain\AccessPolicy;
 use P1Bot\Domain\BalanceService;
 use P1Bot\Domain\CreateTournament;
 use P1Bot\Domain\EditTournament;
@@ -43,6 +44,11 @@ class AdminCommands {
 	protected const ADMIN = ['new', 'edit', 'cancel', 'open', 'close', 'level', 'balance'];
 
 	/**
+		Owner only for now (scales are hidden from users, see AccessPolicy::LEVELS_OWNER_ONLY).
+	*/
+	protected const OWNER = ['level', 'balance'];
+
+	/**
 		Tournaments an admin command may target when no id is given.
 	*/
 	protected const MANAGEABLE = [
@@ -74,6 +80,9 @@ class AdminCommands {
 
 	public function handle(Context $ctx, string $command, string $args): void {
 		try {
+			if (in_array($command, self::OWNER, true) && !$ctx->is_owner) {
+				throw new PermissionDenied($command === 'level' ? AccessPolicy::LEVELS_OWNER_ONLY : AccessPolicy::OWNER_ONLY);
+			}
 			if (in_array($command, self::ADMIN, true) && !$ctx->is_admin) {
 				throw new PermissionDenied('Эта команда только для админов чата. Посмотреть турниры: /tournaments');
 			}
@@ -93,7 +102,7 @@ class AdminCommands {
 		switch ($command) {
 			case 'help':
 			case 'start':
-				return Texts::help($this->bot->username, $ctx->is_admin);
+				return Texts::help($this->bot->username, $ctx->is_admin, $ctx->is_owner);
 			case 'tournaments':
 				return $this->listTournaments($ctx);
 			case 'levels':
@@ -249,12 +258,15 @@ class AdminCommands {
 				break;
 			case 'баланс':
 			case 'balance':
+				if (!$ctx->is_owner) {
+					throw new PermissionDenied(AccessPolicy::OWNER_ONLY);
+				}
 				$balance_id = TournamentResolver::parseId($value) ?? throw new ValidationError('Укажи номер шкалы баланса, например: /edit 5 баланс 2');
 				$edit = new EditTournament(null, null, null, null, $balance_id);
 				break;
 			default:
 				throw new ValidationError(sprintf(
-					'Не знаю поле «%s». Можно: название, время, размер, уровень, лимит, баланс.',
+					'Не знаю поле «%s». Можно: название, время, размер, уровень, лимит.',
 					$field,
 				));
 		}
@@ -319,13 +331,12 @@ class AdminCommands {
 			throw new ValidationError('Уровень от 1 до 6 или название: ' . self::levelsHint());
 		}
 
-		$balance = $this->balances->setLevel($ctx->chatId(), $ctx->actor->id, $player->id, $level, $balance_id);
+		$this->balances->setLevel($ctx->chatId(), $ctx->actor->id, $player->id, $level, $balance_id);
 		return sprintf(
-			'Записал: %s — %s (%d) в шкале «%s».',
+			'Записал: %s — %s (%d).',
 			Html::e($player->mention()),
 			Levels::name($level),
 			$level,
-			Html::e($balance->name),
 		);
 	}
 

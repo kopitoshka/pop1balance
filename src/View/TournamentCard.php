@@ -32,9 +32,7 @@ class TournamentCard {
 		} else {
 			$lines[] = '⚖️ Уровень турнира: не задан';
 		}
-		if ($balance !== null) {
-			$lines[] = '📏 Шкала уровней: ' . Html::e($balance->name);
-		}
+		// $balance is not shown for now: scales are hidden from users (see AccessPolicy::LEVELS_OWNER_ONLY).
 		$lines[] = '🎟 Лимит участников: ' . $t->max_players;
 		if ($organizer !== null) {
 			$lines[] = '👤 Организатор: ' . Html::e($organizer->mention());

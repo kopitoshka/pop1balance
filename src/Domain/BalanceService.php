@@ -51,7 +51,8 @@ class BalanceService {
 		New scale owned by an admin, optionally inheriting ratings from $based_on_id.
 	*/
 	public function create(int $chat_id, int $actor_id, string $name, ?int $based_on_id = null): Balance {
-		$this->access->assertChatAdmin($chat_id, $actor_id);
+		// Owner only for now: see AccessPolicy::LEVELS_OWNER_ONLY.
+		$this->access->assertOwner($actor_id);
 		$name = trim($name);
 		if ($name === '' || mb_strlen($name) > 128) {
 			throw new ValidationError('Название шкалы должно быть от 1 до 128 символов.');
@@ -74,7 +75,8 @@ class BalanceService {
 		?int $balance_id = null,
 	): Balance {
 		Levels::assertValid($level);
-		$this->access->assertChatAdmin($chat_id, $actor_id);
+		// Owner only for now: see AccessPolicy::LEVELS_OWNER_ONLY.
+		$this->access->assertOwner($actor_id, AccessPolicy::LEVELS_OWNER_ONLY);
 		if ($this->players->find($player_id) === null) {
 			throw new NotFound('Такого игрока я не знаю.');
 		}
@@ -96,7 +98,7 @@ class BalanceService {
 		Removes the rating from the actor's scale so the inherited (or default) level applies again.
 	*/
 	public function resetLevel(int $chat_id, int $actor_id, int $player_id, int $balance_id): void {
-		$this->access->assertChatAdmin($chat_id, $actor_id);
+		$this->access->assertOwner($actor_id, AccessPolicy::LEVELS_OWNER_ONLY);
 		$balance = $this->get($balance_id);
 		if ($balance->owner_id !== $actor_id) {
 			throw new PermissionDenied(sprintf(

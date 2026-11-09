@@ -145,7 +145,12 @@ class UpdateRouter {
 		$actor = $this->upsertPlayer($message->from);
 		$this->registerMentionedPlayers($message);
 		$this->admin_sync->syncIfStale($message->chat_id);
-		$context = new Context($message, $actor, $this->access->isChatAdmin($message->chat_id, $actor->id));
+		$context = new Context(
+			$message,
+			$actor,
+			$this->access->isChatAdmin($message->chat_id, $actor->id),
+			$this->access->isOwner($actor->id),
+		);
 
 		if ($is_our_command && $command !== null) {
 			$this->commands->handle($context, $command['name'], $command['args']);

@@ -9,6 +9,7 @@ use P1Bot\App\Confirmation;
 use P1Bot\App\DraftCards;
 use P1Bot\App\PlayerResolver;
 use P1Bot\App\TournamentResolver;
+use P1Bot\Domain\AccessPolicy;
 use P1Bot\Domain\BalanceService;
 use P1Bot\Domain\CreateTournament;
 use P1Bot\Domain\EditTournament;
@@ -61,6 +62,9 @@ class Dispatcher {
 	*/
 	public function dispatch(string $tool, array $args, Context $ctx): array {
 		try {
+			if (in_array($tool, Tools::OWNER_TOOLS, true) && !$ctx->is_owner) {
+				throw new PermissionDenied($tool === 'set_level' ? AccessPolicy::LEVELS_OWNER_ONLY : AccessPolicy::OWNER_ONLY);
+			}
 			if (in_array($tool, Tools::ADMIN_TOOLS, true) && !$ctx->is_admin) {
 				throw new PermissionDenied('Это действие доступно только админам чата.');
 			}
@@ -229,7 +233,8 @@ class Dispatcher {
 					MoscowTime::toInput($starts_at),
 					(int) ($a['team_size'] ?? 0),
 					$reference,
-					isset($a['balance_id']) ? (int) $a['balance_id'] : null,
+					// Only the owner picks a scale (the parameter is offered to him only).
+					$ctx->is_owner && isset($a['balance_id']) ? (int) $a['balance_id'] : null,
 					isset($a['max_players']) ? (int) $a['max_players'] : null,
 				));
 				$this->announcer->renumber($t->chat_id, $t->id);
@@ -338,7 +343,7 @@ class Dispatcher {
 			case 'set_level':
 				$player = $this->player_resolver->fromReference((string) ($a['player'] ?? ''), $actor);
 				$level = Levels::parse((string) ($a['level'] ?? '')) ?? throw new ValidationError('Уровень должен быть от 1 до 6 или названием уровня.');
-				$balance = $this->balances->setLevel(
+				$this->balances->setLevel(
 					$ctx->chatId(),
 					$actor->id,
 					$player->id,
@@ -346,11 +351,10 @@ class Dispatcher {
 					isset($a['balance_id']) ? (int) $a['balance_id'] : null,
 				);
 				return ['message' => sprintf(
-					'%s: %s (%d) в шкале «%s».',
+					'%s: %s (%d).',
 					$player->mention(),
 					Levels::name($level),
 					$level,
-					$balance->name,
 				)];
 
 			case 'create_balance':

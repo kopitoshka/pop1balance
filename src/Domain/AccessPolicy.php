@@ -14,6 +14,13 @@ use P1Bot\Repository\PlayerRepository;
 	All permission rules in one place. The AI layer never decides permissions.
 */
 class AccessPolicy {
+	/*
+		Temporary product decision (Nov 2026): rating scales («шкалы», «балансы») are hidden from users.
+		Only the bot owner changes player levels and picks a tournament's scale; everyone else always
+		uses the owner's default scale. Scale tables and columns stay, so this can be turned back on.
+	*/
+	public const LEVELS_OWNER_ONLY = 'Уровни игроков меняет только главный админ.';
+	public const OWNER_ONLY = 'Это доступно только главному админу.';
 
 	public function __construct(
 		protected AdminRepository $admins,
@@ -31,6 +38,12 @@ class AccessPolicy {
 			return false;
 		}
 		return $this->players->find($player_id)?->tg_user_id === $this->owner_tg_id;
+	}
+
+	public function assertOwner(int $player_id, string $message = self::OWNER_ONLY): void {
+		if (!$this->isOwner($player_id)) {
+			throw new PermissionDenied($message);
+		}
 	}
 
 	public function isChatAdmin(int $chat_id, int $player_id): bool {

@@ -49,6 +49,10 @@ class TournamentService {
 	*/
 	public function create(CreateTournament $input): Tournament {
 		$this->access->assertCanCreateTournament($input->chat_id, $input->organizer_id);
+		if ($input->balance_id !== null) {
+			// Picking a scale is owner only for now; others always get the default scale.
+			$this->access->assertOwner($input->organizer_id);
+		}
 
 		$title = $this->validTitle($input->title);
 		$starts_at = $this->validStart($input->starts_at_msk);
@@ -79,6 +83,10 @@ class TournamentService {
 			$t = $this->get($tournament_id);
 			$this->access->assertCanManageTournament($t, $actor_id);
 			$this->assertEditable($t);
+			if ($edit->balance_id !== null) {
+				// Changing the scale is owner only for now; other edits keep the tournament's scale.
+				$this->access->assertOwner($actor_id);
+			}
 
 			$fields = [];
 			if ($edit->title !== null) {
@@ -384,7 +392,7 @@ class TournamentService {
 		[$levels, $max_points] = Levels::parseTournamentLevel($level, $team_size);
 		$balance = $balance_id !== null ? $this->balances->find($balance_id) : $this->balances->findDefault();
 		if ($balance === null) {
-			throw new NotFound($balance_id !== null ? 'Такой шкалы баланса нет.' : 'Шкала баланса по умолчанию ещё не создана.');
+			throw new NotFound($balance_id !== null ? 'Такой шкалы баланса нет.' : 'Уровни игроков ещё не настроены, поэтому турнир пока не создать. Напиши главному админу.');
 		}
 		return [$balance->id, $levels !== null ? Levels::formatReferenceTeam($levels) : null, $max_points];
 	}
