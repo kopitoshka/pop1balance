@@ -54,7 +54,7 @@ final class CallbackHandler
                         $this->api->answerCallbackQuery($query->id, 'Править черновик может только его организатор или тот, кто попросил показать карточку.', true);
                         return;
                     }
-                    $this->api->answerCallbackQuery($query->id, 'Ответь на карточку, что поправить: например «время 21:00» или «эталон средний, средний+, высокий».', true);
+                    $this->api->answerCallbackQuery($query->id, 'Ответь на карточку, что поправить: например «время 21:00» или «уровень 10».', true);
                     return;
                 case 'solo':
                     $this->teams->joinSolo($t->id, $player->id);

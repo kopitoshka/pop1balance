@@ -169,11 +169,13 @@ Players (in the group, mention the bot or reply to it):
 - Buttons under the announcement: «Хочу участвовать» (solo), «Передумал».
 
 Admins:
-- `/new 23.11 20:00 | Кубок | 3 | средний, средний, средний+ | 24` — date/time MSK | title | team size |
-  reference team (required, one level per player; digits `3,3,4` work too) | player limit (default 24).
+- `/new 23.11 20:00 | Кубок | 3 | 10 | 24` — date/time MSK | title | team size |
+  tournament level (required, see «Tournament level» below) | player limit (default 24).
   Creates a **draft** and shows its card ending with «Публикуем или что-то поправить?» and the buttons
   «✅ Публикуем» / «✏️ Поправить».
-- `/edit [id] время 23.11 21:00` (fields: название, время, размер, эталон, лимит, баланс N). Editing a draft shows a fresh card.
+- `/edit [N] время 23.11 21:00` (fields: название, время, размер, уровень, лимит, баланс N). Editing a draft shows a fresh card.
+  `/edit 1 уровень 10`, `/edit 1 уровень средний, средний, высокий`, `/edit 1 размер 2 уровень 7`.
+- `/levels` — the six levels with points and synonyms and how the tournament level works (for everyone).
 - `/open [id]` — for a draft: shows the same card and publishes only after a clear confirmation (see below);
   for a closed tournament: reopens registration right away. `/close [id]`; `/cancel [id]`
 - `/level @user 4 [balance]`, `/balance [id]`
@@ -206,12 +208,11 @@ When the AI calls `list_tournaments`, the bot sends this block itself and the mo
 
 ### Creating a tournament (draft → card → confirmation)
 
-Every tournament has a balance: the organizer names the strongest allowed team by levels, e.g.
-«средний, средний, средний+» (team limit = sum of the levels = 10; the number of levels = team size).
-There is no "no balance" option any more (old tournaments without a limit keep working).
+Every tournament has a level (see below). There is no "no level" option any more
+(old tournaments without a limit keep working).
 
-1. In plain text («@bot создай турнир на субботу в 20:00, тройки, эталон средний, средний, средний+») the bot
-   collects title, MSK date/time, team size and the reference team and asks for whatever is missing.
+1. In plain text («@bot создай турнир на субботу в 20:00, тройки, уровень 10») the bot
+   collects title, MSK date/time, team size and the tournament level and asks for whatever is missing or invalid.
    Player limit defaults to 24, the level scale to the default one.
 2. It creates a draft and shows the card with «Публикуем или что-то поправить?».
 3. Publishing (registration opens, announcement is posted) happens only on a clear confirmation from the
@@ -226,7 +227,26 @@ There is no "no balance" option any more (old tournaments without a limit keep w
 
 `1 начальный, 2 начальный+, 3 средний, 4 средний+, 5 высокий, 6 высокий+`. Synonyms: слабый / базовый /
 начинающий = начальный, танк = высокий. Case-insensitive, «плюс» = «+» («слабый плюс» = 2, «танк+» = 6),
-small typos are tolerated («выскоий» = высокий).
+small typos are tolerated («выскоий» = высокий). Full help for users: `/levels` (the AI sends the same
+text via the `levels_help` tool when asked «какие есть уровни»).
+
+### Tournament level
+
+«уровень», «уровень турнира», «максимальный уровень», «макс. уровень» are the same thing: the maximum total
+points of a team (`tournaments.max_points`). A team is accepted when the sum of its players' levels fits.
+It is set (in `/new`, `/edit` and plain text) in one of two ways:
+
+- **one number** — the total itself: `10` for a team of 3 means `max_points = 10`. Allowed range:
+  team_size × 1 … team_size × 6 (3–18 for threes). Stored with `reference_team = NULL`.
+- **levels of all players**, exactly team_size of them (names, synonyms or digits 1–6):
+  «средний, средний, высокий» / `3,3,5` → `max_points = 11`, `reference_team = '3,3,5'`.
+
+A single level name («средний») is not a shorthand for teams of 2–4. Anything else (no value, wrong number
+of levels, digit outside 1–6, total out of range, unknown word) is rejected with the reason plus the usage
+help with examples and a pointer to `/levels`. The label («средний (10 баллов на троих)») is
+round(max_points / team_size). Changing the team size needs a new level (`/edit 1 размер 2 уровень 7`).
+After the first sign-up (team or solo) the level and team size are locked; the bot says so and suggests
+cancelling and creating a new tournament. DB columns are unchanged (`reference_team`, `max_points`).
 
 ## Development
 

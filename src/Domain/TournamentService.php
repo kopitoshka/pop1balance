@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace P1Bot\Domain;
 
 use DateTimeImmutable;
+use P1Bot\Domain\Exception\InvalidLevel;
 use P1Bot\Domain\Exception\NotFound;
 use P1Bot\Domain\Exception\ValidationError;
 use P1Bot\Domain\Model\TeamEntry;
@@ -21,8 +22,12 @@ final class TournamentService
     public const MIN_TEAM_SIZE = 2;
     public const MAX_TEAM_SIZE = 4;
 
-    public const REFERENCE_REQUIRED = 'Нужно задать баланс: перечисли уровни самой сильной допустимой команды, '
-        . 'например «средний, средний, средний+». Уровней должно быть столько же, сколько игроков в команде.';
+    public const REFERENCE_REQUIRED = 'Нужно указать уровень турнира: одним числом — сумму баллов на команду, '
+        . 'или уровнями всех игроков команды, например «средний, средний, средний+».';
+
+    public const LEVEL_LOCKED = 'Уровень турнира и размер команды уже не поменять: на турнир есть заявки, '
+        . 'и их проверяли по текущим правилам. Название, время и лимит участников менять можно. '
+        . 'Если нужен другой уровень — отмени этот турнир (/cancel с его номером) и создай новый (/new).';
 
     public function __construct(
         private TournamentRepository $tournaments,
@@ -86,14 +91,21 @@ final class TournamentService
                 || $edit->balanceId !== null || $edit->removeLevelLimit;
             if ($limitTouched) {
                 if ($this->hasEntries($t->id)) {
-                    throw new ValidationError('Размер команды и лимит по уровню нельзя менять, когда уже есть заявки.');
+                    throw new ValidationError(self::LEVEL_LOCKED);
                 }
                 $teamSize = $this->validTeamSize($edit->teamSize ?? $t->teamSize);
                 if ($edit->removeLevelLimit) {
-                    throw new ValidationError('Турнир без баланса сделать нельзя. ' . self::REFERENCE_REQUIRED);
+                    throw new ValidationError('Турнир без уровня сделать нельзя. ' . self::REFERENCE_REQUIRED);
                 }
-                $reference = $edit->referenceTeam ?? $t->referenceTeam;
-                [$balanceId, $reference, $maxPoints] = $this->levelLimit($reference, $edit->balanceId ?? $t->balanceId, $teamSize);
+                $level = $edit->referenceTeam;
+                if ($level === null) {
+                    if ($teamSize !== $t->teamSize) {
+                        throw new InvalidLevel(sprintf('Размер команды меняется на %d — укажи и уровень турнира под новый размер.', $teamSize));
+                    }
+                    // Only the scale changes: keep the current level.
+                    $level = $t->referenceTeam ?? ($t->maxPoints !== null ? (string) $t->maxPoints : null);
+                }
+                [$balanceId, $reference, $maxPoints] = $this->levelLimit($level, $edit->balanceId ?? $t->balanceId, $teamSize);
                 $fields += ['team_size' => $teamSize, 'balance_id' => $balanceId, 'reference_team' => $reference, 'max_points' => $maxPoints];
             }
 
@@ -323,25 +335,22 @@ final class TournamentService
     }
 
     /**
-     * Reference team => [balance_id, canonical reference, max_points]. A reference team is
-     * required: tournaments without balance can no longer be created (old rows may still have NULL).
-     * A reference without an explicit scale uses the default scale.
+     * Tournament level => [balance_id, canonical levels list or null for a plain total, max_points].
+     * The level is required: tournaments without it can no longer be created (old rows may have NULL).
+     * Without an explicit scale the default scale is used.
      *
      * @return array{0: ?int, 1: ?string, 2: ?int}
      */
-    private function levelLimit(?string $referenceTeam, ?int $balanceId, int $teamSize): array
+    private function levelLimit(?string $level, ?int $balanceId, int $teamSize): array
     {
-        if ($referenceTeam === null || trim($referenceTeam) === '') {
-            throw new ValidationError(self::REFERENCE_REQUIRED);
+        if ($level === null || trim($level) === '') {
+            throw new InvalidLevel(self::REFERENCE_REQUIRED);
         }
-        $levels = Levels::parseReferenceTeam($referenceTeam);
-        if (count($levels) !== $teamSize) {
-            throw new ValidationError(sprintf('В команде %d игрока(ов), значит в эталонной команде нужно перечислить %d уровня(ей), а указано %d.', $teamSize, $teamSize, count($levels)));
-        }
+        [$levels, $maxPoints] = Levels::parseTournamentLevel($level, $teamSize);
         $balance = $balanceId !== null ? $this->balances->find($balanceId) : $this->balances->findDefault();
         if ($balance === null) {
             throw new NotFound($balanceId !== null ? 'Такой шкалы баланса нет.' : 'Шкала баланса по умолчанию ещё не создана.');
         }
-        return [$balance->id, Levels::formatReferenceTeam($levels), array_sum($levels)];
+        return [$balance->id, $levels !== null ? Levels::formatReferenceTeam($levels) : null, $maxPoints];
     }
 }

@@ -62,6 +62,10 @@ final class TournamentServiceTest extends IntegrationTestCase
             'no reference' => new CreateTournament(self::CHAT_ID, $this->owner->id, 'X', '2026-11-14 19:00', 3),
             'blank reference' => new CreateTournament(self::CHAT_ID, $this->owner->id, 'X', '2026-11-14 19:00', 3, '  '),
             'bad level' => new CreateTournament(self::CHAT_ID, $this->owner->id, 'X', '2026-11-14 19:00', 3, 'средний, средний, крутой'),
+            'single level name' => new CreateTournament(self::CHAT_ID, $this->owner->id, 'X', '2026-11-14 19:00', 3, 'средний'),
+            'total too small' => new CreateTournament(self::CHAT_ID, $this->owner->id, 'X', '2026-11-14 19:00', 3, '2'),
+            'total too big' => new CreateTournament(self::CHAT_ID, $this->owner->id, 'X', '2026-11-14 19:00', 3, '19'),
+            'digit out of range in list' => new CreateTournament(self::CHAT_ID, $this->owner->id, 'X', '2026-11-14 19:00', 3, '3,3,7'),
             'past start' => new CreateTournament(self::CHAT_ID, $this->owner->id, 'X', '2026-11-01 19:00', 3, '3,3,4'),
             'empty title' => new CreateTournament(self::CHAT_ID, $this->owner->id, ' ', '2026-11-14 19:00', 3, '3,3,4'),
             'balance without reference' => new CreateTournament(self::CHAT_ID, $this->owner->id, 'X', '2026-11-14 19:00', 3, null, 1),
@@ -70,8 +74,8 @@ final class TournamentServiceTest extends IntegrationTestCase
         foreach ($cases as $name => $input) {
             try {
                 $this->app->tournaments->create($input);
-                self::fail("Expected ValidationError: $name");
-            } catch (ValidationError $e) {
+                self::fail("Expected a validation error: $name");
+            } catch (ValidationError | \P1Bot\Domain\Exception\InvalidLevel $e) {
                 self::assertNotSame('', $e->getMessage());
             }
         }
@@ -170,5 +174,55 @@ final class TournamentServiceTest extends IntegrationTestCase
         self::assertSame([$t->id, 60], [$due[0][0]->id, $due[0][1]]);
         $this->app->tournaments->markReminded($t->id);
         self::assertSame([], $this->app->tournaments->dueReminders([60, 15]));
+    }
+
+    public function testTotalLevelIsMaxPointsDirectly(): void
+    {
+        $t = $this->app->tournaments->create(new CreateTournament(self::CHAT_ID, $this->owner->id, 'X', '2026-11-14 19:00', 3, '10'));
+        self::assertSame(10, $t->maxPoints);
+        self::assertNull($t->referenceTeam);
+        self::assertNotNull($t->balanceId);
+        self::assertSame('средний (10 баллов на троих)', $t->levelLabel());
+
+        $t = $this->app->tournaments->edit($this->owner->id, $t->id, new EditTournament(null, null, null, '18'));
+        self::assertSame(18, $t->maxPoints);
+        self::assertSame('высокий+ (18 баллов на троих)', $t->levelLabel());
+        $t = $this->app->tournaments->edit($this->owner->id, $t->id, new EditTournament(null, null, null, '3'));
+        self::assertSame('начальный (3 балла на троих)', $t->levelLabel());
+
+        // A list sets max points to the sum and keeps the per-player levels.
+        $t = $this->app->tournaments->edit($this->owner->id, $t->id, new EditTournament(null, null, null, 'средний, средний, высокий'));
+        self::assertSame(11, $t->maxPoints);
+        self::assertSame('3,3,5', $t->referenceTeam);
+
+        // A new team size needs a level for it.
+        try {
+            $this->app->tournaments->edit($this->owner->id, $t->id, new EditTournament(null, null, 2));
+            self::fail('size change without a level');
+        } catch (\P1Bot\Domain\Exception\InvalidLevel $e) {
+            self::assertStringContainsString('укажи и уровень', $e->getMessage());
+        }
+        $t = $this->app->tournaments->edit($this->owner->id, $t->id, new EditTournament(null, null, 2, '7'));
+        self::assertSame([2, 7], [$t->teamSize, $t->maxPoints]);
+
+        // Only the scale changes: the plain total is kept.
+        $t = $this->app->tournaments->edit($this->owner->id, $t->id, new EditTournament(null, null, null, null, $t->balanceId));
+        self::assertSame(7, $t->maxPoints);
+    }
+
+    public function testLevelIsLockedAfterSignUps(): void
+    {
+        $t = $this->openTournament();
+        $this->app->teams->joinSolo($t->id, $this->player('vasya')->id);
+        try {
+            $this->app->tournaments->edit($this->owner->id, $t->id, new EditTournament(null, null, null, '12'));
+            self::fail('locked');
+        } catch (ValidationError $e) {
+            self::assertStringContainsString('Уровень турнира и размер команды уже не поменять', $e->getMessage());
+            self::assertStringContainsString('отмени этот турнир', $e->getMessage());
+        }
+        // Title/limit are still editable.
+        $t = $this->app->tournaments->edit($this->owner->id, $t->id, new EditTournament('Новое имя', null, null, null, null, 30));
+        self::assertSame(30, $t->maxPlayers);
     }
 }

@@ -40,7 +40,7 @@ final class Assistant
      *
      * 'list' = the model asked for the tournament list: the caller sends the pretty list before the text.
      *
-     * @return array{text: string, remember: callable(int): void, card: ?int, history: list<array<string, mixed>>, list: bool}
+     * @return array{text: string, remember: callable(int): void, card: ?int, history: list<array<string, mixed>>, list: bool, levels: bool}
      */
     public function reply(Context $ctx): array
     {
@@ -68,6 +68,7 @@ final class Assistant
 
         $card = null;
         $list = false;
+        $levels = false;
         $response = $this->ai->createResponse($this->systemPrompt, $input, $tools);
         for ($round = 0; $response->toolCalls !== [] && $round < self::MAX_ROUNDS; $round++) {
             $outputs = [];
@@ -79,6 +80,9 @@ final class Assistant
                 $this->logger->info('tool ' . $call['name'], ['args' => $call['arguments'], 'ok' => $result['ok'] ?? false]);
                 if (!empty($result['show_list'])) {
                     $list = true;
+                }
+                if (!empty($result['show_levels'])) {
+                    $levels = true;
                 }
                 if (isset($result['show_card'])) {
                     $card = (int) $result['show_card'];
@@ -100,7 +104,7 @@ final class Assistant
         if ($card === null && $response->text !== '') {
             $text = $response->text;
         } else {
-            $text = $list && $card === null ? '' : 'Готово!'; // the list speaks for itself
+            $text = ($list || $levels) && $card === null ? '' : 'Готово!'; // the list / help speaks for itself
         }
         $newHistory = array_slice(array_merge($history, [
             ['role' => 'user', 'content' => $userText],
@@ -124,6 +128,7 @@ final class Assistant
             'remember' => $remember,
             'card' => $card,
             'list' => $list,
+            'levels' => $levels,
             'history' => array_slice(array_merge($history, [['role' => 'user', 'content' => $userText]]), -self::MAX_HISTORY),
         ];
     }

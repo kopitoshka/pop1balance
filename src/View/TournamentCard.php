@@ -23,13 +23,14 @@ final class TournamentCard
             AnnouncementView::when($t),
             '👥 Команды по ' . $t->teamSize . ' ' . RuPlural::choose($t->teamSize, ['игроку', 'игрока', 'игроков']),
         ];
-        if ($t->referenceTeam !== null && $t->maxPoints !== null) {
-            $levels = array_map('intval', explode(',', $t->referenceTeam));
-            $lines[] = '⚖️ Эталонная команда: ' . Html::e(Levels::describeReferenceTeam($levels));
-            $lines[] = '📊 Лимит команды: ' . $t->maxPoints . ' ' . RuPlural::points($t->maxPoints)
-                . ', уровень турнира: ' . Html::e(Levels::name((int) $t->averageLevel()));
+        if ($t->maxPoints !== null) {
+            $lines[] = '⚖️ Уровень турнира: ' . Html::e($t->levelLabel());
+            if ($t->referenceTeam !== null) {
+                $levels = array_map('intval', explode(',', $t->referenceTeam));
+                $lines[] = '📊 По игрокам: ' . Html::e(Levels::describeReferenceTeam($levels));
+            }
         } else {
-            $lines[] = '⚖️ Баланс: не задан';
+            $lines[] = '⚖️ Уровень турнира: не задан';
         }
         if ($balance !== null) {
             $lines[] = '📏 Шкала уровней: ' . Html::e($balance->name);

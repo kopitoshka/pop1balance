@@ -70,6 +70,9 @@ final class MessageHandler
                 $messageId = $this->api->sendMessage($chatId, $list, $replyTo);
             }
         }
+        if (!empty($reply['levels'])) {
+            $messageId = $this->api->sendMessage($chatId, Texts::levels(), $replyTo);
+        }
         if ($reply['text'] !== '' || $messageId === null) {
             $messageId = $this->api->sendMessage($chatId, Html::e($reply['text'] !== '' ? $reply['text'] : 'Готово!'), $replyTo);
         }

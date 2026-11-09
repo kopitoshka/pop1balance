@@ -13,6 +13,7 @@ use P1Bot\Domain\BalanceService;
 use P1Bot\Domain\CreateTournament;
 use P1Bot\Domain\EditTournament;
 use P1Bot\Domain\Exception\DomainError;
+use P1Bot\Domain\Exception\InvalidLevel;
 use P1Bot\Domain\Exception\NotFound;
 use P1Bot\Domain\Exception\PermissionDenied;
 use P1Bot\Domain\Exception\ValidationError;
@@ -73,6 +74,13 @@ final class Dispatcher
                 }
             }
             return ['ok' => true] + $result;
+        } catch (InvalidLevel $e) {
+            return [
+                'ok' => false,
+                'error' => $e->getMessage(),
+                'what_to_do' => 'Переспроси уровень турнира и покажи примеры: одно число — сумма баллов на команду (например «10» для троек), '
+                    . 'или уровни всех игроков через запятую по числу игроков («средний, средний, высокий»). Все уровни: /levels.',
+            ];
         } catch (DomainError $e) {
             return ['ok' => false, 'error' => $e->getMessage()];
         } catch (Throwable $e) {
@@ -102,6 +110,9 @@ final class Dispatcher
                     'show_list' => true,
                     'note' => 'Красивый список турниров с составами бот отправит в чат сам. Не пересказывай его: ответь одной короткой фразой (или ничего не добавляй, если нечего).',
                 ];
+
+            case 'levels_help':
+                return ['show_levels' => true, 'note' => 'Справку по уровням бот отправит в чат сам. Не пересказывай её, добавь максимум одну короткую фразу.'];
 
             case 'tournament_info':
                 $t = $this->tournament($ctx, $a, TournamentStatus::active());
@@ -169,7 +180,7 @@ final class Dispatcher
 
             case 'create_tournament':
                 $startsAt = MoscowTime::parseHuman((string) ($a['starts_at_msk'] ?? ''), $this->clock->now());
-                $reference = isset($a['reference_team']) && trim((string) $a['reference_team']) !== '' ? (string) $a['reference_team'] : null;
+                $reference = self::levelArg($a);
                 // Always a draft: publishing needs the organizer's explicit confirmation of the card.
                 $t = $this->tournaments->create(new CreateTournament(
                     $ctx->chatId(),
@@ -191,7 +202,7 @@ final class Dispatcher
                     isset($a['title']) ? (string) $a['title'] : null,
                     $time,
                     isset($a['team_size']) ? (int) $a['team_size'] : null,
-                    isset($a['reference_team']) && $a['reference_team'] !== '' ? (string) $a['reference_team'] : null,
+                    self::levelArg($a),
                     null,
                     isset($a['max_players']) ? (int) $a['max_players'] : null,
                     false,
@@ -350,6 +361,16 @@ final class Dispatcher
             'card' => $this->drafts !== null ? self::plain($this->drafts->cardText($t)) : $this->line($t),
             'note' => 'Карточка с вопросом «Публикуем или что-то поправить?» и кнопками будет показана автоматически. Публикуй только после явного «да».',
         ];
+    }
+
+    /** Tournament level from the model: "level" (old name "reference_team" still accepted). */
+    private static function levelArg(array $a): ?string
+    {
+        $value = $a['level'] ?? $a['reference_team'] ?? null;
+        if ($value === null || (is_string($value) && trim($value) === '')) {
+            return null;
+        }
+        return is_array($value) ? implode(',', array_map('strval', $value)) : (string) $value;
     }
 
     /** Short per-chat number the user sees (null once finished/cancelled). */

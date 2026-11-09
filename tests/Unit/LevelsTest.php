@@ -83,8 +83,55 @@ final class LevelsTest extends TestCase
 
     public function testParseReferenceTeamRejectsGarbage(): void
     {
-        $this->expectException(ValidationError::class);
+        $this->expectException(\P1Bot\Domain\Exception\InvalidLevel::class);
         Levels::parseReferenceTeam('3, сильный');
+    }
+
+    /** @dataProvider tournamentLevelProvider */
+    public function testParseTournamentLevel(string $value, int $teamSize, ?array $levels, int $maxPoints): void
+    {
+        self::assertSame([$levels, $maxPoints], Levels::parseTournamentLevel($value, $teamSize));
+    }
+
+    /** @return array<string, array{string, int, ?list<int>, int}> */
+    public static function tournamentLevelProvider(): array
+    {
+        return [
+            'total' => ['10', 3, null, 10],
+            'total min' => ['3', 3, null, 3],
+            'total max' => ['18', 3, null, 18],
+            'total for pairs' => [' 7 ', 2, null, 7],
+            'names' => ['средний, средний, высокий', 3, [3, 3, 5], 11],
+            'digits' => ['3,3,4', 3, [3, 3, 4], 10],
+            'mixed and synonyms' => ['Танк, слабый плюс', 2, [5, 2], 7],
+            'typos and spaces' => ['выскоий средний +', 2, [5, 4], 9],
+        ];
+    }
+
+    /** @dataProvider badTournamentLevelProvider */
+    public function testParseTournamentLevelRejects(string $value, int $teamSize, string $reason): void
+    {
+        try {
+            Levels::parseTournamentLevel($value, $teamSize);
+            self::fail('expected InvalidLevel');
+        } catch (\P1Bot\Domain\Exception\InvalidLevel $e) {
+            self::assertStringContainsString($reason, $e->getMessage());
+        }
+    }
+
+    /** @return array<string, array{string, int, string}> */
+    public static function badTournamentLevelProvider(): array
+    {
+        return [
+            'empty' => ['', 3, 'Не указан'],
+            'single name is not a shorthand' => ['средний', 3, 'уровней указано 1'],
+            'too few' => ['средний, высокий', 3, 'уровней указано 2'],
+            'too many' => ['3,3,3,3', 3, 'уровней указано 4'],
+            'total too small' => ['2', 3, 'от 3 до 18'],
+            'total too big' => ['19', 3, 'от 3 до 18'],
+            'digit out of range in list' => ['3, 7', 2, 'Уровня «7» нет'],
+            'unknown word' => ['средний, крутой', 2, 'Не понимаю уровень «крутой»'],
+        ];
     }
 
     /** @dataProvider averageProvider */

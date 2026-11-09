@@ -26,7 +26,9 @@ final class AdminCommandsTest extends IntegrationTestCase
 
         $card = $this->http->sent('sendMessage')[0];
         self::assertStringContainsString('Турнир №1 (черновик)', $card['text']);
-        self::assertStringContainsString('Эталонная команда: средний, средний, средний+', $card['text']);
+        self::assertStringContainsString('⚖️ Уровень турнира: средний (10 баллов на троих)', $card['text']);
+        self::assertStringContainsString('По игрокам: средний, средний, средний+', $card['text']);
+        self::assertStringNotContainsStringIgnoringCase('эталон', $card['text']);
         self::assertStringEndsWith('Публикуем или что-то поправить?', $card['text']);
         self::assertSame('pub:1', $card['reply_markup']['inline_keyboard'][0][0]['callback_data']);
         self::assertSame('fix:1', $card['reply_markup']['inline_keyboard'][0][1]['callback_data']);
@@ -85,7 +87,7 @@ final class AdminCommandsTest extends IntegrationTestCase
         $oldCard = $this->app->tournamentRepo->find(1)->cardMsgId;
         $this->http->reset();
 
-        $this->dispatch($this->groupMessage($this->owner, '/edit 1 эталон средний, средний, высокий'));
+        $this->dispatch($this->groupMessage($this->owner, '/edit 1 уровень средний, средний, высокий'));
         $t = $this->app->tournamentRepo->find(1);
         self::assertSame(11, $t->maxPoints);
         self::assertNotSame($oldCard, $t->cardMsgId);
@@ -108,7 +110,8 @@ final class AdminCommandsTest extends IntegrationTestCase
     public function testNewWithoutArgsExplainsSyntax(): void
     {
         $this->dispatch($this->groupMessage($this->owner, '/new'));
-        self::assertStringContainsString('/new 23.11 20:00 | Название | 3 | средний, средний, средний+ | 24', $this->http->lastText());
+        self::assertStringContainsString('/new 23.11 20:00 | Название | 3 | 10 | 24', $this->http->lastText());
+        self::assertStringContainsString('/levels', $this->http->lastText());
         self::assertNull($this->app->tournamentRepo->find(1));
     }
 
@@ -429,5 +432,86 @@ final class AdminCommandsTest extends IntegrationTestCase
         self::assertStringContainsString('🏆 <b>Поздний</b> · №1', end($edits)['text']);
         $this->dispatch($this->groupMessage($this->owner, '/info 2'));
         self::assertStringContainsString('Турнира №2 сейчас нет', $this->http->lastText());
+    }
+
+    public function testEditLevelKeywordsAndValues(): void
+    {
+        $this->dispatch($this->groupMessage($this->owner, '/new 23.11 20:00 | Кубок | 3 | 10'));
+        self::assertSame(10, $this->app->tournamentRepo->find(1)->maxPoints);
+        $cases = [
+            '/edit 1 уровень 12' => 12,
+            '/edit 1 уровень турнира 11' => 11,
+            '/edit 1 максимальный уровень 9' => 9,
+            '/edit 1 макс. уровень 13' => 13,
+            '/edit 1 Макс уровень 3, 3, 5' => 11,
+            '/edit 1 уровень средний, средний, высокий+' => 12,
+        ];
+        foreach ($cases as $command => $points) {
+            $this->dispatch($this->groupMessage($this->owner, $command));
+            self::assertSame($points, $this->app->tournamentRepo->find(1)->maxPoints, $command);
+            self::assertStringContainsString('Публикуем или что-то поправить?', $this->http->lastText(), $command);
+        }
+
+        $this->dispatch($this->groupMessage($this->owner, '/edit 1 размер 2 уровень 7'));
+        $t = $this->app->tournamentRepo->find(1);
+        self::assertSame([2, 7], [$t->teamSize, $t->maxPoints]);
+    }
+
+    public function testInvalidLevelAsksAgainWithHelp(): void
+    {
+        $this->dispatch($this->groupMessage($this->owner, '/new 23.11 20:00 | Кубок | 3 | 10'));
+        $bad = [
+            '/edit 1 уровень' => 'Не указан уровень',
+            '/edit 1 уровень средний' => 'уровней указано 1',
+            '/edit 1 уровень 3, 3' => 'уровней указано 2',
+            '/edit 1 уровень 19' => 'от 3 до 18',
+            '/edit 1 уровень 3, 3, 7' => 'Уровня «7» нет',
+            '/edit 1 уровень крутой, средний, средний' => 'Не понимаю уровень «крутой»',
+            '/edit 1 размер 2' => 'укажи и уровень',
+        ];
+        foreach ($bad as $command => $reason) {
+            $this->dispatch($this->groupMessage($this->owner, $command));
+            $text = $this->http->lastText();
+            self::assertStringContainsString($reason, $text, $command);
+            self::assertStringContainsString("/edit 1 уровень 10\n/edit 1 уровень средний, средний, высокий", $text, $command);
+            self::assertStringContainsString('Все уровни и баллы: /levels', $text, $command);
+            self::assertSame(10, $this->app->tournamentRepo->find(1)->maxPoints, $command);
+        }
+
+        $this->dispatch($this->groupMessage($this->owner, '/new 23.11 20:00 | Кубок | 3 | средний'));
+        $text = $this->http->lastText();
+        self::assertStringContainsString('уровней указано 1', $text);
+        self::assertStringContainsString('/new 23.11 20:00 | Кубок | 3 | 10 | 24', $text);
+        self::assertStringContainsString('от 3 до 18 для команды из 3', $text);
+        self::assertNull($this->app->tournamentRepo->find(2));
+    }
+
+    public function testLevelLockedMessageIsClear(): void
+    {
+        $this->dispatch($this->groupMessage($this->owner, '/new 23.11 20:00 | Кубок | 3 | 10'));
+        $this->confirmCard($this->owner);
+        $this->app->teams->joinSolo(1, $this->player('vasya')->id);
+        $this->dispatch($this->groupMessage($this->owner, '/edit 1 уровень 12'));
+        self::assertStringContainsString('Уровень турнира и размер команды уже не поменять: на турнир есть заявки', $this->http->lastText());
+        self::assertStringContainsString('/cancel', $this->http->lastText());
+        self::assertSame(10, $this->app->tournamentRepo->find(1)->maxPoints);
+    }
+
+    public function testLevelsCommandAndHelp(): void
+    {
+        $vasya = $this->player('vasya');
+        $this->dispatch($this->groupMessage($vasya, '/levels'));
+        $text = $this->http->lastText();
+        foreach (['1 — начальный (1 балл). Синонимы: слабый, базовый, начинающий', '5 — высокий (5 баллов). Синоним: танк', '6 — высокий+ (6 баллов)', '/edit 1 уровень 10'] as $needle) {
+            self::assertStringContainsString($needle, $text);
+        }
+        $this->dispatch($this->groupMessage($vasya, '/help'));
+        self::assertStringContainsString('/levels', $this->http->lastText());
+        $this->dispatch($this->groupMessage($this->owner, '/help'));
+        $help = $this->http->lastText();
+        self::assertStringContainsString('/edit 1 уровень 10', $help);
+        foreach ([$help, $text] as $t) {
+            self::assertStringNotContainsStringIgnoringCase('эталон', $t);
+        }
     }
 }

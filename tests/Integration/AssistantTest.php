@@ -114,10 +114,10 @@ final class AssistantTest extends IntegrationTestCase
     public function testAdminCreatesDraftAndGetsCardInsteadOfPublishing(): void
     {
         $this->http->queueOpenAi($this->functionCall('r1', 'c1', 'create_tournament', [
-            'title' => 'Ночной кубок', 'starts_at_msk' => '23.11 22:00', 'team_size' => 2, 'reference_team' => 'танк, средний+',
+            'title' => 'Ночной кубок', 'starts_at_msk' => '23.11 22:00', 'team_size' => 2, 'level' => 'танк, средний+',
             'open_registration' => true, // old parameter is ignored
         ]));
-        $this->dispatch($this->groupMessage($this->owner, '@' . self::BOT_USERNAME . ' создай ночной кубок на 23 ноября в 22, пары, эталон танк и средний+, и сразу публикуй'));
+        $this->dispatch($this->groupMessage($this->owner, '@' . self::BOT_USERNAME . ' создай ночной кубок на 23 ноября в 22, пары, уровень танк и средний+, и сразу публикуй'));
 
         $t = $this->app->tournamentRepo->find(1);
         self::assertSame('draft', $t->status, 'never published without confirming the card');
@@ -131,7 +131,9 @@ final class AssistantTest extends IntegrationTestCase
         self::assertCount(1, $this->openAiRequests(), 'the card ends the turn, no extra model round');
 
         $tools = array_column($this->firstOpenAiRequest()['tools'], null, 'name');
-        self::assertContains('reference_team', $tools['create_tournament']['parameters']['required']);
+        self::assertContains('level', $tools['create_tournament']['parameters']['required']);
+        $request = $this->firstOpenAiRequest();
+        self::assertStringNotContainsStringIgnoringCase('эталон', $request['instructions'] . json_encode($request['tools'], JSON_UNESCAPED_UNICODE));
         self::assertArrayNotHasKey('open_registration', (array) $tools['create_tournament']['parameters']['properties']);
         self::assertArrayNotHasKey('remove_level_limit', (array) $tools['edit_tournament']['parameters']['properties']);
         self::assertArrayHasKey('publish_tournament', $tools);
@@ -327,5 +329,37 @@ final class AssistantTest extends IntegrationTestCase
     private function lastSentMessageId(): int
     {
         return 1000 + count($this->http->sent('sendMessage')) - 1;
+    }
+
+    public function testTotalLevelThroughAiAndInvalidLevelAsksAgain(): void
+    {
+        $this->http->queueOpenAi($this->functionCall('r1', 'c1', 'create_tournament', [
+            'title' => 'Кубок', 'starts_at_msk' => '23.11 20:00', 'team_size' => 3, 'level' => 'средний',
+        ]));
+        $this->http->queueOpenAi($this->text('r2', 'Уточни уровень: сумма баллов или уровни всех трёх игроков?'));
+        $this->dispatch($this->groupMessage($this->owner, '@' . self::BOT_USERNAME . ' создай кубок 23.11 в 20, тройки, уровень средний'));
+        self::assertNull($this->app->tournamentRepo->find(1));
+        $output = json_decode($this->lastOpenAiRequest()['input'][0]['output'], true);
+        self::assertFalse($output['ok']);
+        self::assertStringContainsString('уровней указано 1', $output['error']);
+        self::assertStringContainsString('Переспроси уровень', $output['what_to_do']);
+
+        $this->http->queueOpenAi($this->functionCall('r3', 'c3', 'create_tournament', [
+            'title' => 'Кубок', 'starts_at_msk' => '23.11 20:00', 'team_size' => 3, 'level' => 10,
+        ]));
+        $this->dispatch($this->groupMessage($this->owner, '@' . self::BOT_USERNAME . ' макс. уровень 10'));
+        $t = $this->app->tournamentRepo->find(1);
+        self::assertSame(10, $t->maxPoints);
+        self::assertStringContainsString('Уровень турнира: средний (10 баллов на троих)', $this->http->lastText());
+    }
+
+    public function testLevelsHelpIsSentByTheBot(): void
+    {
+        $this->http->queueOpenAi($this->functionCall('r1', 'c1', 'levels_help', []));
+        $this->http->queueOpenAi($this->text('r2', ''));
+        $this->dispatch($this->groupMessage($this->player('vasya'), '@' . self::BOT_USERNAME . ' какие есть уровни?'));
+        $sent = $this->http->sent('sendMessage');
+        self::assertCount(1, $sent);
+        self::assertStringStartsWith('📊 <b>Уровни игроков</b>', $sent[0]['text']);
     }
 }

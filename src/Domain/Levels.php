@@ -4,7 +4,9 @@ declare(strict_types=1);
 
 namespace P1Bot\Domain;
 
+use P1Bot\Domain\Exception\InvalidLevel;
 use P1Bot\Domain\Exception\ValidationError;
+use P1Bot\Support\RuPlural;
 
 /** Player levels 1..6 and their Russian names. */
 final class Levels
@@ -86,14 +88,78 @@ final class Levels
     }
 
     /**
-     * Parses a reference team: "3,3,4", "средний, средний, средний+", "средний средний средний плюс".
+     * Tournament level (= the maximum team level), as typed by a user:
+     *  - one number: the total points per team (max_points), from teamSize×1 to teamSize×6, e.g. "10";
+     *  - levels of all players, exactly teamSize of them: "средний, средний, высокий", "3,3,5".
+     * A single level name is a list of one, so it only fits a team of one.
+     *
+     * @return array{0: list<int>|null, 1: int} [levels or null for a plain total, max_points]
+     * @throws InvalidLevel with a short reason; callers add the usage help
+     */
+    public static function parseTournamentLevel(string $value, int $teamSize): array
+    {
+        $parts = self::tokens($value);
+        if ($parts === []) {
+            throw new InvalidLevel('Не указан уровень турнира.');
+        }
+        if (count($parts) === 1 && ctype_digit($parts[0]) && $teamSize > 1) {
+            $total = (int) $parts[0];
+            $min = $teamSize * self::MIN;
+            $max = $teamSize * self::MAX;
+            if ($total < $min || $total > $max) {
+                throw new InvalidLevel(sprintf(
+                    'Уровень %d не подходит: для команды из %d %s сумма баллов должна быть от %d до %d.',
+                    $total, $teamSize, RuPlural::choose($teamSize, ['игрока', 'игроков', 'игроков']), $min, $max,
+                ));
+            }
+            return [null, $total];
+        }
+
+        $levels = [];
+        foreach ($parts as $part) {
+            $level = self::parse($part);
+            if ($level === null) {
+                throw new InvalidLevel(ctype_digit($part)
+                    ? sprintf('Уровня «%s» нет: уровни игроков — от %d до %d.', $part, self::MIN, self::MAX)
+                    : sprintf('Не понимаю уровень «%s».', $part));
+            }
+            $levels[] = $level;
+        }
+        if (count($levels) !== $teamSize) {
+            throw new InvalidLevel(sprintf(
+                'В команде %d %s, а уровней указано %d. Перечисли уровни всех игроков или напиши одним числом сумму баллов на команду.',
+                $teamSize, RuPlural::choose($teamSize, ['игрок', 'игрока', 'игроков']), count($levels),
+            ));
+        }
+        return [$levels, array_sum($levels)];
+    }
+
+    /**
+     * Parses a list of levels: "3,3,4", "средний, средний, средний+", "средний средний средний плюс".
      *
      * @return list<int>
      */
     public static function parseReferenceTeam(string $value): array
     {
+        $parts = self::tokens($value);
+        if ($parts === []) {
+            throw new InvalidLevel('Не указан уровень турнира.');
+        }
+        $levels = [];
+        foreach ($parts as $part) {
+            $level = self::parse($part);
+            if ($level === null) {
+                throw new InvalidLevel(sprintf('Не понимаю уровень «%s». Уровни: %s.', $part, implode(', ', self::NAMES)));
+            }
+            $levels[] = $level;
+        }
+        return $levels;
+    }
+
+    /** @return list<string> words/digits, with "+" / "плюс" attached to the previous word */
+    private static function tokens(string $value): array
+    {
         $tokens = preg_split('/[\s,;]+/u', mb_strtolower(trim($value)), -1, PREG_SPLIT_NO_EMPTY) ?: [];
-        // "средний +" / "средний плюс": attach the plus to the previous word.
         $parts = [];
         foreach ($tokens as $token) {
             if (($token === '+' || $token === 'плюс') && $parts !== []) {
@@ -102,18 +168,7 @@ final class Levels
             }
             $parts[] = $token;
         }
-        if ($parts === []) {
-            throw new ValidationError('Эталонная команда не задана. Пример: «средний, средний, средний+» или 3,3,4.');
-        }
-        $levels = [];
-        foreach ($parts as $part) {
-            $level = self::parse($part);
-            if ($level === null) {
-                throw new ValidationError(sprintf('Не понимаю уровень «%s». Уровни: %s.', $part, implode(', ', self::NAMES)));
-            }
-            $levels[] = $level;
-        }
-        return $levels;
+        return $parts;
     }
 
     /** "средний, средний, средний+" */
