@@ -18,6 +18,7 @@ use P1Bot\Repository\PlayerRepository;
 use P1Bot\Repository\TeamRepository;
 use P1Bot\Support\Clock;
 use P1Bot\Telegram\TelegramApi;
+use P1Bot\Support\TeamLetters;
 use P1Bot\View\Html;
 
 /**
@@ -59,7 +60,7 @@ class OrganizerTeams {
 			$lines[] = '';
 			$lines[] = 'Пока нет ни одной команды.';
 		}
-		foreach ($teams as $team) {
+		foreach ($teams as $i => $team) {
 			$entry = $this->teams->get($team->id);
 			$place = $lineup->placementOf($team->captain_id) ?? 'forming';
 			$status = match ($place) {
@@ -70,8 +71,10 @@ class OrganizerTeams {
 			$pts = $t->hasLevelLimit()
 				? sprintf(', %d/%d б.', $this->teams->pointsOf($entry), (int) $t->max_points)
 				: '';
+			$letter = TeamLetters::label($i);
 			$lines[] = sprintf(
-				'• %s — %d/%d%s · %s',
+				'%s. %s — %d/%d%s · %s',
+				$letter,
 				Html::e($team->name),
 				$entry->size(),
 				$t->team_size,
@@ -79,7 +82,7 @@ class OrganizerTeams {
 				$status,
 			);
 			$rows[] = [[
-				'text' => mb_substr('🛡 ' . $team->name . ' · ' . $entry->size() . '/' . $t->team_size, 0, 64),
+				'text' => mb_substr($letter . '. 🛡 ' . $team->name . ' · ' . $entry->size() . '/' . $t->team_size, 0, 64),
 				'callback_data' => 'tcard:' . $team->id,
 			]];
 		}

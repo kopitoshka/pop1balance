@@ -34,6 +34,7 @@ use P1Bot\Support\Clock;
 use P1Bot\Telegram\BotIdentity;
 use P1Bot\Telegram\TelegramApi;
 use P1Bot\View\DeepLink;
+use P1Bot\Support\TeamLetters;
 use P1Bot\View\Html;
 use P1Bot\View\Messages;
 use P1Bot\View\Texts;
@@ -774,11 +775,12 @@ class AdminCommands {
 		if (count($teams) > 1) {
 			$rows = [];
 			$lines = ['Ты в нескольких командах — выбери:'];
-			foreach ($teams as $team) {
+			foreach ($teams as $i => $team) {
 				$t = $this->tournaments->get($team->tournament_id);
-				$lines[] = '• «' . Html::e($team->name) . '» — ' . Html::e($t->title) . ' (№' . $t->id . ')';
+				$letter = TeamLetters::label($i);
+				$lines[] = $letter . '. «' . Html::e($team->name) . '» — ' . Html::e($t->title) . ' (№' . $t->id . ')';
 				$rows[] = [[
-					'text' => mb_substr('🛡 ' . $team->name . ' · ' . $t->title, 0, 64),
+					'text' => mb_substr($letter . '. 🛡 ' . $team->name . ' · ' . $t->title, 0, 64),
 					'callback_data' => 'tcard:' . $team->id,
 				]];
 			}

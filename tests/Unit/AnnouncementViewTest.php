@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace P1Bot\Tests\Unit;
 
+use P1Bot\Support\TeamLetters;
 use DateTimeImmutable;
 use DateTimeZone;
 use P1Bot\Domain\Lineup;
@@ -70,11 +71,11 @@ class AnnouncementViewTest extends TestCase {
 		self::assertStringContainsString('🟢 Идёт регистрация', $text);
 		self::assertStringContainsString('🎟 Занято 4/4 · запас 3', $text);
 		self::assertStringContainsString(
-			"🛡 <b>Команды:</b>\n1. <b>Wolves</b> — 👑 <a href=\"https://t.me/p2\">@p2</a>, <a href=\"https://t.me/p3\">@p3</a>\n2. <b>Bears</b> — 👑 <a href=\"https://t.me/p4\">@p4</a>, <a href=\"https://t.me/p5\">@p5</a>",
+			"🛡 <b>Команды:</b>\nA. <b>Wolves</b> — 👑 <a href=\"https://t.me/p2\">@p2</a>, <a href=\"https://t.me/p3\">@p3</a>\nB. <b>Bears</b> — 👑 <a href=\"https://t.me/p4\">@p4</a>, <a href=\"https://t.me/p5\">@p5</a>",
 			$text,
 		);
-		self::assertStringContainsString("⏳ <b>Запас:</b>\n1. <b>Late</b> — 👑 <a href=\"https://t.me/p6\">@p6</a>, <a href=\"https://t.me/p7\">@p7</a>\n🙋 Соло: <a href=\"https://t.me/p8\">@p8</a>", $text);
-		self::assertStringContainsString("🧩 <b>Собираются:</b>\n• Forming — 👑 <a href=\"https://t.me/p9\">@p9</a> (1/2)", $text);
+		self::assertStringContainsString("⏳ <b>Запас:</b>\nA. <b>Late</b> — 👑 <a href=\"https://t.me/p6\">@p6</a>, <a href=\"https://t.me/p7\">@p7</a>\n🙋 Соло: <a href=\"https://t.me/p8\">@p8</a>", $text);
+		self::assertStringContainsString("🧩 <b>Собираются:</b>\nA. Forming — 👑 <a href=\"https://t.me/p9\">@p9</a> (1/2)", $text);
 		self::assertDoesNotMatchRegularExpression('/средний \(3\)|\(3\)/u', $text, 'player levels are not shown');
 		self::assertStringContainsString('в личке у @pop1_bot', $text);
 	}
@@ -136,7 +137,7 @@ class AnnouncementViewTest extends TestCase {
 		$block = $view->listBlock($t, $lineup, 4000);
 		self::assertLessThanOrEqual(4000, mb_strlen($block));
 		self::assertMatchesRegularExpression('~<i>…и ещё \d+ строк[аи]?\. Полный состав: /info 1</i>$~u', $block);
-		self::assertStringContainsString('1. <b>Команда номер 1</b>', $block);
+		self::assertStringContainsString('A. <b>Команда номер 1</b>', $block);
 		self::assertSame(substr_count($block, '<b>'), substr_count($block, '</b>'), 'no broken tags');
 
 		$announcement = $view->render($t, $lineup);
@@ -148,6 +149,6 @@ class AnnouncementViewTest extends TestCase {
 		foreach ($messages as $m) {
 			self::assertLessThanOrEqual(4000, mb_strlen($m));
 		}
-		self::assertStringContainsString('100. <b>Команда номер 100</b>', end($messages));
+		self::assertStringContainsString(TeamLetters::prefix(99) . '<b>Команда номер 100</b>', end($messages));
 	}
 }
