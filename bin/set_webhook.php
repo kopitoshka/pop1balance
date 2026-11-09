@@ -41,7 +41,8 @@ try {
 		['command' => 'start', 'description' => 'Турниры с кнопками записи'],
 		['command' => 'tournaments', 'description' => 'Активные турниры'],
 		['command' => 'info', 'description' => 'Состав турнира (/info N)'],
-		['command' => 'levels', 'description' => 'Уровни игроков'],
+		['command' => 'level', 'description' => 'Свой или чужой уровень'],
+		['command' => 'levels', 'description' => 'Справка по уровням'],
 		['command' => 'help', 'description' => 'Подсказка по командам'],
 	];
 	$private = array_merge(

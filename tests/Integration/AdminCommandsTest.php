@@ -558,4 +558,49 @@ class AdminCommandsTest extends IntegrationTestCase {
 		self::assertStringContainsString('Субботний кубок', $this->http->lastText());
 		self::assertStringContainsString('№' . $a->id, $this->http->lastText());
 	}
+
+	public function testLevelViewOwnOtherAllAndGroupRedirect(): void {
+		$vasya = $this->player('vasya');
+		$petya = $this->player('petya');
+		$this->dispatch($this->privateMessage($this->owner, '/level @vasya 5'));
+		$this->dispatch($this->privateMessage($this->owner, '/level @petya 2'));
+		$this->http->reset();
+
+		$this->dispatch($this->privateMessage($vasya, '/level'));
+		self::assertStringContainsString('Твой уровень: высокий (5)', $this->http->lastText());
+		self::assertStringContainsString('Все уровни — /levels', $this->http->lastText());
+
+		$this->dispatch($this->privateMessage($petya, '/level'));
+		self::assertStringContainsString('Твой уровень: начальный+ (2)', $this->http->lastText());
+
+		$unset = $this->player('newbie');
+		$this->dispatch($this->privateMessage($unset, '/level'));
+		self::assertStringContainsString('Уровень ещё не ставили — пока считаю средний (3)', $this->http->lastText());
+
+		$this->dispatch($this->privateMessage($vasya, '/level @petya'));
+		self::assertStringContainsString('@petya — начальный+ (2)', $this->http->lastText());
+
+		$this->dispatch($this->privateMessage($vasya, '/level all'));
+		$all = $this->http->lastText();
+		self::assertStringContainsString('@vasya — высокий (5)', $all);
+		self::assertStringContainsString('@petya — начальный+ (2)', $all);
+		// sorted by level desc: vasya before petya
+		self::assertLessThan(strpos($all, '@petya'), strpos($all, '@vasya'));
+		self::assertStringNotContainsString('Поставить:', $all);
+
+		$this->dispatch($this->privateMessage($this->owner, '/level'));
+		self::assertStringContainsString('Поставить: /level @ник 4', $this->http->lastText());
+
+		// group: /level answers in chat; /level all redirects
+		$this->http->reset();
+		$this->dispatch($this->groupMessage($vasya, '/level'));
+		self::assertStringContainsString('Твой уровень: высокий (5)', $this->http->lastText());
+		$this->http->reset();
+		$this->dispatch($this->groupMessage($vasya, '/level all'));
+		$sent = $this->http->sent('sendMessage');
+		self::assertNotSame([], $sent);
+		$url = $sent[0]['reply_markup']['inline_keyboard'][0][0]['url'] ?? null;
+		self::assertNotNull($url);
+		self::assertStringContainsString('start=', $url);
+	}
 }

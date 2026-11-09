@@ -78,11 +78,15 @@ class GroupChat {
 		$message = $ctx->message;
 		if ($command !== null) {
 			$name = mb_strtolower($command['name']);
-			if (in_array($name, ['help', 'start', 'tournaments', 'info', 'levels'], true)) {
+			if (in_array($name, ['help', 'start', 'tournaments', 'info', 'level', 'levels'], true)) {
+				if ($name === 'level' && preg_match('/^all\b/ui', $command['args'])) {
+					$this->redirectManage($message, 'level');
+					return;
+				}
 				$this->commands->handle($ctx, $name, $command['args']);
 				return;
 			}
-			// /history /new /edit /open /close /cancel /level /balance → private redirect
+			// /history /new /edit /open /close /cancel /balance → private redirect
 			$this->redirectManage($message, $command['name']);
 			return;
 		}
@@ -112,8 +116,12 @@ class GroupChat {
 			$this->commands->handle($ctx, 'help', '');
 			return;
 		}
-		if (preg_match('/\b(уровень|уровни|levels)\b/u', $t)) {
+		if ($this->isLevelsHelpAsk($t)) {
 			$this->commands->handle($ctx, 'levels', '');
+			return;
+		}
+		if ($this->isPlayerLevelAsk($t)) {
+			$this->commands->handle($ctx, 'level', $this->playerLevelArgs($ctx, $t));
 			return;
 		}
 		if ($this->isTournamentsAsk($t)) {
@@ -359,13 +367,42 @@ class GroupChat {
 		if (preg_match('/\b(help|помощь|справка|хелп|что умеешь|как пользоваться)\b/u', $t)) {
 			return true;
 		}
-		if (preg_match('/\b(уровень|уровни|levels)\b/u', $t) && !preg_match('/создай|поставь|поменяй/u', $t)) {
+		if ($this->isLevelsHelpAsk($t) || $this->isPlayerLevelAsk($t)) {
 			return true;
 		}
 		if ($this->isTournamentsAsk($t)) {
 			return true;
 		}
 		return false;
+	}
+
+
+	protected function isLevelsHelpAsk(string $t): bool {
+		if (preg_match('/\b(уровни|levels)\b/u', $t) && !preg_match('/создай|поставь|поменяй/u', $t)) {
+			return true;
+		}
+		return (bool) preg_match('/\b(какие уровни|справка по уровням|как задаётся уровень)\b/u', $t);
+	}
+
+	protected function isPlayerLevelAsk(string $t): bool {
+		if (preg_match('/создай|поставь|поменяй|уровень турнира/u', $t)) {
+			return false;
+		}
+		return (bool) preg_match(
+			'/\b(какой\s+у\s+меня\s+уровень|мой\s+уровень|какой\s+уровень\s+у|уровень\s+у\s+@|какой\s+у\s+@.{0,40}уровень)\b/u',
+			$t,
+		);
+	}
+
+	protected function playerLevelArgs(Context $ctx, string $t): string {
+		$mentions = $ctx->message->mentionedUsers($this->bot->username);
+		if ($mentions !== []) {
+			return $mentions[0]['text'];
+		}
+		if (preg_match('/@([A-Za-z][A-Za-z0-9_]{3,31})/u', $t, $m)) {
+			return '@' . $m[1];
+		}
+		return '';
 	}
 
 	protected function isHistoryAsk(string $t): bool {

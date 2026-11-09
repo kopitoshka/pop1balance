@@ -21,6 +21,7 @@ use P1Bot\Domain\Exception\InvalidLevel;
 use P1Bot\Domain\Exception\PermissionDenied;
 use P1Bot\Domain\Exception\ValidationError;
 use P1Bot\Domain\Levels;
+use P1Bot\Domain\Model\Player;
 use P1Bot\Domain\Model\Tournament;
 use P1Bot\Domain\MoscowTime;
 use P1Bot\Domain\TournamentService;
@@ -39,7 +40,7 @@ use P1Bot\View\Texts;
 	Slash commands: the fallback that works without AI.
 */
 class AdminCommands {
-	protected const PUBLIC = ['help', 'start', 'tournaments', 'history', 'info', 'levels'];
+	protected const PUBLIC = ['help', 'start', 'tournaments', 'history', 'info', 'level', 'levels'];
 
 	/**
 		«уровень», «уровень турнира», «максимальный уровень», «макс. уровень» — one field (old «эталон» still works).
@@ -47,12 +48,14 @@ class AdminCommands {
 	protected const LEVEL_FIELD = '/^(?:(?:максимальный|макс\.?)\s*уровень(?:\s+турнира)?|уровень(?:\s+турнира)?|эталон|reference|level)(?=\s|$)\s*(.*)$/us';
 	protected const CREATE = ['new'];
 	protected const MANAGE = ['edit', 'cancel', 'open', 'close'];
-	protected const ADMIN = ['new', 'edit', 'cancel', 'open', 'close', 'level', 'balance'];
+	protected const ADMIN = ['new', 'edit', 'cancel', 'open', 'close', 'balance'];
 
 	/**
 		Owner only for now (scales are hidden from users, see AccessPolicy::LEVELS_OWNER_ONLY).
 	*/
-	protected const OWNER = ['level', 'balance'];
+	protected const OWNER = ['balance'];
+
+	protected const LEVEL_ALL_LIMIT = 80;
 
 	/**
 		Tournaments an admin command may target when no id is given.
@@ -96,7 +99,7 @@ class AdminCommands {
 	public function handle(Context $ctx, string $command, string $args): void {
 		try {
 			if (in_array($command, self::OWNER, true) && !$ctx->is_owner) {
-				throw new PermissionDenied($command === 'level' ? AccessPolicy::LEVELS_OWNER_ONLY : AccessPolicy::OWNER_ONLY);
+				throw new PermissionDenied(AccessPolicy::OWNER_ONLY);
 			}
 			// /new: CreateAccess (shared group with owner, or ANYONE_CAN_CREATE). Manage: author|owner only.
 			if (in_array($command, self::CREATE, true)) {
@@ -144,7 +147,7 @@ class AdminCommands {
 			case 'history':
 				return $this->listHistory($ctx);
 			case 'levels':
-				return Texts::levels();
+				return Texts::levels($ctx->is_owner);
 			case 'info':
 				[$id] = self::splitId($args);
 				$t = $this->resolver->resolve($this->resolveScope($ctx), $id, TournamentStatus::infoable());
@@ -168,7 +171,7 @@ class AdminCommands {
 				$this->announcer->renumber($t->id);
 				return sprintf('Турнир %s отменён. Жаль!', Html::b($t->title));
 			case 'level':
-				return $this->setLevel($ctx, $args);
+				return $this->levelCommand($ctx, $args);
 			case 'balance':
 				return $this->showBalance($ctx, $args);
 		}
@@ -370,20 +373,53 @@ class AdminCommands {
 	}
 
 	/**
-		/level @user 4 [balance]
+		/level | /level @user | /level all (private) | /level @user 4 (owner).
+		Reads the default (global) balance scale — scales stay hidden from non-owners.
 	*/
-	protected function setLevel(Context $ctx, string $args): string {
-		$mentions = $ctx->message->mentionedUsers($this->bot->username);
-		if ($mentions === []) {
-			throw new ValidationError("Кому ставим уровень? Например: /level @vasya 4\nУровни: " . self::levelsHint());
+	protected function levelCommand(Context $ctx, string $args): string {
+		$args = trim($args);
+		if (preg_match('/^all\b/ui', $args)) {
+			if (!$ctx->isPrivate()) {
+				throw new ValidationError('Список уровней — в личке: /level all');
+			}
+			return $this->listAllLevels($ctx);
 		}
-		$first = $mentions[0];
-		$player = isset($first['user'])
-			? $this->player_resolver->fromUser($first['user'])
-			: $this->player_resolver->fromReference('@' . $first['username'], $ctx->actor);
-		$rest = trim((string) preg_replace('/' . preg_quote($first['text'], '/') . '/u', '', $args, 1));
+
+		$mentions = $ctx->message->mentionedUsers($this->bot->username);
+		$rest = $args;
+		$target = null;
+		if ($mentions !== []) {
+			$first = $mentions[0];
+			$target = isset($first['user'])
+				? $this->player_resolver->fromUser($first['user'])
+				: $this->player_resolver->fromReference('@' . $first['username'], $ctx->actor);
+			$rest = trim((string) preg_replace('/' . preg_quote($first['text'], '/') . '/u', '', $args, 1));
+		} elseif ($ctx->message->reply_to_from !== null && !$ctx->message->reply_to_from->is_bot) {
+			$target = $this->player_resolver->fromUser($ctx->message->reply_to_from);
+		}
 
 		$tokens = preg_split('/\s+/u', $rest, -1, PREG_SPLIT_NO_EMPTY) ?: [];
+		// Setting: /level @user 4 [balance_id]
+		if ($target !== null && $tokens !== []) {
+			if (!$ctx->is_owner) {
+				throw new PermissionDenied(AccessPolicy::LEVELS_OWNER_ONLY);
+			}
+			return $this->setLevel($ctx, $target, $tokens);
+		}
+
+		if ($target === null) {
+			$target = $ctx->actor;
+			$own = true;
+		} else {
+			$own = $target->id === $ctx->actor->id;
+		}
+		return $this->showPlayerLevel($ctx, $target, $own);
+	}
+
+	/**
+		@param list<string> $tokens level token(s) and optional balance id
+	*/
+	protected function setLevel(Context $ctx, Player $player, array $tokens): string {
 		$balance_id = null;
 		if (count($tokens) >= 2 && TournamentResolver::parseId((string) end($tokens)) !== null) {
 			$balance_id = TournamentResolver::parseId((string) array_pop($tokens));
@@ -400,6 +436,77 @@ class AdminCommands {
 			Levels::name($level),
 			$level,
 		);
+	}
+
+	protected function showPlayerLevel(Context $ctx, Player $player, bool $own): string {
+		$scale_id = $this->balances->findDefault()?->id;
+		$explicit = $this->balances->explicitLevel($scale_id, $player->id);
+		if ($explicit === null) {
+			$body = $own
+				? sprintf(
+					'Уровень ещё не ставили — пока считаю %s (%d).',
+					Levels::name(Levels::DEFAULT),
+					Levels::DEFAULT,
+				)
+				: sprintf(
+					'%s — уровень ещё не ставили, считаю %s (%d).',
+					Html::e($player->mention()),
+					Levels::name(Levels::DEFAULT),
+					Levels::DEFAULT,
+				);
+		} else {
+			$body = $own
+				? sprintf('Твой уровень: %s (%d)', Levels::name($explicit), $explicit)
+				: sprintf('%s — %s (%d)', Html::e($player->mention()), Levels::name($explicit), $explicit);
+		}
+		return $body . $this->levelFooter($ctx->is_owner);
+	}
+
+	protected function listAllLevels(Context $ctx): string {
+		$scale = $this->balances->findDefault();
+		if ($scale === null) {
+			return 'Пока никому уровень не ставили 🙂' . $this->levelFooter($ctx->is_owner);
+		}
+		$ratings = $this->balances->effectiveRatings($scale->id);
+		if ($ratings === []) {
+			return 'Пока никому уровень не ставили 🙂' . $this->levelFooter($ctx->is_owner);
+		}
+		$rows = [];
+		foreach ($ratings as $player_id => $rating) {
+			$player = $this->players->find($player_id);
+			$label = $player !== null ? $player->mention() : '#' . $player_id;
+			$rows[] = [
+				'level' => $rating['level'],
+				'label' => $label,
+				'sort' => mb_strtolower($label),
+			];
+		}
+		usort($rows, static function (array $a, array $b): int {
+			return $b['level'] <=> $a['level'] ?: ($a['sort'] <=> $b['sort']);
+		});
+		$total = count($rows);
+		$rows = array_slice($rows, 0, self::LEVEL_ALL_LIMIT);
+		$lines = ['📊 <b>Уровни игроков</b>'];
+		foreach ($rows as $row) {
+			$lines[] = sprintf(
+				'• %s — %s (%d)',
+				Html::e($row['label']),
+				Levels::name($row['level']),
+				$row['level'],
+			);
+		}
+		if ($total > self::LEVEL_ALL_LIMIT) {
+			$lines[] = sprintf('<i>…и ещё %d</i>', $total - self::LEVEL_ALL_LIMIT);
+		}
+		return implode("\n", $lines) . $this->levelFooter($ctx->is_owner);
+	}
+
+	protected function levelFooter(bool $is_owner): string {
+		$footer = "\n\nВсе уровни — /levels";
+		if ($is_owner) {
+			$footer .= "\nПоставить: /level @ник 4";
+		}
+		return $footer;
 	}
 
 	/**

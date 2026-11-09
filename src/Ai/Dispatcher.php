@@ -155,6 +155,71 @@ class Dispatcher {
 					'note' => 'Справка по уровням отправится в чат автоматически. Не пересказывай её, добавь максимум одну короткую фразу.',
 				];
 
+			case 'player_level':
+				$ref = trim((string) ($a['player'] ?? ''));
+				$player = $ref === ''
+					? $actor
+					: $this->player_resolver->fromReference($ref, $actor);
+				$scale_id = $this->balances->findDefault()?->id;
+				$explicit = $this->balances->explicitLevel($scale_id, $player->id);
+				$level = $explicit ?? Levels::DEFAULT;
+				$own = $player->id === $actor->id;
+				if ($explicit === null) {
+					$text = $own
+						? sprintf('Уровень ещё не ставили — пока считаю %s (%d).', Levels::name($level), $level)
+						: sprintf('%s — уровень ещё не ставили, считаю %s (%d).', $player->mention(), Levels::name($level), $level);
+				} else {
+					$text = $own
+						? sprintf('Твой уровень: %s (%d)', Levels::name($level), $level)
+						: sprintf('%s — %s (%d)', $player->mention(), Levels::name($level), $level);
+				}
+				return [
+					'player' => $player->mention(),
+					'level' => $level,
+					'level_name' => Levels::name($level),
+					'set' => $explicit !== null,
+					'message' => $text . "\n\nВсе уровни — /levels",
+					'note' => 'Ответь пользователю этим текстом (можно чуть короче). Шкалы не упоминай.',
+				];
+
+			case 'list_player_levels':
+				if (!$ctx->isPrivate()) {
+					return [
+						'ok' => false,
+						'error' => 'Список уровней смотри в личке: /level all',
+					];
+				}
+				$scale = $this->balances->findDefault();
+				if ($scale === null) {
+					return ['players' => [], 'message' => 'Пока никому уровень не ставили 🙂'];
+				}
+				$rows = [];
+				foreach ($this->balances->effectiveRatings($scale->id) as $player_id => $rating) {
+					$p = $this->players->find($player_id);
+					$label = $p !== null ? $p->mention() : '#' . $player_id;
+					$rows[] = [
+						'player' => $label,
+						'level' => $rating['level'],
+						'level_name' => Levels::name($rating['level']),
+						'sort' => mb_strtolower($label),
+					];
+				}
+				usort($rows, static function (array $a, array $b): int {
+					return $b['level'] <=> $a['level'] ?: ($a['sort'] <=> $b['sort']);
+				});
+				$lines = [];
+				foreach (array_slice($rows, 0, 80) as $row) {
+					unset($row['sort']);
+					$lines[] = sprintf('%s — %s (%d)', $row['player'], $row['level_name'], $row['level']);
+				}
+				return [
+					'players' => $lines,
+					'message' => $lines === []
+						? 'Пока никому уровень не ставили 🙂'
+						: "Уровни:\n- " . implode("\n- ", $lines) . "\n\nВсе уровни — /levels",
+					'note' => 'Перескажи список коротко или почти дословно. Шкалы не упоминай.',
+				];
+
 			case 'tournament_info':
 				$t = $this->tournament($ctx, $a, TournamentStatus::infoable());
 				return [

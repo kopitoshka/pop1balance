@@ -143,7 +143,7 @@ class PrivateChatHandler {
 				);
 				return;
 			case self::LEVELS:
-				$this->api->sendMessage($chat_id, Texts::levels());
+				$this->api->sendMessage($chat_id, Texts::levels($is_owner));
 				return;
 			case self::TOURNAMENTS:
 				$this->views->list($chat_id, $actor, $is_owner);

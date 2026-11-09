@@ -10,7 +10,8 @@ PHP 8.0+ (tested on 8.0 and 8.3), MySQL 8 / MariaDB 10.5+, no framework.
 ## How it works
 
 - Webhook: `public/webhook.php`. **Everything happens in the private chat with the bot.** The group gets only
-  announcements (cards), reminders and the info commands `/tournaments`, `/info N`, `/levels`, `/help` ( `/history` is private-only).
+  announcements (cards), reminders and the info commands `/tournaments`, `/info N`, `/level`, `/levels`, `/help`
+  (`/history` and `/level all` are private-only).
   Any other command, @mention or reply to the bot in the group (joining, creating, editing, questions — admins
   included) gets one reply «Давай в личке 👉» with a URL button `https://t.me/<bot>?start=…` (see «Group»).
   No AI in the group.
@@ -154,7 +155,7 @@ prompt tells the AI that this is her name; fixed texts never contain a name.
 ```bash
 php bin/set_webhook.php
 ```
-Also refreshes the Telegram command menu (`setMyCommands`; `/history` only in `all_private_chats` scope).
+Also refreshes the Telegram command menu (`setMyCommands`; `/history` only in `all_private_chats`; `/level` in all scopes).
 
 ```
 # Bot: @pop1_tournament_bot (id ...)
@@ -245,8 +246,8 @@ for the webhook too, e.g. `sudo -u apache php bin/diag.php`.
   only the **largest** mark (60 = hour before) posts the short «⏰ Через час стартует турнир …» notice into **every**
   active group (deep-link button). The 15-minute mark does **not** broadcast to groups. Deduped via `group_notices`.
   `REMIND_ALL_GROUPS=0` turns group broadcasts off (no private DM reminders yet). `REMINDER_MINUTES` key unchanged.
-- In the group when mentioned/replied: info (`/tournaments`, `/info`, `/levels`, `/help`, «какие турниры?»,
-  «что нового?»…) is answered there (help ends with a private-chat hint + button); «запиши меня» /
+- In the group when mentioned/replied: info (`/tournaments`, `/info`, `/level`, `/levels`, `/help`, «какие турниры?»,
+  «что нового?», «какой у меня уровень?»…) is answered there (help ends with a private-chat hint + button); «запиши меня» /
   «удали меня» join/leave solo when the tournament is unambiguous; management and private-only (`/new`, `/history`,
   «прошлые турниры»…) → random private redirect phrase + deep link; anything else → fixed
   «Не поняла 🙅‍♀️ Что я умею — /help» (no free-form AI chat in groups). Deep link is `t_<id>` when clear, else `g_<chat id>`.

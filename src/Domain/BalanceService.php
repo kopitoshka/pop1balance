@@ -113,13 +113,20 @@ class BalanceService {
 		Effective level: scale, then parents, then Levels::DEFAULT. No scale => DEFAULT.
 	*/
 	public function levelOf(?int $balance_id, int $player_id): int {
+		return $this->explicitLevel($balance_id, $player_id) ?? Levels::DEFAULT;
+	}
+
+	/**
+		Rating from the scale chain, or null when the player is not rated (caller uses Levels::DEFAULT).
+	*/
+	public function explicitLevel(?int $balance_id, int $player_id): ?int {
 		foreach ($this->chain($balance_id) as $balance) {
 			$level = $this->balances->findRating($balance->id, $player_id);
 			if ($level !== null) {
 				return $level;
 			}
 		}
-		return Levels::DEFAULT;
+		return null;
 	}
 
 	/**

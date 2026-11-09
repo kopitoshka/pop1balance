@@ -56,7 +56,7 @@ class ScaleHiddenTest extends IntegrationTestCase {
 		$this->dispatch($this->privateMessage($this->admin, '/help'));
 		$help = $this->http->lastText();
 		self::assertStringContainsString('/new', $help);
-		foreach (['шкал', 'баланс', '/balance', '/level ', 'главного админа'] as $hidden) {
+		foreach (['шкал', 'баланс', '/balance', '/level @user 4', 'главного админа'] as $hidden) {
 			self::assertStringNotContainsStringIgnoringCase($hidden, $help);
 		}
 
@@ -66,6 +66,19 @@ class ScaleHiddenTest extends IntegrationTestCase {
 		self::assertStringContainsString('/level @user 4', $owner_help);
 		self::assertStringContainsString('/balance', $owner_help);
 		self::assertStringNotContainsStringIgnoringCase('шкал', $owner_help);
+	}
+
+
+	public function testAnyoneCanViewOwnAndOthersLevel(): void {
+		$vasya = $this->player('vasya');
+		$this->dispatch($this->privateMessage($this->owner, '/level @vasya 5'));
+		$this->http->reset();
+		$this->dispatch($this->privateMessage($vasya, '/level'));
+		self::assertStringContainsString('Твой уровень: высокий (5)', $this->http->lastText());
+		self::assertStringContainsString('Все уровни — /levels', $this->http->lastText());
+		self::assertStringNotContainsString('Поставить:', $this->http->lastText());
+		$this->dispatch($this->privateMessage($this->admin, '/level @vasya'));
+		self::assertStringContainsString('@vasya — высокий (5)', $this->http->lastText());
 	}
 
 	public function testOnlyOwnerSetsLevels(): void {

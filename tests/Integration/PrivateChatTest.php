@@ -138,7 +138,7 @@ class PrivateChatTest extends IntegrationTestCase {
 		$reply = $this->say($vasya, '/help');
 		self::assertStringContainsString('Пиши мне обычным языком', $reply);
 		self::assertStringNotContainsString('Создание турниров', $reply);
-		self::assertStringNotContainsString('/level @', $reply);
+		self::assertStringNotContainsString('/level @user 4', $reply);
 		self::assertStringNotContainsString('/group', $reply);
 		$this->everyoneIsGroupMember();
 		$admin_help = $this->say($this->admin, '/help');
