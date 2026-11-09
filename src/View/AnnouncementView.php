@@ -236,7 +236,7 @@ class AnnouncementView {
 		foreach ($entry->members as $member) {
 			$name = $this->name($member->player_id);
 			if ($member->player_id === $entry->team->captain_id) {
-				$captain[] = '👑 ' . $name . ' (кэп)';
+				$captain[] = '👑 ' . $name;
 			} else {
 				$others[] = $name;
 			}

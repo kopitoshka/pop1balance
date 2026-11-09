@@ -44,7 +44,7 @@ class GroupRedirectTest extends IntegrationTestCase {
 		$vasya = $this->player('vasya');
 
 		$this->dispatch($this->groupMessage($vasya, '/info'));
-		self::assertStringContainsString('@cap</a> (кэп)', $this->http->lastText());
+		self::assertStringContainsString('@cap</a>', $this->http->lastText());
 		$this->dispatch($this->groupMessage($vasya, '/tournaments'));
 		self::assertStringContainsString('Субботний кубок', $this->http->lastText());
 		$this->dispatch($this->groupMessage($vasya, '/levels'));

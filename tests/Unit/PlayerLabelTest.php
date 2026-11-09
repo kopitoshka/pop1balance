@@ -52,9 +52,9 @@ class PlayerLabelTest extends TestCase {
 	public function testCaptainLineUsesLineupLabel(): void {
 		$cap = new Player(2, 12, null, 'Cap', 'Mata', 'mata');
 		$mate = new Player(3, 13, 'kidding2u', 'Kid');
-		$html = '👑 ' . $cap->lineupLabel() . ' (кэп), ' . $mate->lineupLabel();
+		$html = '👑 ' . $cap->lineupLabel() . ', ' . $mate->lineupLabel();
 		self::assertSame(
-			'👑 <a href="tg://user?id=12">Mata</a> (кэп), <a href="https://t.me/kidding2u">@kidding2u</a>',
+			'👑 <a href="tg://user?id=12">Mata</a>, <a href="https://t.me/kidding2u">@kidding2u</a>',
 			$html,
 		);
 	}

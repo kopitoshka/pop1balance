@@ -376,7 +376,7 @@ class AdminCommandsTest extends IntegrationTestCase {
 		self::assertStringContainsString('🟢 Идёт регистрация', $text);
 		self::assertStringContainsString('🎟 Занято 3/24 · запас 0', $text);
 		self::assertStringContainsString("Wolves &amp; Co", $text);
-		self::assertStringContainsString("@cap</a> (кэп)", $text);
+		self::assertStringContainsString("@cap</a>", $text);
 		self::assertStringContainsString("@mate</a>", $text);
 		self::assertStringContainsString("🙋 <b>Ищут команду:</b>", $text);
 		self::assertStringContainsString("@solo</a>", $text);

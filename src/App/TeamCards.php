@@ -60,8 +60,7 @@ class TeamCards {
 			$player = $this->players->find($member->player_id);
 			$label = $player !== null ? $player->lineupLabel() : ('#' . $member->player_id);
 			$prefix = $member->player_id === $entry->team->captain_id ? '👑 ' : '• ';
-			$suffix = $member->player_id === $entry->team->captain_id ? ' <i>(кэп)</i>' : '';
-			$lines[] = $prefix . $label . $suffix;
+			$lines[] = $prefix . $label;
 		}
 		return implode("\n", $lines);
 	}

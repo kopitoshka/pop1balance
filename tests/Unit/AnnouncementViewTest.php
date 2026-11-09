@@ -70,11 +70,11 @@ class AnnouncementViewTest extends TestCase {
 		self::assertStringContainsString('🟢 Идёт регистрация', $text);
 		self::assertStringContainsString('🎟 Занято 4/4 · запас 3', $text);
 		self::assertStringContainsString(
-			"🛡 <b>Команды:</b>\n1. <b>Wolves</b> — 👑 <a href=\"https://t.me/p2\">@p2</a> (кэп), <a href=\"https://t.me/p3\">@p3</a>\n2. <b>Bears</b> — 👑 <a href=\"https://t.me/p4\">@p4</a> (кэп), <a href=\"https://t.me/p5\">@p5</a>",
+			"🛡 <b>Команды:</b>\n1. <b>Wolves</b> — 👑 <a href=\"https://t.me/p2\">@p2</a>, <a href=\"https://t.me/p3\">@p3</a>\n2. <b>Bears</b> — 👑 <a href=\"https://t.me/p4\">@p4</a>, <a href=\"https://t.me/p5\">@p5</a>",
 			$text,
 		);
-		self::assertStringContainsString("⏳ <b>Запас:</b>\n1. <b>Late</b> — 👑 <a href=\"https://t.me/p6\">@p6</a> (кэп), <a href=\"https://t.me/p7\">@p7</a>\n🙋 Соло: <a href=\"https://t.me/p8\">@p8</a>", $text);
-		self::assertStringContainsString("🧩 <b>Собираются:</b>\n• Forming — 👑 <a href=\"https://t.me/p9\">@p9</a> (кэп) (1/2)", $text);
+		self::assertStringContainsString("⏳ <b>Запас:</b>\n1. <b>Late</b> — 👑 <a href=\"https://t.me/p6\">@p6</a>, <a href=\"https://t.me/p7\">@p7</a>\n🙋 Соло: <a href=\"https://t.me/p8\">@p8</a>", $text);
+		self::assertStringContainsString("🧩 <b>Собираются:</b>\n• Forming — 👑 <a href=\"https://t.me/p9\">@p9</a> (1/2)", $text);
 		self::assertDoesNotMatchRegularExpression('/средний \(3\)|\(3\)/u', $text, 'player levels are not shown');
 		self::assertStringContainsString('в личке у @pop1_bot', $text);
 	}
