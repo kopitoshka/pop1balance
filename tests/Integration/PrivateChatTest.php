@@ -151,6 +151,29 @@ class PrivateChatTest extends IntegrationTestCase {
 		self::assertStringContainsString('Уровни игроков', $this->say($vasya, '/levels'));
 	}
 
+	/**
+		Plain «help» (and synonyms) must return full /help, not /levels — and never go through the AI.
+	*/
+	public function testPlainHelpTextReturnsFullHelpNotLevels(): void {
+		$vasya = $this->player('vasya');
+		$this->withoutSharedOwnerGroup($vasya);
+		$slash = $this->say($vasya, '/help');
+		foreach (['help', 'Help!', 'help me', 'HELP ME?', 'помощь', 'справка.', 'что ты умеешь', 'что умеешь?'] as $phrase) {
+			$this->http->reset();
+			$reply = $this->say($vasya, $phrase);
+			self::assertSame($slash, $reply, 'phrase: ' . $phrase);
+			self::assertStringNotContainsString('Уровни игроков', $reply, 'phrase: ' . $phrase);
+			self::assertSame([], array_filter($this->http->requests, static function (array $r): bool {
+				return str_contains($r['url'], '/responses') || str_contains($r['url'], 'api.openai.com');
+			}), 'AI must not run for: ' . $phrase);
+		}
+
+		$owner_slash = $this->say($this->owner, '/help');
+		$owner_plain = $this->say($this->owner, 'help');
+		self::assertSame($owner_slash, $owner_plain);
+		self::assertStringContainsString('Только для главного админа', $owner_plain);
+	}
+
 	public function testTournamentListShowsOwnDraftsAndOpenButtons(): void {
 		$vasya = $this->player('vasya');
 		$this->openTournament(3);

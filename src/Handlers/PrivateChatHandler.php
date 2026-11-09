@@ -41,12 +41,19 @@ class PrivateChatHandler {
 	public const FALLBACK = 'fallback';
 
 	/**
-		Plain words understood without the AI (only when the AI is off; with AI the model answers).
+		Plain phrases handled without the AI (matched before the model, even when AI is on).
+		Normalized: lowercased, punctuation collapsed to spaces.
 	*/
 	protected const KEYWORDS = [
 		'помощь' => self::HELP,
 		'справка' => self::HELP,
 		'помоги' => self::HELP,
+		'хелп' => self::HELP,
+		'help' => self::HELP,
+		'help me' => self::HELP,
+		'что умеешь' => self::HELP,
+		'что ты умеешь' => self::HELP,
+		'как пользоваться' => self::HELP,
 		'уровни' => self::LEVELS,
 		'турниры' => self::TOURNAMENTS,
 		'список' => self::TOURNAMENTS,
@@ -104,13 +111,28 @@ class PrivateChatHandler {
 		if ($this->isCardReply($message, $actor)) {
 			return ['kind' => self::CARD_REPLY] + $decision;
 		}
+		$keyword = $this->matchKeyword($message->text);
+		if ($keyword !== null) {
+			// Help / levels / tournaments: always deterministic, never via the model.
+			return ['kind' => $keyword] + $decision;
+		}
 		if (!$this->messages->hasAi()) {
-			$words = mb_strtolower(trim((string) preg_replace('/[\s.,!?…]+/u', ' ', $message->text)));
-			return ['kind' => self::KEYWORDS[$words] ?? self::FALLBACK] + $decision;
+			return ['kind' => self::FALLBACK] + $decision;
 		}
 		// Tournament numbers are global: free-text AI does not need a chosen group.
 		// Tournaments are global: free-text AI does not need a chosen group to create.
 		return $decision;
+	}
+
+	/**
+		Exact match against KEYWORDS after lowercasing and stripping trailing/extra punctuation.
+	*/
+	protected function matchKeyword(string $text): ?string {
+		$words = mb_strtolower(trim((string) preg_replace('/[\s.,!?…]+/u', ' ', $text)));
+		if ($words === '') {
+			return null;
+		}
+		return self::KEYWORDS[$words] ?? null;
 	}
 
 	/**

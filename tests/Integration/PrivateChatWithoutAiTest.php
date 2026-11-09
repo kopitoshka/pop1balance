@@ -23,6 +23,15 @@ class PrivateChatWithoutAiTest extends IntegrationTestCase {
 		self::assertStringContainsString('Сейчас активных турниров нет', $this->http->lastText());
 		$this->dispatch($this->privateMessage($vasya, 'уровни'));
 		self::assertStringContainsString('Уровни игроков', $this->http->lastText());
+
+		$this->dispatch($this->privateMessage($vasya, '/help'));
+		$slash = $this->http->lastText();
+		$this->dispatch($this->privateMessage($vasya, 'help'));
+		self::assertSame($slash, $this->http->lastText());
+		self::assertStringContainsString('Пиши мне обычным языком', $this->http->lastText());
+		self::assertStringNotContainsString('Уровни игроков', $this->http->lastText());
+		$this->dispatch($this->privateMessage($vasya, 'что ты умеешь?'));
+		self::assertSame($slash, $this->http->lastText());
 	}
 
 	public function testCardReplyWithoutAi(): void {

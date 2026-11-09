@@ -70,6 +70,13 @@ class GroupRedirectTest extends IntegrationTestCase {
 		self::assertStringContainsString('Уровни игроков', $reply['text']);
 		$reply = $this->groupReply($vasya, '@pop1_bot help');
 		self::assertStringContainsString(Messages::GROUP_HELP_HINT, $reply['text']);
+		self::assertStringContainsString('/tournaments', $reply['text']);
+		self::assertStringNotContainsString('Уровни игроков', $reply['text']);
+		foreach (['@pop1_bot help me', '@pop1_bot что ты умеешь?', '@pop1_bot помощь'] as $phrase) {
+			$reply = $this->groupReply($vasya, $phrase);
+			self::assertStringContainsString(Messages::GROUP_HELP_HINT, $reply['text'], $phrase);
+			self::assertStringNotContainsString('Уровни игроков', $reply['text'], $phrase);
+		}
 	}
 
 	public function testGroupListHidesDrafts(): void {

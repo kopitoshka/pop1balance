@@ -112,7 +112,7 @@ class GroupChat {
 
 	protected function answerInfo(Context $ctx, string $text): void {
 		$t = mb_strtolower($text);
-		if ($t === '' || preg_match('/\b(help|помощь|справка|хелп|что умеешь|как пользоваться)\b/u', $t)) {
+		if ($t === '' || preg_match('/\b(help(\s+me)?|помощь|справка|хелп|что(\s+ты)?\s+умеешь|как\s+пользоваться)\b/u', $t)) {
 			$this->commands->handle($ctx, 'help', '');
 			return;
 		}
@@ -364,7 +364,7 @@ class GroupChat {
 	}
 
 	protected function isInfo(string $t): bool {
-		if (preg_match('/\b(help|помощь|справка|хелп|что умеешь|как пользоваться)\b/u', $t)) {
+		if (preg_match('/\b(help(\s+me)?|помощь|справка|хелп|что(\s+ты)?\s+умеешь|как\s+пользоваться)\b/u', $t)) {
 			return true;
 		}
 		if ($this->isLevelsHelpAsk($t) || $this->isPlayerLevelAsk($t)) {
