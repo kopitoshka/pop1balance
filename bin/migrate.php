@@ -8,7 +8,7 @@ declare(strict_types=1);
 
 use P1Bot\Support\Database;
 
-require dirname(__DIR__) . '/vendor/autoload.php';
+require dirname(__DIR__) . '/autoload.php';
 $config = require dirname(__DIR__) . '/config/config.php';
 
 $db = Database::fromConfig($config['db']);

@@ -11,7 +11,7 @@ use P1Bot\App\CronRunner;
 use P1Bot\Bootstrap;
 use P1Bot\Support\Logger;
 
-require dirname(__DIR__) . '/vendor/autoload.php';
+require dirname(__DIR__) . '/autoload.php';
 $config = require dirname(__DIR__) . '/config/config.php';
 $logger = new Logger($config['paths']['logs']);
 

@@ -43,12 +43,12 @@ sudo systemctl enable --now mariadb php-fpm
 sudo mkdir -p /var/www/pop1bot && sudo chown $USER /var/www/pop1bot
 git clone https://github.com/kopitoshka/pop1balance.git /var/www/pop1bot
 cd /var/www/pop1bot
-composer install --no-dev --optimize-autoloader
+# composer is not needed in production: autoload.php loads src/ directly
 cp .env.example .env && chmod 640 .env     # then fill it in, see below
 sudo chown -R apache:apache storage        # or nginx:nginx — the php-fpm user must write logs
 ```
 
-Updating later: `git pull && composer install --no-dev -o && php bin/migrate.php`.
+Updating later: `git pull && php bin/migrate.php`.
 
 ### 3. Database
 

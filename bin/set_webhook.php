@@ -9,7 +9,7 @@ use P1Bot\Http\CurlHttpClient;
 use P1Bot\Telegram\BotApi;
 use P1Bot\Telegram\Update;
 
-require dirname(__DIR__) . '/vendor/autoload.php';
+require dirname(__DIR__) . '/autoload.php';
 $config = require dirname(__DIR__) . '/config/config.php';
 
 $token = (string) $config['telegram']['token'];
