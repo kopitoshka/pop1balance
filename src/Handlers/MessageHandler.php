@@ -83,6 +83,12 @@ final class MessageHandler
      * A clear "да / публикуем" in reply to the current draft card publishes it right away,
      * without the AI. Anything else goes on to the AI (or a hint when AI is off).
      */
+    /** For the update log: what will answer a mention. */
+    public function mode(): string
+    {
+        return $this->assistant !== null ? 'ai' : 'fallback text (AI off: OPENAI_API_KEY is empty)';
+    }
+
     private function handleCardReply(Context $ctx): bool
     {
         $replyTo = $ctx->message->replyToMessageId;

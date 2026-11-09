@@ -56,6 +56,8 @@ return [
         'reminder_minutes'   => $reminders === [] ? [60, 15] : $reminders,
         'finish_after_hours' => Env::int('FINISH_AFTER_HOURS', 4),
     ],
+    // debug | info | error (debug also logs every raw update)
+    'log_level' => Env::get('LOG_LEVEL', 'info'),
     'paths' => [
         'root'   => $root,
         'logs'   => $root . '/storage/logs',

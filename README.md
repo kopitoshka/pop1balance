@@ -48,7 +48,7 @@ cp .env.example .env && chmod 640 .env     # then fill it in, see below
 sudo chown -R apache:apache storage        # or nginx:nginx — the php-fpm user must write logs
 ```
 
-Updating later: `git pull && php bin/migrate.php` (e.g. `003_tournament_card.sql` / `004_tournament_card_shown_to.sql` add `tournaments.card_msg_id` / `card_shown_to`).
+Updating later: `git pull && php bin/migrate.php && php bin/diag.php` (e.g. `003_tournament_card.sql` / `004_tournament_card_shown_to.sql` add `tournaments.card_msg_id` / `card_shown_to`).
 
 ### 3. Database
 
@@ -121,7 +121,8 @@ and `sudo setsebool -P httpd_can_network_connect 1` (the bot calls Telegram and 
 | `DB_HOST`, `DB_PORT`, `DB_NAME`, `DB_USER`, `DB_PASSWORD` | database (or `DB_DSN` with a full PDO DSN) |
 
 Optional: `DEFAULT_MAX_PLAYERS` (24), `ANYONE_CAN_CREATE_TOURNAMENT` (0), `ADMINS_CACHE_MINUTES` (10),
-`CONVERSATION_TTL_MINUTES` (30), `REMINDER_MINUTES` (`60,15`), `FINISH_AFTER_HOURS` (4), `OPENAI_TIMEOUT` (30).
+`CONVERSATION_TTL_MINUTES` (30), `REMINDER_MINUTES` (`60,15`), `FINISH_AFTER_HOURS` (4), `OPENAI_TIMEOUT` (30),
+`LOG_LEVEL` (`info`; `debug` | `info` | `error`, see Logs).
 
 ### 6. BotFather
 
@@ -159,7 +160,37 @@ crontab -e -u apache     # same user as php-fpm
 
 ### Logs
 
-`storage/logs/bot-YYYY-MM-DD.log` (errors and AI tool calls), `storage/logs/cron.log`.
+`storage/logs/bot-YYYY-MM-DD.log`, `storage/logs/cron.log`. Timestamps are Moscow time (`MSK`), one file per Moscow day.
+The directory must be writable by the php-fpm user; if it is not, lines go to the PHP `error_log` (php-fpm log) with a `[p1bot]` prefix.
+
+`LOG_LEVEL` in `.env`:
+
+- `info` (default): every rejected webhook request with its reason (405, 403 secret header missing/wrong — the secret
+  itself is never written, 400 bad JSON); one line per update with type, chat, sender, the first 100 chars of the text
+  and the decision; OpenAI calls (model, duration, status, error body); Telegram API errors (`ok=false` + description).
+- `debug`: also the full raw update JSON.
+- `error`: errors only.
+
+Example:
+
+```
+[2026-11-09 18:42:07 MSK] INFO update 912345678 message: ignored: wrong bot username in mention (@pop1balance_bot, expected @pop1_bot from TELEGRAM_BOT_USERNAME) {"type":"message","chat":-1001234567890,"chat_type":"supergroup","from":1234,"username":"@vasya","text":"@pop1balance_bot привет","bot":"@pop1_bot"}
+```
+
+Decisions: `ignored: no mention/reply`, `ignored: wrong bot username in mention`, `ignored: private chat`,
+`ignored: command /x@other_bot is for another bot`, `handled: command /x`, `handled: ai`,
+`handled: fallback text (AI off…)`, `handled: callback …`, `edited: replied once`, `ignored: edited, …`.
+
+### Diagnostics
+
+```bash
+php bin/diag.php
+```
+
+Prints: webhook info from Telegram (host masked as `***`, pending updates, last delivery error, allowed_updates),
+`getMe` username vs. `TELEGRAM_BOT_USERNAME`, DB connection and pending migrations, whether the logs dir is writable,
+whether `OPENAI_API_KEY` is set (yes/no). No secrets are printed. Run it as the php-fpm user to check log permissions
+for the webhook too, e.g. `sudo -u apache php bin/diag.php`.
 
 ## Usage
 

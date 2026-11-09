@@ -13,7 +13,7 @@ use P1Bot\Support\Logger;
 
 require dirname(__DIR__) . '/autoload.php';
 $config = require dirname(__DIR__) . '/config/config.php';
-$logger = new Logger($config['paths']['logs']);
+$logger = Logger::fromConfig($config);
 
 $lock = fopen($config['paths']['logs'] . '/cron.lock', 'c');
 if ($lock === false || !flock($lock, LOCK_EX | LOCK_NB)) {

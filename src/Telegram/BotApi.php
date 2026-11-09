@@ -5,6 +5,9 @@ declare(strict_types=1);
 namespace P1Bot\Telegram;
 
 use P1Bot\Http\HttpClient;
+use P1Bot\Support\Logger;
+use P1Bot\Support\Redact;
+use Throwable;
 
 /** Bot API over HTTPS (JSON bodies). Messages are sent with parse_mode=HTML and no link previews. */
 final class BotApi implements TelegramApi
@@ -15,6 +18,7 @@ final class BotApi implements TelegramApi
         private HttpClient $http,
         private string $token,
         private int $timeout = 15,
+        private ?Logger $logger = null,
     ) {
     }
 
@@ -71,6 +75,12 @@ final class BotApi implements TelegramApi
         return array_values($this->call('getChatAdministrators', ['chat_id' => $chatId]));
     }
 
+    /** @return array<string, mixed> */
+    public function getWebhookInfo(): array
+    {
+        return $this->call('getWebhookInfo', []);
+    }
+
     public function setWebhook(string $url, string $secretToken, array $allowedUpdates): void
     {
         $this->call('setWebhook', [
@@ -87,12 +97,44 @@ final class BotApi implements TelegramApi
      */
     private function call(string $method, array $params): array
     {
-        $response = $this->http->postJson(self::BASE . $this->token . '/' . $method, $params, [], $this->timeout);
+        try {
+            $response = $this->http->postJson(self::BASE . $this->token . '/' . $method, $params, [], $this->timeout);
+        } catch (Throwable $e) {
+            // The URL contains the token: never log it, and scrub it from the message just in case.
+            $this->logger?->error(sprintf('telegram %s failed: %s', $method, Redact::text($e->getMessage(), [$this->token])), $this->target($params));
+            throw $e;
+        }
         $data = $response->json();
         if (($data['ok'] ?? false) !== true) {
-            throw new TelegramError($method, (string) ($data['description'] ?? 'unknown error'), (int) ($data['error_code'] ?? $response->status));
+            $description = (string) ($data['description'] ?? 'unknown error');
+            $code = (int) ($data['error_code'] ?? $response->status);
+            $line = sprintf('telegram %s ok=false: %d %s', $method, $code, Redact::text($description, [$this->token]));
+            if (stripos($description, 'message is not modified') !== false) {
+                $this->logger?->debug($line, $this->target($params));
+            } else {
+                $this->logger?->error($line, $this->target($params));
+            }
+            throw new TelegramError($method, $description, $code);
         }
         $result = $data['result'] ?? [];
         return is_array($result) ? $result : ['value' => $result];
+    }
+
+    /**
+     * @param array<string, mixed> $params
+     * @return array<string, mixed>
+     */
+    private function target(array $params): array
+    {
+        $target = [];
+        foreach (['chat_id', 'message_id'] as $key) {
+            if (isset($params[$key])) {
+                $target[$key] = $params[$key];
+            }
+        }
+        if (isset($params['text']) && is_string($params['text'])) {
+            $target['text'] = mb_substr($params['text'], 0, 100);
+        }
+        return $target;
     }
 }

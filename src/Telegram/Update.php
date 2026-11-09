@@ -19,6 +19,7 @@ final class Update
         public ?CallbackQuery $callbackQuery,
         public ?array $myChatMember,
         public ?Message $editedMessage = null,
+        public string $type = 'unknown',
     ) {
     }
 
@@ -31,7 +32,19 @@ final class Update
             isset($raw['callback_query']) && is_array($raw['callback_query']) ? CallbackQuery::fromArray($raw['callback_query']) : null,
             isset($raw['my_chat_member']) && is_array($raw['my_chat_member']) ? $raw['my_chat_member'] : null,
             isset($raw['edited_message']) && is_array($raw['edited_message']) ? Message::fromArray($raw['edited_message']) : null,
+            self::typeOf($raw),
         );
+    }
+
+    /** "message", "edited_message", "callback_query", "my_chat_member", ... (first key besides update_id) */
+    private static function typeOf(array $raw): string
+    {
+        foreach (array_keys($raw) as $key) {
+            if ($key !== 'update_id') {
+                return (string) $key;
+            }
+        }
+        return 'unknown';
     }
 
     /**

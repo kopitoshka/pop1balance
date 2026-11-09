@@ -37,7 +37,7 @@ abstract class IntegrationTestCase extends TestCase
         $this->db = self::freshDatabase();
         $this->clock = new FrozenClock();
         $this->http = new FakeHttpClient();
-        $this->app = new Bootstrap($this->db, $this->clock, $this->config(), $this->http);
+        $this->app = new Bootstrap($this->db, $this->clock, $this->config(), $this->http, $this->logger());
 
         (new ChatRepository($this->db))->ensure(self::CHAT_ID, 'P1 турниры');
         $this->owner = $this->app->players->ensureByTelegram(self::OWNER_TG_ID, 'andrey', 'Андрей', $this->clock->now());
@@ -47,6 +47,12 @@ abstract class IntegrationTestCase extends TestCase
     }
 
     /** @return array<string, mixed> */
+    /** Override to capture log lines (null = logging off). */
+    protected function logger(): ?\P1Bot\Support\Logger
+    {
+        return null;
+    }
+
     protected function config(): array
     {
         return [

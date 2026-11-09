@@ -129,7 +129,7 @@ final class Bootstrap
 
         $token = (string) ($config['telegram']['token'] ?? '');
         $this->bot = new BotIdentity(BotApi::botIdFromToken($token), (string) ($config['telegram']['username'] ?? ''), $ownerTgId);
-        $this->telegram = new BotApi($this->http, $token);
+        $this->telegram = new BotApi($this->http, $token, 15, $this->logger);
         $this->adminSync = new ChatAdminSync(
             $this->telegram,
             $this->chats,
@@ -212,6 +212,7 @@ final class Bootstrap
             new MessageHandler($this->telegram, $this->bot, $this->assistant, $this->logger, $this->tournaments, $this->drafts, $this->listing),
             new CallbackHandler($this->telegram, $this->bot, $this->tournaments, $this->teams, $this->announcer, $this->drafts),
             new EditedReplyRepository($db),
+            $this->logger,
         );
     }
 
@@ -246,6 +247,7 @@ final class Bootstrap
             (string) ($openai['reasoning_effort'] ?? 'low'),
             (string) ($openai['base_url'] ?? 'https://api.openai.com/v1'),
             (int) ($openai['timeout'] ?? 30),
+            $this->logger,
         );
     }
 
@@ -257,14 +259,14 @@ final class Bootstrap
     }
 
     /** @param array<string, mixed> $config */
-    public static function fromConfig(array $config): self
+    public static function fromConfig(array $config, ?Logger $logger = null): self
     {
         return new self(
             Database::fromConfig($config['db']),
             new Support\SystemClock(),
             $config,
             null,
-            new Logger((string) $config['paths']['logs']),
+            $logger ?? Logger::fromConfig($config),
         );
     }
 

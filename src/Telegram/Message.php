@@ -90,6 +90,18 @@ final class Message
         return false;
     }
 
+    /** @return list<string> usernames of all @mentions in the message, lowercase, with "@" */
+    public function mentionedUsernames(): array
+    {
+        $names = [];
+        foreach ($this->entities as $entity) {
+            if (($entity['type'] ?? '') === 'mention') {
+                $names[] = mb_strtolower($this->entityText($entity));
+            }
+        }
+        return $names;
+    }
+
     public function isReplyToUser(int $userId): bool
     {
         return $this->replyToFrom !== null && $this->replyToFrom->id === $userId;
