@@ -59,6 +59,8 @@ class PrivateChatHandler {
 		'как пользоваться' => self::HELP,
 		'уровни' => self::LEVELS,
 		'турниры' => self::TOURNAMENTS,
+		'турнир' => self::TOURNAMENTS,
+		'какие турниры' => self::TOURNAMENTS,
 		'список' => self::TOURNAMENTS,
 		'список турниров' => self::TOURNAMENTS,
 	];
@@ -139,7 +141,14 @@ class PrivateChatHandler {
 		if ($words === '') {
 			return null;
 		}
-		return self::KEYWORDS[$words] ?? null;
+		if (isset(self::KEYWORDS[$words])) {
+			return self::KEYWORDS[$words];
+		}
+		// «какие турниры…» / bare «турнир(ы)» before AI.
+		if ($words === 'турнир' || $words === 'турниры' || str_starts_with($words, 'какие турниры')) {
+			return self::TOURNAMENTS;
+		}
+		return null;
 	}
 
 	/**

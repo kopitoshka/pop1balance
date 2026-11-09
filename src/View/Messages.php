@@ -85,6 +85,10 @@ class Messages {
 		return sprintf('Убрала тебя из команды «%s» на «%s» 👋', $team, $title);
 	}
 
+	public static function memberLeftTeam(string $who, string $team, int $tournament_no): string {
+		return sprintf('%s отписался из команды «%s» (турнир #%d)', $who, $team, $tournament_no);
+	}
+
 	public static function captainDisbanded(string $team, string $title): string {
 		return sprintf(
 			'Капитан распустил команду «%s», ты больше не в турнире «%s». Записаться соло или в другую команду — жми 👇',

@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace P1Bot\App;
 
+use P1Bot\View\DeepLink;
+
 use P1Bot\Domain\Model\Tournament;
 use P1Bot\Domain\MoscowTime;
 use P1Bot\Domain\TournamentService;
@@ -143,6 +145,25 @@ class TournamentListing {
 		@param array<int, string> $groups
 		@return array<string, mixed>
 	*/
+
+	
+	/**
+		Group list: URL buttons into the private tournament view (popen does not work in groups).
+
+		@param list<Tournament> $tournaments
+		@return array<string, mixed>
+	*/
+	public static function deepLinkButtons(array $tournaments, string $bot_username): array {
+		$rows = [];
+		foreach ($tournaments as $t) {
+			$label = '№' . (int) $t->number . ' ' . $t->title;
+			$rows[] = [[
+				'text' => mb_substr($label, 0, 60),
+				'url' => DeepLink::tournament($bot_username, $t->id),
+			]];
+		}
+		return $rows === [] ? [] : ['reply_markup' => ['inline_keyboard' => $rows]];
+	}
 
 	public static function openButtons(array $tournaments, array $groups): array {
 		unset($groups);

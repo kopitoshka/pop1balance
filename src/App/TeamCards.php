@@ -16,7 +16,7 @@ use P1Bot\Telegram\TelegramApi;
 use P1Bot\View\Html;
 
 /**
-	Private-chat team card: roster, points, manage buttons (add / leave / dissolve).
+	Private-chat team card: roster, points, manage buttons (add / remove / leave / dissolve).
 */
 class TeamCards {
 
@@ -69,20 +69,29 @@ class TeamCards {
 			return [];
 		}
 		$rows = [];
+		$is_captain = $entry->team->captain_id === $actor->id;
+		$is_member = $this->teams->teamOf($t->id, $actor->id)?->team->id === $entry->team->id;
+
 		if ($this->canOfferAdd($t, $entry, $actor)) {
 			$rows[] = [[
 				'text' => '➕ Добавить игрока',
 				'callback_data' => 'padd:' . $entry->team->id,
 			]];
 		}
-		if ($entry->team->captain_id === $actor->id) {
+		if ($this->canOfferRemove($t, $entry, $actor)) {
+			$rows[] = [[
+				'text' => '➖ Удалить игрока',
+				'callback_data' => 'prem:' . $entry->team->id,
+			]];
+		}
+		if ($is_captain) {
 			$rows[] = [[
 				'text' => '🚫 Распустить команду «' . $entry->team->name . '»',
 				'callback_data' => 'pdissolve:' . $entry->team->id,
 			]];
-		} elseif ($this->teams->teamOf($t->id, $actor->id)?->team->id === $entry->team->id) {
+		} elseif ($is_member) {
 			$rows[] = [[
-				'text' => '🚪 Выйти из команды «' . $entry->team->name . '»',
+				'text' => '❌ Отменить регистрацию',
 				'callback_data' => 'pleave:' . $entry->team->id,
 			]];
 		}
@@ -95,6 +104,40 @@ class TeamCards {
 			return false;
 		}
 		return $this->teams->canActorAddPlayer($actor->id, $entry->team->id);
+	}
+
+	public function canOfferRemove(Tournament $t, TeamEntry $entry, Player $actor): bool {
+		unset($t);
+		$removable = 0;
+		foreach ($entry->members as $member) {
+			if ($member->player_id !== $entry->team->captain_id) {
+				$removable++;
+			}
+		}
+		if ($removable === 0) {
+			return false;
+		}
+		return $this->teams->canActorRemovePlayer($actor->id, $entry->team->id);
+	}
+
+	/**
+		Inline buttons: members except captain.
+		@return list<list<array<string, string>>>
+	*/
+	public function removeMemberRows(TeamEntry $entry): array {
+		$rows = [];
+		foreach ($entry->members as $member) {
+			if ($member->player_id === $entry->team->captain_id) {
+				continue;
+			}
+			$player = $this->players->find($member->player_id);
+			$label = $player !== null ? $player->plainLabel() : ('#' . $member->player_id);
+			$rows[] = [[
+				'text' => '➖ ' . mb_substr($label, 0, 60),
+				'callback_data' => 'trem:' . $entry->team->id . ':' . $member->player_id,
+			]];
+		}
+		return $rows;
 	}
 
 	/**

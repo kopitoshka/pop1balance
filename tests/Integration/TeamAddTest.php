@@ -92,4 +92,63 @@ class TeamAddTest extends IntegrationTestCase {
 		$this->dispatch($this->groupMessage($vasya, '/team'));
 		self::assertStringContainsString('личк', mb_strtolower($this->http->lastText()));
 	}
+
+	public function testPremRemovesMemberWithoutDm(): void {
+		$cap = $this->player('cap_rm');
+		$mate = $this->player('mate_rm');
+		$t = $this->openTournament(3);
+		$entry = $this->app->teams->createTeam($t->id, $cap->id, 'Gamma', [$mate->id]);
+		$this->dispatch($this->press($cap, 'prem:' . $entry->team->id));
+		$datas = [];
+		foreach ($this->http->sent('sendMessage') as $msg) {
+			foreach ($msg['reply_markup']['inline_keyboard'] ?? [] as $row) {
+				foreach ($row as $btn) {
+					$datas[] = $btn['callback_data'] ?? '';
+				}
+			}
+		}
+		self::assertContains('trem:' . $entry->team->id . ':' . $mate->id, $datas);
+		$this->http->reset();
+		$this->dispatch($this->press($cap, 'trem:' . $entry->team->id . ':' . $mate->id));
+		self::assertNull($this->app->teams->teamOf($t->id, $mate->id));
+		// No DM to removed player.
+		foreach ($this->http->sent('sendMessage') as $msg) {
+			self::assertNotSame($this->tgIdOf($mate), $msg['chat_id'] ?? null);
+		}
+	}
+
+	public function testMemberCancelNotifiesCaptain(): void {
+		$cap = $this->player('cap_lv');
+		$mate = $this->player('mate_lv');
+		$this->app->players->markDmStarted($cap->id, $this->clock->now());
+		$t = $this->openTournament(3);
+		$entry = $this->app->teams->createTeam($t->id, $cap->id, 'Delta', [$mate->id]);
+		$this->http->reset();
+		$this->dispatch($this->press($mate, 'pleave:' . $entry->team->id));
+		self::assertNull($this->app->teams->teamOf($t->id, $mate->id));
+		$dm = null;
+		foreach ($this->http->sent('sendMessage') as $msg) {
+			if (($msg['chat_id'] ?? null) === $this->tgIdOf($cap)) {
+				$dm = $msg['text'] ?? '';
+			}
+		}
+		self::assertNotNull($dm);
+		self::assertStringContainsString('@mate_lv', $dm);
+		self::assertStringContainsString('Delta', $dm);
+		self::assertStringContainsString('отписался', $dm);
+	}
+
+	public function testTournamentsKeyword(): void {
+		$this->openTournament(3);
+		$vasya = $this->player('kw');
+		$this->dispatch($this->privateMessage($vasya, 'турниры'));
+		self::assertStringContainsString('Субботний кубок', $this->http->lastText());
+		$buttons = false;
+		foreach ($this->http->sent('sendMessage') as $msg) {
+			if (!empty($msg['reply_markup']['inline_keyboard'])) {
+				$buttons = true;
+			}
+		}
+		self::assertTrue($buttons, 'list should have open buttons');
+	}
 }

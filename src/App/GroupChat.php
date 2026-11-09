@@ -413,6 +413,10 @@ class GroupChat {
 	}
 
 	protected function isTournamentsAsk(string $t): bool {
+		$norm = trim((string) preg_replace('/[\s.,!?…]+/u', ' ', $t));
+		if (preg_match('/^(турнир|турниры|tournaments?)$/ui', $norm)) {
+			return true;
+		}
 		if (preg_match('/\b(что нового|новости|что есть|есть ли что|что по играм|что по расписанию)\b/u', $t)) {
 			return true;
 		}

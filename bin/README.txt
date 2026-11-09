@@ -15,9 +15,9 @@ diag.php
 
 set_webhook.php
   Ставит webhook по TELEGRAM_* из .env.
-  Также обновляет меню команд (в т.ч.
-  /adduser, /history, /team, /nick — в личке;
-  /start в личном меню не дублируем).
+  Также обновляет меню команд (личка: /tournaments,
+  /team, /level, /nick, /levels, /help; без /history,
+  /info, /adduser и без дубля /start).
 
 cron.php
   Напоминания и автозавершение турниров

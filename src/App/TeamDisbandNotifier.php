@@ -56,4 +56,34 @@ class TeamDisbandNotifier {
 			}
 		}
 	}
+
+	/**
+		Member left/cancelled: DM captain when dm_ok (not when actor is captain).
+	*/
+	public function notifyMemberLeft(
+		\P1Bot\Domain\Model\Player $actor,
+		int $captain_id,
+		string $team_name,
+		int $tournament_id,
+	): void {
+		if ($actor->id === $captain_id) {
+			return;
+		}
+		$captain = $this->players->find($captain_id);
+		if ($captain === null || $captain->tg_user_id === null || !$this->players->dmOk($captain_id)) {
+			return;
+		}
+		try {
+			$this->api->sendMessage(
+				$captain->tg_user_id,
+				Html::e(Messages::memberLeftTeam($actor->mention(), $team_name, $tournament_id)),
+			);
+		} catch (Throwable $e) {
+			$this->logger->exception($e, sprintf(
+				'member-left DM to captain %d (tournament %d)',
+				$captain_id,
+				$tournament_id,
+			));
+		}
+	}
 }

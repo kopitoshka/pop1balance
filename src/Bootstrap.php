@@ -409,6 +409,7 @@ class Bootstrap {
 				$pending_runner,
 				$this->team_add,
 				$this->team_cards,
+				$this->players,
 			),
 			new EditedReplyRepository($db),
 			$this->logger,

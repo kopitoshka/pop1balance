@@ -282,6 +282,18 @@ class TeamService {
 		}
 	}
 
+	/**
+		Whether the actor may remove a member now (captain or organizer/owner, lineup editable).
+	*/
+	public function canActorRemovePlayer(int $actor_id, int $team_id): bool {
+		try {
+			$this->captainContext($actor_id, $team_id, false);
+			return true;
+		} catch (\Throwable) {
+			return false;
+		}
+	}
+
 	protected function captainContext(int $actor_id, int $team_id, bool $needs_open_registration): array {
 		$team = $this->teams->find($team_id) ?? throw new NotFound('Такой команды нет.');
 		$tournament = $this->tournaments->find($team->tournament_id) ?? throw new NotFound('Такого турнира нет.');

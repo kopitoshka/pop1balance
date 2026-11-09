@@ -106,7 +106,7 @@ class PrivateChatTest extends IntegrationTestCase {
 		$mate = $this->player('mate');
 		$entry = $this->app->teams->createTeam($t->id, $cap->id, 'Wolves', [$mate->id]);
 		$this->say($cap, '/start t_' . $t->id);
-		self::assertSame(['padd:' . $entry->team->id, 'pdissolve:' . $entry->team->id], $this->lastButtons());
+		self::assertSame(['padd:' . $entry->team->id, 'prem:' . $entry->team->id, 'pdissolve:' . $entry->team->id], $this->lastButtons());
 		$this->say($mate, '/start t_' . $t->id);
 		self::assertSame(['pleave:' . $entry->team->id], $this->lastButtons());
 	}

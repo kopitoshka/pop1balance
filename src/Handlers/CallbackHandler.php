@@ -19,6 +19,7 @@ use P1Bot\Domain\TeamService;
 use P1Bot\Domain\TournamentService;
 use P1Bot\Domain\TournamentStatus;
 use P1Bot\Repository\ConversationRepository;
+use P1Bot\Repository\PlayerRepository;
 use P1Bot\Support\Clock;
 use P1Bot\Support\RuPlural;
 use P1Bot\Telegram\BotIdentity;
@@ -52,6 +53,7 @@ class CallbackHandler {
 		protected ?PendingPlayerRunner $pending_runner = null,
 		protected ?TeamAddFlow $team_add = null,
 		protected ?TeamCards $team_cards = null,
+		protected ?PlayerRepository $players = null,
 	) {
 	}
 
@@ -62,7 +64,7 @@ class CallbackHandler {
 		if (str_starts_with($query->data, 'sug:')) {
 			return 'suggest pick ' . $query->data;
 		}
-		if (str_starts_with($query->data, 'padd:') || str_starts_with($query->data, 'tadd:') || str_starts_with($query->data, 'tcard:')) {
+		if (preg_match('/^(padd|prem|tadd|trem|tcard):/', $query->data)) {
 			return 'private: button ' . $query->data;
 		}
 		$action = (string) strtok($query->data, ':');
@@ -182,9 +184,14 @@ class CallbackHandler {
 			case 'pleave':
 				$entry = $this->teams->get($id);
 				$t = $this->tournaments->get($entry->team->tournament_id);
+				$captain_id = $entry->team->captain_id;
+				$team_name = $entry->team->name;
 				$this->teams->leaveTeam($player->id, $entry->team->id);
 				$this->announcer->refresh($t->id);
-				$this->done($query, $t, $player, sprintf('Ты вышел из команды «%s».', $entry->team->name));
+				if ($this->disband_notifier !== null) {
+					$this->disband_notifier->notifyMemberLeft($player, $captain_id, $team_name, (int) $t->id);
+				}
+				$this->done($query, $t, $player, sprintf('Ты вышел из команды «%s».', $team_name));
 				return;
 			case 'pdissolve':
 				$entry = $this->teams->get($id);
@@ -308,7 +315,7 @@ class CallbackHandler {
 	}
 
 	/**
-		padd:<team>, tadd:<team>:<player>, tcard:<team>
+		padd/prem/tadd/trem/tcard team-card callbacks.
 	*/
 	protected function handleTeamAddCallbacks(CallbackQuery $query, Player $player): bool {
 		$chat_id = (int) $query->chat_id;
@@ -316,6 +323,41 @@ class CallbackHandler {
 			if (preg_match('/^padd:(\d+)$/', $query->data, $m) && $this->team_add !== null) {
 				$this->api->answerCallbackQuery($query->id);
 				$this->team_add->offer($chat_id, $player, (int) $m[1], $query->message_id);
+				return true;
+			}
+			if (preg_match('/^prem:(\d+)$/', $query->data, $m) && $this->team_cards !== null) {
+				$entry = $this->teams->get((int) $m[1]);
+				$t = $this->tournaments->get($entry->team->tournament_id);
+				if (!$this->team_cards->canOfferRemove($t, $entry, $player)) {
+					throw new DomainError('Сейчас нельзя удалить игрока из этой команды.');
+				}
+				$rows = $this->team_cards->removeMemberRows($entry);
+				if ($rows === []) {
+					throw new DomainError('Кроме капитана в команде никого нет.');
+				}
+				$this->api->answerCallbackQuery($query->id);
+				$this->api->sendMessage(
+					$chat_id,
+					'Кого убрать из «' . Html::e($entry->team->name) . '»?',
+					$query->message_id,
+					['reply_markup' => ['inline_keyboard' => $rows]],
+				);
+				return true;
+			}
+			if (preg_match('/^trem:(\d+):(\d+)$/', $query->data, $m) && $this->team_cards !== null) {
+				$team_id = (int) $m[1];
+				$target_id = (int) $m[2];
+				$who = $this->playerMention($target_id);
+				$entry = $this->teams->removePlayer($player->id, $team_id, $target_id);
+				$t = $this->tournaments->get($entry->team->tournament_id);
+				$this->announcer->refresh($t->id);
+				$this->api->answerCallbackQuery($query->id, 'Убрала');
+				$this->api->sendMessage(
+					$chat_id,
+					'Убрала ' . Html::e($who) . ' из «' . Html::e($entry->team->name) . '».',
+					$query->message_id,
+				);
+				$this->team_cards->send($chat_id, $t, $entry, $player);
 				return true;
 			}
 			if (preg_match('/^tadd:(\d+):(\d+)$/', $query->data, $m) && $this->team_add !== null) {
@@ -337,5 +379,13 @@ class CallbackHandler {
 		return false;
 	}
 
+
+	protected function playerMention(int $player_id): string {
+		if ($this->players === null) {
+			return '#' . $player_id;
+		}
+		$p = $this->players->find($player_id);
+		return $p !== null ? $p->mention() : ('#' . $player_id);
+	}
 
 }

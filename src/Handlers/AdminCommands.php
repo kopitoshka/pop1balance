@@ -206,6 +206,10 @@ class AdminCommands {
 		if ($messages === []) {
 			return 'Сейчас активных турниров нет.' . ($this->canCreate($ctx) ? ' Создать: /new 23.11 20:00 | Название | 3 | средний, средний, средний+ | 24' : '');
 		}
+		$this->reply_extra = TournamentListing::deepLinkButtons(
+			$this->listing->privateTournaments([], $ctx->actor->id, false),
+			$this->bot->username,
+		);
 		return $this->sendAllButLast($ctx, $messages);
 	}
 

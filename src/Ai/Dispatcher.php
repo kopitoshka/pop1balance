@@ -362,11 +362,17 @@ class Dispatcher {
 			case 'leave_team':
 				$t = $this->tournament($ctx, $a);
 				$entry = $this->teams->teamOf($t->id, $actor->id) ?? throw new NotFound('Ты не состоишь в команде на этом турнире.');
-				return $this->teamResult(
+				$captain_id = $entry->team->captain_id;
+				$team_name = $entry->team->name;
+				$result = $this->teamResult(
 					$t,
 					$this->teams->leaveTeam($actor->id, $entry->team->id),
 					'Ты вышел из команды.',
 				);
+				if ($this->disband_notifier !== null) {
+					$this->disband_notifier->notifyMemberLeft($actor, $captain_id, $team_name, (int) $t->id);
+				}
+				return $result;
 
 			case 'join_solo':
 				$t = $this->tournament($ctx, $a);
