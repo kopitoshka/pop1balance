@@ -107,9 +107,14 @@ class BotApi implements TelegramApi {
 
 	/**
 		@param list<array{command: string, description: string}> $commands
+		@param array<string, mixed>|null $scope BotCommandScope, e.g. ['type' => 'all_private_chats']
 	*/
-	public function setMyCommands(array $commands): void {
-		$this->call('setMyCommands', ['commands' => $commands]);
+	public function setMyCommands(array $commands, ?array $scope = null): void {
+		$params = ['commands' => $commands];
+		if ($scope !== null) {
+			$params['scope'] = $scope;
+		}
+		$this->call('setMyCommands', $params);
 	}
 
 	/**

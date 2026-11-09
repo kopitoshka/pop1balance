@@ -10,7 +10,7 @@ PHP 8.0+ (tested on 8.0 and 8.3), MySQL 8 / MariaDB 10.5+, no framework.
 ## How it works
 
 - Webhook: `public/webhook.php`. **Everything happens in the private chat with the bot.** The group gets only
-  announcements (cards), reminders and the info commands `/tournaments`, `/history`, `/info N`, `/levels`, `/help`.
+  announcements (cards), reminders and the info commands `/tournaments`, `/info N`, `/levels`, `/help` ( `/history` is private-only).
   Any other command, @mention or reply to the bot in the group (joining, creating, editing, questions — admins
   included) gets one reply «Давай в личке 👉» with a URL button `https://t.me/<bot>?start=…` (see «Group»).
   No AI in the group.
@@ -154,7 +154,7 @@ prompt tells the AI that this is her name; fixed texts never contain a name.
 ```bash
 php bin/set_webhook.php
 ```
-Also refreshes the Telegram command menu (`setMyCommands`: `/start`, `/tournaments`, `/history`, `/info`, `/levels`, `/help`).
+Also refreshes the Telegram command menu (`setMyCommands`; `/history` only in `all_private_chats` scope).
 
 ```
 # Bot: @pop1_tournament_bot (id ...)
@@ -245,11 +245,11 @@ for the webhook too, e.g. `sudo -u apache php bin/diag.php`.
   only the **largest** mark (60 = hour before) posts the short «⏰ Через час стартует турнир …» notice into **every**
   active group (deep-link button). The 15-minute mark does **not** broadcast to groups. Deduped via `group_notices`.
   `REMIND_ALL_GROUPS=0` turns group broadcasts off (no private DM reminders yet). `REMINDER_MINUTES` key unchanged.
-- In the group when mentioned/replied: info (`/tournaments`, `/history`, `/info`, `/levels`, `/help`, «какие турниры?»,
-  «что нового?», «прошлые турниры»…) is answered there (help ends with a private-chat hint + button); «запиши меня» /
-  «удали меня» join/leave solo when the tournament is unambiguous; management (`/new`, create/edit…) → random private
-  redirect phrase + deep link; anything else → fixed «Не поняла 🙅‍♀️ Что я умею — /help» (no free-form AI chat in
-  groups). Deep link is `t_<id>` when clear, else `g_<chat id>`.
+- In the group when mentioned/replied: info (`/tournaments`, `/info`, `/levels`, `/help`, «какие турниры?»,
+  «что нового?»…) is answered there (help ends with a private-chat hint + button); «запиши меня» /
+  «удали меня» join/leave solo when the tournament is unambiguous; management and private-only (`/new`, `/history`,
+  «прошлые турниры»…) → random private redirect phrase + deep link; anything else → fixed
+  «Не поняла 🙅‍♀️ Что я умею — /help» (no free-form AI chat in groups). Deep link is `t_<id>` when clear, else `g_<chat id>`.
 - Buttons of old group messages (`solo`, `unsolo`, `howto`, `pub`, `fix`) answer «Теперь это в личке…» and open
   the private chat via `answerCallbackQuery(url=t.me/<bot>?start=t_<id>)`.
 
@@ -304,8 +304,8 @@ tournament's scale; everyone else gets «Уровни игроков меняе�
 админу.», and tournaments created by others always use the owner's default scale. The scale tables and columns stay
 (see `AccessPolicy::LEVELS_OWNER_ONLY`), so this can be switched back on later.
 - `/tournaments` — pretty list of active tournaments with teams (👑 captain), solo players, reserve and forming teams
-  (in private also your own drafts; all drafts for the owner); `/history` — last 10 finished/cancelled (compact, № = id);
-  `/info [N]` — full lineup of one tournament (works for finished too); `/help` — for everyone
+  (in private also your own drafts; all drafts for the owner); `/history` — last 10 finished/cancelled (private only;
+  compact, № = id); `/info [N]` — full lineup of one tournament (works for finished too); `/help` — for everyone
 
 The number can be omitted when only one tournament fits.
 
@@ -350,8 +350,9 @@ Every tournament has a level (see below). There is no "no level" option any more
 
 ### Levels
 
-`1 начальный, 2 начальный+, 3 средний, 4 средний+, 5 высокий, 6 высокий+`. Synonyms: слабый / базовый /
-начинающий = начальный, танк = высокий. Case-insensitive, «плюс» = «+» («слабый плюс» = 2, «танк+» = 6),
+`1 начальный, 2 начальный+, 3 средний, 4 средний+, 5 высокий, 6 высокий+`. Parsing synonyms: слабый / базовый /
+начинающий = начальный, танк = высокий («слабый» accepted but not shown in `/levels`). Case-insensitive, «плюс» = «+»
+(«слабый плюс» = 2, «танк+» = 6),
 small typos are tolerated («выскоий» = высокий). Full help for users: `/levels` (the AI sends the same
 text via the `levels_help` tool when asked «какие есть уровни»).
 

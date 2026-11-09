@@ -37,15 +37,23 @@ try {
 	}
 	$api->setWebhook($url, $secret, Update::ALLOWED_UPDATES);
 	fwrite(STDOUT, "Webhook set: $url\n");
-	$api->setMyCommands([
+	$common = [
 		['command' => 'start', 'description' => 'Турниры с кнопками записи'],
 		['command' => 'tournaments', 'description' => 'Активные турниры'],
-		['command' => 'history', 'description' => 'Прошедшие турниры'],
 		['command' => 'info', 'description' => 'Состав турнира (/info N)'],
 		['command' => 'levels', 'description' => 'Уровни игроков'],
 		['command' => 'help', 'description' => 'Подсказка по командам'],
-	]);
-	fwrite(STDOUT, "Bot commands updated\n");
+	];
+	$private = array_merge(
+		array_slice($common, 0, 2),
+		[['command' => 'history', 'description' => 'Прошедшие турниры']],
+		array_slice($common, 2),
+	);
+	// Default + groups: without /history; private chats: with /history.
+	$api->setMyCommands($common);
+	$api->setMyCommands($common, ['type' => 'all_group_chats']);
+	$api->setMyCommands($private, ['type' => 'all_private_chats']);
+	fwrite(STDOUT, "Bot commands updated (history = private only)\n");
 } catch (Throwable $e) {
 	fwrite(STDERR, 'Error: ' . $e->getMessage() . "\n");
 	exit(1);

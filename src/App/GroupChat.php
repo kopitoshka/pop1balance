@@ -78,11 +78,11 @@ class GroupChat {
 		$message = $ctx->message;
 		if ($command !== null) {
 			$name = mb_strtolower($command['name']);
-			if (in_array($name, ['help', 'start', 'tournaments', 'history', 'info', 'levels'], true)) {
+			if (in_array($name, ['help', 'start', 'tournaments', 'info', 'levels'], true)) {
 				$this->commands->handle($ctx, $name, $command['args']);
 				return;
 			}
-			// /new /edit /open /close /cancel /level /balance → manage redirect
+			// /history /new /edit /open /close /cancel /level /balance → private redirect
 			$this->redirectManage($message, $command['name']);
 			return;
 		}
@@ -118,10 +118,6 @@ class GroupChat {
 		}
 		if ($this->isTournamentsAsk($t)) {
 			$this->commands->handle($ctx, 'tournaments', '');
-			return;
-		}
-		if ($this->isHistoryAsk($t)) {
-			$this->commands->handle($ctx, 'history', '');
 			return;
 		}
 		$number = GroupRedirect::numberFrom($ctx->message);
@@ -369,9 +365,6 @@ class GroupChat {
 		if ($this->isTournamentsAsk($t)) {
 			return true;
 		}
-		if ($this->isHistoryAsk($t)) {
-			return true;
-		}
 		return false;
 	}
 
@@ -416,6 +409,9 @@ class GroupChat {
 	}
 
 	protected function isManage(string $t): bool {
+		if ($this->isHistoryAsk($t)) {
+			return true;
+		}
 		if (preg_match('/\b(создай|создать|новый турнир|открой регистрац|закрой регистрац|отмени турнир|опубликуй|поправь турнир)\b/u', $t)) {
 			return true;
 		}

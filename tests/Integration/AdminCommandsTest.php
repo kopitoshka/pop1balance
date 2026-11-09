@@ -512,7 +512,7 @@ class AdminCommandsTest extends IntegrationTestCase {
 		$this->dispatch($this->privateMessage($vasya, '/levels'));
 		$text = $this->http->lastText();
 		foreach ([
-			'1 — начальный (1 балл). Синонимы: слабый, базовый, начинающий',
+			'1 — начальный (1 балл). Синонимы: базовый, начинающий',
 			'5 — высокий (5 баллов). Синоним: танк',
 			'6 — высокий+ (6 баллов)',
 			'/edit 1 уровень 10',
@@ -520,7 +520,9 @@ class AdminCommandsTest extends IntegrationTestCase {
 			self::assertStringContainsString($needle, $text);
 		}
 		$this->dispatch($this->privateMessage($vasya, '/help'));
-		self::assertStringContainsString('/levels', $this->http->lastText());
+		$help_user = $this->http->lastText();
+		self::assertStringContainsString('/levels', $help_user);
+		self::assertStringContainsString('/history', $help_user);
 		$this->dispatch($this->privateMessage($this->owner, '/help'));
 		$help = $this->http->lastText();
 		self::assertStringContainsString('/edit 1 уровень 10', $help);

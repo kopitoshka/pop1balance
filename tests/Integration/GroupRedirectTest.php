@@ -194,18 +194,21 @@ class GroupRedirectTest extends IntegrationTestCase {
 		}));
 	}
 
-	public function testHistoryCommandAndPhraseInGroup(): void {
-		$t = $this->openTournament(3);
-		$this->app->tournaments->start($this->owner->id, $t->id);
-		$this->app->tournaments->finish($this->owner->id, $t->id);
+	public function testHistoryInGroupRedirectsToPrivate(): void {
 		$vasya = $this->player('vasya');
 		$reply = $this->groupReply($vasya, '/history');
-		self::assertStringContainsString('Прошедшие турниры', $reply['text']);
-		self::assertStringContainsString('Субботний кубок', $reply['text']);
-		self::assertStringContainsString('№' . $t->id, $reply['text']);
-		self::assertStringContainsString('завершён', $reply['text']);
+		self::assertNotNull($reply['url'], '/history is private-only');
+		self::assertStringContainsString('start=', (string) $reply['url']);
+		self::assertStringNotContainsString('Прошедшие турниры', $reply['text']);
 		$reply = $this->groupReply($vasya, '@pop1_bot прошлые турниры');
-		self::assertStringContainsString('Субботний кубок', $reply['text']);
+		self::assertNotNull($reply['url']);
+		self::assertStringNotContainsString('Прошедшие турниры', $reply['text']);
+	}
+
+	public function testGroupHelpOmitsHistory(): void {
+		$reply = $this->groupReply($this->player('vasya'), '/help');
+		self::assertStringNotContainsString('/history', $reply['text']);
+		self::assertStringContainsString('/tournaments', $reply['text']);
 	}
 
 	public function testInfoWorksForFinishedTournament(): void {
