@@ -76,6 +76,12 @@ App/ — сценарии над доменом
         Сводка турниров
     TeamDisbandNotifier.php
         Уведомление при роспуске команды
+    OrganizerTeams.php
+        Организатор: список/создание/переименование/капитан/удаление команд
+    TeamAddFlow.php
+        Капитан добавляет игрока (поиск / Telegram picker)
+    TeamCards.php
+        Карточка команды в личке
     WebhookGate.php
         Проверка секрета webhook
     Diagnostics.php

@@ -287,7 +287,19 @@ class Dispatcher {
 				foreach ((array) ($a['players'] ?? []) as $i => $ref) {
 					$ids[] = $this->resolvePlayer((string) $ref, $actor, $ctx, 'register_team', $a, 'players.' . $i)->id;
 				}
-				$entry = $this->teams->createTeam($t->id, $actor->id, (string) ($a['team_name'] ?? ''), $ids);
+				$captain_ref = trim((string) ($a['captain'] ?? ''));
+				if ($captain_ref !== '') {
+					$captain = $this->resolvePlayer($captain_ref, $actor, $ctx, 'register_team', $a, 'captain');
+					$entry = $this->teams->createTeamAsOrganizer(
+						$actor->id,
+						$t->id,
+						$captain->id,
+						(string) ($a['team_name'] ?? ''),
+						$ids,
+					);
+				} else {
+					$entry = $this->teams->createTeam($t->id, $actor->id, (string) ($a['team_name'] ?? ''), $ids);
+				}
 				return $this->teamResult($t, $entry, 'Команда создана.');
 
 			case 'add_player':

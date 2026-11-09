@@ -10,6 +10,7 @@ use P1Bot\App\TeamDisbandNotifier;
 use P1Bot\App\DraftCards;
 use P1Bot\App\PrivateGroups;
 use P1Bot\App\PrivateViews;
+use P1Bot\App\OrganizerTeams;
 use P1Bot\App\TeamAddFlow;
 use P1Bot\App\TeamCards;
 use P1Bot\Domain\Exception\DomainError;
@@ -31,8 +32,8 @@ use P1Bot\View\Messages;
 
 /**
 	Inline buttons. In private: psolo:<t>, punsolo:<t>, pteam:<t>, pleave:<team>, pdissolve:<team>,
-	popen:<t>, grp:<chat id>, and pub:<t> («Публикуем») / fix:<t> («Поправить») under the draft card.
-	Buttons of old group messages (solo/unsolo/howto/pub/fix) only point to the private chat.
+	popen:<t>, grp:<chat id>, pub:<t> / fix:<t>, oteams/otnew/otren/otcap/otsetc/otdel/otdelo/otcc
+	(organizer team manage), padd/prem/tadd/trem/tcard. Old group buttons only point to private.
 */
 class CallbackHandler {
 	protected const LEGACY = ['solo', 'unsolo', 'howto', 'pub', 'fix'];
@@ -54,6 +55,7 @@ class CallbackHandler {
 		protected ?TeamAddFlow $team_add = null,
 		protected ?TeamCards $team_cards = null,
 		protected ?PlayerRepository $players = null,
+		protected ?OrganizerTeams $organizer = null,
 	) {
 	}
 
@@ -64,7 +66,7 @@ class CallbackHandler {
 		if (str_starts_with($query->data, 'sug:')) {
 			return 'suggest pick ' . $query->data;
 		}
-		if (preg_match('/^(padd|prem|tadd|trem|tcard):/', $query->data)) {
+		if (preg_match('/^(padd|prem|tadd|trem|tcard|oteams|otnew|otren|otcap|otsetc|otdel|otdelo|otcc):/', $query->data)) {
 			return 'private: button ' . $query->data;
 		}
 		$action = (string) strtok($query->data, ':');
@@ -87,6 +89,9 @@ class CallbackHandler {
 			return;
 		}
 		if ($query->chat_id !== null && $query->chat_id > 0 && $this->handleTeamAddCallbacks($query, $player)) {
+			return;
+		}
+		if ($query->chat_id !== null && $query->chat_id > 0 && $this->handleOrganizerCallbacks($query, $player)) {
 			return;
 		}
 		if (!preg_match('/^([a-z]+):(-?\d+)$/', $query->data, $m)) {
@@ -370,6 +375,83 @@ class CallbackHandler {
 				$t = $this->tournaments->get($entry->team->tournament_id);
 				$this->api->answerCallbackQuery($query->id);
 				$this->team_cards->send($chat_id, $t, $entry, $player);
+				return true;
+			}
+		} catch (DomainError $e) {
+			$this->api->answerCallbackQuery($query->id, $e->getMessage(), true);
+			return true;
+		}
+		return false;
+	}
+
+
+	/**
+		oteams/otnew/otren/otcap/otsetc/otdel/otdelo/otcc organizer team-manage callbacks.
+	*/
+	protected function handleOrganizerCallbacks(CallbackQuery $query, Player $player): bool {
+		if ($this->organizer === null) {
+			return false;
+		}
+		$chat_id = (int) $query->chat_id;
+		try {
+			if (preg_match('/^oteams:(\d+)$/', $query->data, $m)) {
+				$t = $this->tournaments->get((int) $m[1]);
+				$this->api->answerCallbackQuery($query->id);
+				$this->organizer->sendList($chat_id, $t, $player, $query->message_id);
+				return true;
+			}
+			if (preg_match('/^otnew:(\d+)$/', $query->data, $m)) {
+				$this->api->answerCallbackQuery($query->id);
+				$this->organizer->startCreate($chat_id, $player, (int) $m[1], $query->message_id);
+				return true;
+			}
+			if (preg_match('/^otren:(\d+)$/', $query->data, $m)) {
+				$this->api->answerCallbackQuery($query->id);
+				$this->organizer->startRename($chat_id, $player, (int) $m[1], $query->message_id);
+				return true;
+			}
+			if (preg_match('/^otcap:(\d+)$/', $query->data, $m)) {
+				$this->api->answerCallbackQuery($query->id);
+				$this->organizer->offerCaptainPick($chat_id, $player, (int) $m[1], $query->message_id);
+				return true;
+			}
+			if (preg_match('/^otsetc:(\d+):(\d+)$/', $query->data, $m)) {
+				$team_id = (int) $m[1];
+				$new_cap = (int) $m[2];
+				$entry = $this->teams->transferCaptain($player->id, $team_id, $new_cap);
+				$t = $this->tournaments->get($entry->team->tournament_id);
+				$this->announcer->refresh($t->id);
+				$who = $this->playerMention($new_cap);
+				$this->api->answerCallbackQuery($query->id, 'Капитан сменён');
+				$this->api->sendMessage(
+					$chat_id,
+					'Новый капитан «' . Html::e($entry->team->name) . '» — ' . Html::e($who) . '.',
+					$query->message_id,
+				);
+				if ($this->team_cards !== null) {
+					$this->team_cards->send($chat_id, $t, $entry, $player);
+				}
+				return true;
+			}
+			if (preg_match('/^otdel:(\d+)$/', $query->data, $m)) {
+				$this->api->answerCallbackQuery($query->id);
+				$this->organizer->confirmDelete($chat_id, $player, (int) $m[1], $query->message_id);
+				return true;
+			}
+			if (preg_match('/^otdelo:(\d+)$/', $query->data, $m)) {
+				$this->api->answerCallbackQuery($query->id, 'Удаляю…');
+				$this->organizer->deleteTeam($chat_id, $player, (int) $m[1], $query->message_id);
+				return true;
+			}
+			if (preg_match('/^otcc:(\d+):(\d+)$/', $query->data, $m)) {
+				$this->api->answerCallbackQuery($query->id, 'Создаю…');
+				$this->organizer->pickCaptainFromPending(
+					$chat_id,
+					$player,
+					(int) $m[1],
+					(int) $m[2],
+					$query->message_id,
+				);
 				return true;
 			}
 		} catch (DomainError $e) {

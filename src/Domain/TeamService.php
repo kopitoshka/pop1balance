@@ -100,6 +100,49 @@ class TeamService {
 		});
 	}
 
+	/**
+		Organizer/owner creates a team with a chosen captain (actor is not auto-added).
+		@param list<int> $player_ids other members besides captain
+	*/
+	public function createTeamAsOrganizer(
+		int $actor_id,
+		int $tournament_id,
+		int $captain_id,
+		string $name,
+		array $player_ids = [],
+	): TeamEntry {
+		return $this->db->transactional(function () use ($actor_id, $tournament_id, $captain_id, $name, $player_ids): TeamEntry {
+			$tournament = $this->tournaments->find($tournament_id) ?? throw new NotFound('Такого турнира нет.');
+			$this->access->assertCanManageTournament($tournament, $actor_id);
+			$tournament = $this->openTournament($tournament_id, $actor_id);
+			$name = $this->validName($tournament_id, $name, null);
+			$roster = array_values(array_unique(array_merge([$captain_id], $player_ids)));
+			if (count($roster) > $tournament->team_size) {
+				throw new ValidationError(sprintf(
+					'В команде этого турнира максимум %d игрока(ов), а указано %d.',
+					$tournament->team_size,
+					count($roster),
+				));
+			}
+			$levels = [];
+			$breakdown = [];
+			foreach ($roster as $player_id) {
+				$this->assertFreeForTeam($tournament, $player_id, null);
+				[$level, $row] = $this->playerLevelRow($player_id);
+				$levels[$player_id] = $level;
+				$breakdown[] = $row;
+			}
+			$this->assertWithinLimit($tournament, array_sum($levels), $breakdown);
+			$team = $this->teams->create($tournament->id, $captain_id, $name, $this->clock->now());
+			foreach (array_keys($levels) as $player_id) {
+				$this->solos->remove($tournament->id, $player_id);
+				$this->teams->addMember($team, $player_id, $this->clock->now());
+			}
+			$this->syncStatus($team, $tournament);
+			return $this->get($team->id);
+		});
+	}
+
 	public function addPlayer(int $actor_id, int $team_id, int $player_id): TeamEntry {
 		return $this->db->transactional(function () use ($actor_id, $team_id, $player_id): TeamEntry {
 			[$team, $tournament] = $this->captainContext($actor_id, $team_id, true);

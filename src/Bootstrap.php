@@ -18,6 +18,7 @@ use P1Bot\App\TeamDisbandNotifier;
 use P1Bot\App\PlayerResolver;
 use P1Bot\App\UsernameResolver;
 use P1Bot\App\PendingPlayerRunner;
+use P1Bot\App\OrganizerTeams;
 use P1Bot\App\TeamAddFlow;
 use P1Bot\App\TeamCards;
 use P1Bot\App\PrivateGroups;
@@ -92,6 +93,7 @@ class Bootstrap {
 	public PlayerResolver $player_resolver;
 	public TeamCards $team_cards;
 	public TeamAddFlow $team_add;
+	public OrganizerTeams $organizer_teams;
 	public TournamentResolver $tournament_resolver;
 	public Dispatcher $dispatcher;
 	public ?Assistant $assistant = null;
@@ -285,6 +287,20 @@ class Bootstrap {
 			$this->announcer,
 			$this->team_cards,
 		);
+		$this->organizer_teams = new OrganizerTeams(
+			$this->telegram,
+			$this->tournaments,
+			$this->teams,
+			$this->team_repo,
+			$this->players,
+			$this->access,
+			$pending_actions,
+			$clock,
+			$this->announcer,
+			$this->team_cards,
+			$this->disband_notifier,
+		);
+		$this->team_cards->setOrganizer($this->organizer_teams);
 		$commands = new AdminCommands(
 			$this->telegram,
 			$this->bot,
@@ -410,6 +426,7 @@ class Bootstrap {
 				$this->team_add,
 				$this->team_cards,
 				$this->players,
+				$this->organizer_teams,
 			),
 			new EditedReplyRepository($db),
 			$this->logger,
@@ -428,6 +445,7 @@ class Bootstrap {
 				$clock,
 				$this->create_access,
 				$this->team_add,
+				$this->organizer_teams,
 			),
 			$this->group_redirect,
 			$this->dialogs,

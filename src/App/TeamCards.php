@@ -27,7 +27,12 @@ class TeamCards {
 		protected PlayerRepository $players,
 		protected AccessPolicy $access,
 		protected ?PrivateGroups $groups = null,
+		protected ?OrganizerTeams $organizer = null,
 	) {
+	}
+
+	public function setOrganizer(?OrganizerTeams $organizer): void {
+		$this->organizer = $organizer;
 	}
 
 	/**
@@ -94,6 +99,11 @@ class TeamCards {
 				'text' => '❌ Отменить регистрацию',
 				'callback_data' => 'pleave:' . $entry->team->id,
 			]];
+		}
+		if ($this->organizer !== null) {
+			foreach ($this->organizer->manageRows($t, $entry, $actor) as $row) {
+				$rows[] = $row;
+			}
 		}
 		return $rows;
 	}

@@ -7,6 +7,7 @@ namespace P1Bot\Handlers;
 use P1Bot\App\CreateAccess;
 use P1Bot\App\DraftCards;
 use P1Bot\App\PrivateGroups;
+use P1Bot\App\OrganizerTeams;
 use P1Bot\App\TeamAddFlow;
 use P1Bot\App\PrivateViews;
 use P1Bot\Domain\AccessPolicy;
@@ -84,6 +85,7 @@ class PrivateChatHandler {
 		protected Clock $clock,
 		protected ?CreateAccess $create_access = null,
 		protected ?TeamAddFlow $team_add = null,
+		protected ?OrganizerTeams $organizer = null,
 	) {
 	}
 
@@ -198,6 +200,14 @@ class PrivateChatHandler {
 				return;
 		}
 		if (
+			$this->organizer !== null
+			&& in_array($decision['kind'], [self::AI, self::FALLBACK], true)
+			&& $message->text !== ''
+			&& $this->organizer->handlePendingText($chat_id, $actor, $message->text, $message->message_id)
+		) {
+			return;
+		}
+		if (
 			$this->team_add !== null
 			&& in_array($decision['kind'], [self::AI, self::FALLBACK], true)
 			&& $message->text !== ''
@@ -298,6 +308,13 @@ class PrivateChatHandler {
 		$shared = $message->users_shared;
 		if ($shared === null || $shared['users'] === []) {
 			$this->api->sendMessage($chat_id, 'Никого не выбрали.', $message->message_id, $remove);
+			return;
+		}
+		if (
+			$this->organizer !== null
+			&& (int) ($shared['request_id'] ?? 0) === OrganizerTeams::REQUEST_CAPTAIN_ID
+			&& $this->organizer->handleUsersShared($chat_id, $actor, $shared['users'], $message->message_id)
+		) {
 			return;
 		}
 		if (
