@@ -27,6 +27,7 @@ use P1Bot\Http\HttpClient;
 use P1Bot\Repository\AdminRepository;
 use P1Bot\Repository\BalanceRepository;
 use P1Bot\Repository\ChatRepository;
+use P1Bot\Repository\EditedReplyRepository;
 use P1Bot\Repository\ConversationRepository;
 use P1Bot\Repository\PlayerRepository;
 use P1Bot\Repository\SoloPlayerRepository;
@@ -210,6 +211,7 @@ final class Bootstrap
             $commands,
             new MessageHandler($this->telegram, $this->bot, $this->assistant, $this->logger, $this->tournaments, $this->drafts, $this->listing),
             new CallbackHandler($this->telegram, $this->bot, $this->tournaments, $this->teams, $this->announcer, $this->drafts),
+            new EditedReplyRepository($db),
         );
     }
 

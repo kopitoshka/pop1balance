@@ -184,6 +184,11 @@ Admins:
 
 The number can be omitted when only one tournament fits. Admins can do all of this in plain text too.
 
+Edited messages are never processed (no commands, no AI). If an edit mentions the bot or replies to it, the bot
+answers once per message: «Исправленные сообщения я не вижу 🙈 Напиши, пожалуйста, заново новым сообщением»
+(dedupe table `edited_replies`, migration 005; rows older than 30 days are pruned). `edited_message` is in the
+webhook's `allowed_updates`, so after updating rerun `php bin/set_webhook.php`.
+
 ### Tournament numbers
 
 Users never see database ids. `№N` everywhere (lists, cards, announcements, `/info N`, `/edit N`, `/open N`,

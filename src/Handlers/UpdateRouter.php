@@ -7,6 +7,7 @@ namespace P1Bot\Handlers;
 use P1Bot\Domain\AccessPolicy;
 use P1Bot\Domain\Model\Player;
 use P1Bot\Repository\ChatRepository;
+use P1Bot\Repository\EditedReplyRepository;
 use P1Bot\Repository\PlayerRepository;
 use P1Bot\Support\Clock;
 use P1Bot\Telegram\BotIdentity;
@@ -15,6 +16,8 @@ use P1Bot\Telegram\Message;
 use P1Bot\Telegram\TelegramApi;
 use P1Bot\Telegram\TgUser;
 use P1Bot\Telegram\Update;
+use P1Bot\View\Html;
+use P1Bot\View\Messages;
 use P1Bot\View\Texts;
 
 /**
@@ -34,6 +37,7 @@ final class UpdateRouter
         private AdminCommands $commands,
         private MessageHandler $messages,
         private CallbackHandler $callbacks,
+        private ?EditedReplyRepository $editedReplies = null,
     ) {
     }
 
@@ -55,7 +59,29 @@ final class UpdateRouter
         }
         if ($update->message !== null) {
             $this->onMessage($update->message);
+            return;
         }
+        if ($update->editedMessage !== null) {
+            $this->onEditedMessage($update->editedMessage);
+        }
+    }
+
+    /**
+     * Edits are never processed (no commands, no AI). If the edit mentions the bot or replies to it,
+     * say once per message that a new message is needed.
+     */
+    private function onEditedMessage(Message $message): void
+    {
+        if ($this->editedReplies === null || !$message->isGroup() || $message->from === null || $message->from->isBot) {
+            return;
+        }
+        if (!$message->isAddressedTo($this->bot->username, $this->bot->botId)) {
+            return;
+        }
+        if (!$this->editedReplies->claim($message->chatId, $message->messageId, $this->clock->now())) {
+            return;
+        }
+        $this->api->sendMessage($message->chatId, Html::e(Messages::EDITED_MESSAGE), $message->messageId);
     }
 
     private function onMessage(Message $message): void

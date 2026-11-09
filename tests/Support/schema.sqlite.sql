@@ -102,3 +102,10 @@ CREATE TABLE conversations (
   expires_at      TEXT NOT NULL
 );
 CREATE INDEX idx_conversations_lookup ON conversations (chat_id, last_bot_msg_id);
+
+CREATE TABLE edited_replies (
+  chat_id     INTEGER NOT NULL,
+  message_id  INTEGER NOT NULL,
+  created_at  TEXT NOT NULL,
+  PRIMARY KEY (chat_id, message_id)
+);

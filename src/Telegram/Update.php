@@ -4,11 +4,11 @@ declare(strict_types=1);
 
 namespace P1Bot\Telegram;
 
-/** Parsed Telegram update: a message, a callback query or a change of the bot's own membership. */
+/** Parsed Telegram update: a message, an edited message, a callback query or a change of the bot's own membership. */
 final class Update
 {
     /** Update types requested in setWebhook. */
-    public const ALLOWED_UPDATES = ['message', 'callback_query', 'my_chat_member'];
+    public const ALLOWED_UPDATES = ['message', 'edited_message', 'callback_query', 'my_chat_member'];
 
     /**
      * @param array<string, mixed>|null $myChatMember raw ChatMemberUpdated
@@ -18,6 +18,7 @@ final class Update
         public ?Message $message,
         public ?CallbackQuery $callbackQuery,
         public ?array $myChatMember,
+        public ?Message $editedMessage = null,
     ) {
     }
 
@@ -29,6 +30,7 @@ final class Update
             isset($raw['message']) && is_array($raw['message']) ? Message::fromArray($raw['message']) : null,
             isset($raw['callback_query']) && is_array($raw['callback_query']) ? CallbackQuery::fromArray($raw['callback_query']) : null,
             isset($raw['my_chat_member']) && is_array($raw['my_chat_member']) ? $raw['my_chat_member'] : null,
+            isset($raw['edited_message']) && is_array($raw['edited_message']) ? Message::fromArray($raw['edited_message']) : null,
         );
     }
 
