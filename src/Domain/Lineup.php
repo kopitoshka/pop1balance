@@ -121,6 +121,28 @@ class Lineup {
 	/**
 		@param list<TeamEntry> $teams
 	*/
+	/**
+		1-based position among reserve players (solo + team members in reserve order), or null.
+	*/
+	public function reservePosition(int $player_id): ?int {
+		$n = 0;
+		foreach ($this->reserve_teams as $entry) {
+			foreach ($entry->members as $member) {
+				$n++;
+				if ($member->player_id === $player_id) {
+					return $n;
+				}
+			}
+		}
+		foreach ($this->reserve_solo as $solo) {
+			$n++;
+			if ($solo->player_id === $player_id) {
+				return $n;
+			}
+		}
+		return null;
+	}
+
 	protected static function teamPlayers(array $teams): int {
 		return array_sum(array_map(static fn (TeamEntry $e): int => $e->size(), $teams));
 	}

@@ -75,7 +75,7 @@ class UpdateLogTest extends IntegrationTestCase {
 	public function testCommandAndAi(): void {
 		$vasya = $this->player('vasya');
 		$this->dispatch($this->groupMessage($vasya, '/tournaments'));
-		self::assertStringContainsString('group: info /tournaments', $this->lastUpdateLine());
+		self::assertStringContainsString('group: /tournaments', $this->lastUpdateLine());
 
 		$this->http->queueOpenAi(['id' => 'r1', 'output' => [[
 			'type' => 'message',

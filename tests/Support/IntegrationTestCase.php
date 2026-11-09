@@ -11,6 +11,7 @@ use P1Bot\Domain\Model\Tournament;
 use P1Bot\Repository\AdminRepository;
 use P1Bot\Repository\ChatRepository;
 use P1Bot\Support\Database;
+use P1Bot\Support\FixedRandom;
 use PDO;
 use PHPUnit\Framework\TestCase;
 
@@ -90,6 +91,7 @@ abstract class IntegrationTestCase extends TestCase {
 				'registration_close_minutes' => 20,
 			],
 			'cron' => ['reminder_minutes' => [60, 15], 'finish_after_hours' => 4],
+			'random' => new FixedRandom(0),
 		];
 	}
 

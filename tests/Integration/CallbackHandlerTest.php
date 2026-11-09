@@ -4,7 +4,6 @@ declare(strict_types=1);
 
 namespace P1Bot\Tests\Integration;
 
-use P1Bot\App\PrivateGroups;
 use P1Bot\Tests\Support\IntegrationTestCase;
 use P1Bot\View\Messages;
 
@@ -78,27 +77,33 @@ class CallbackHandlerTest extends IntegrationTestCase {
 		self::assertNull($this->app->teams->teamOf($t->id, $cap->id));
 	}
 
-	public function testNonMembersCannotJoin(): void {
+	public function testAnyoneCanJoinEvenIfNotInBotGroups(): void {
 		$t = $this->openTournament(2, null);
 		$this->http->onTelegram('getChatMember', static function (): array {
 			return ['ok' => true, 'result' => ['status' => 'left', 'user' => ['id' => 1]]];
 		});
 		$stranger = $this->player('stranger');
 		$this->dispatch($this->press($stranger, 'psolo:' . $t->id));
-		self::assertSame(PrivateGroups::NOT_MEMBER, $this->lastAnswer());
-		self::assertNull($this->app->tournaments->lineup($t->id)->placementOf($stranger->id));
-		$this->dispatch($this->press($stranger, 'pteam:' . $t->id));
-		self::assertSame(PrivateGroups::NOT_MEMBER, $this->lastAnswer());
+		self::assertStringContainsString('Записала тебя соло', $this->lastAnswer());
+		self::assertSame('main', $this->app->tournaments->lineup($t->id)->placementOf($stranger->id));
 	}
 
-	public function testMembershipCheckErrorAllowsJoining(): void {
+	public function testDisbandNotifiesOtherMembersInPrivate(): void {
 		$t = $this->openTournament(2, null);
-		$this->http->onTelegram('getChatMember', static function (): array {
-			return ['ok' => false, 'error_code' => 400, 'description' => 'Bad Request: member list is inaccessible'];
-		});
-		$vasya = $this->player('vasya');
-		$this->dispatch($this->press($vasya, 'psolo:' . $t->id));
-		self::assertSame('main', $this->app->tournaments->lineup($t->id)->placementOf($vasya->id));
+		$cap = $this->player('cap');
+		$mate = $this->player('mate');
+		$this->app->players->markDmStarted($mate->id, $this->clock->now());
+		$entry = $this->app->teams->createTeam($t->id, $cap->id, 'Wolves', [$mate->id]);
+		$this->http->reset();
+		$this->dispatch($this->press($cap, 'pdissolve:' . $entry->team->id));
+		self::assertStringContainsString('распущена', $this->lastAnswer());
+		$dms = array_values(array_filter(
+			$this->http->sent('sendMessage'),
+			fn (array $m): bool => $m['chat_id'] === $this->tgIdOf($mate),
+		));
+		self::assertCount(1, $dms);
+		self::assertStringContainsString('Капитан распустил команду «Wolves»', $dms[0]['text']);
+		self::assertStringContainsString('start=t_' . $t->id, $dms[0]['reply_markup']['inline_keyboard'][0][0]['url']);
 	}
 
 	public function testOpenButtonShowsTournamentWithStateButtons(): void {

@@ -21,13 +21,15 @@ class Texts {
 		/help in a group: only commands that work here; management is in private.
 	*/
 	public static function groupHelp(string $bot_username): string {
-		return "В этом чате я публикую анонсы турниров (они общие для всех групп) и напоминаю о старте. Команды здесь:\n\n"
+		unset($bot_username);
+		return "В этом чате я публикую анонсы турниров (они общие для всех групп) и напоминаю о старте.\n"
+			. "Можно спросить про турниры и уровни, а ещё «запиши меня» / «удали меня» — если турнир один или назвал номер.\n\n"
+			. "Команды здесь:\n"
 			. "/tournaments — все активные турниры\n"
 			. "/info 2 — состав турнира (номер — из /tournaments)\n"
 			. "/levels — уровни игроков\n"
 			. "/help — эта подсказка\n\n"
-			. 'Записаться, управлять командой и турнирами — пишите мне в личку 👉 '
-			. Html::e('@' . $bot_username);
+			. Messages::GROUP_HELP_HINT;
 	}
 
 	/**

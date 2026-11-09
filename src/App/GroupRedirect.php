@@ -12,9 +12,7 @@ use P1Bot\Telegram\Message;
 use P1Bot\View\DeepLink;
 
 /**
-	The group only announces: anything else addressed to the bot gets «Давай в личке 👉» with a deep
-	link. The link opens the right tournament when it is clear from the message: a reply to its
-	announcement or card, or its number (/edit 2, «№2», «турнир 2»). Otherwise it names the group.
+	Deep-link payload for group → private redirects: t_<id> when the tournament is clear, else g_<chat>.
 */
 class GroupRedirect {
 
@@ -37,6 +35,13 @@ class GroupRedirect {
 		return DeepLink::url($this->bot->username, $this->payload($message));
 	}
 
+	/**
+		Public for GroupChat (reply-to announcement).
+	*/
+	public function tournamentIdPublic(Message $message): ?int {
+		return $this->tournamentId($message);
+	}
+
 	protected function tournamentId(Message $message): ?int {
 		if ($message->reply_to_message_id !== null && $message->isReplyToUser($this->bot->bot_id)) {
 			$t = $this->tournaments->findByAnnounceMessage($message->chat_id, $message->reply_to_message_id)
@@ -45,12 +50,12 @@ class GroupRedirect {
 				return $t->id;
 			}
 		}
-		$number = self::number($message);
+		$number = self::numberFrom($message);
 		if ($number === null) {
 			return null;
 		}
 		try {
-			return $this->resolver->resolve($message->chat_id, $number, TournamentStatus::active())->id;
+			return $this->resolver->resolve(null, $number, TournamentStatus::active())->id;
 		} catch (DomainError $e) {
 			return null;
 		}
@@ -59,12 +64,12 @@ class GroupRedirect {
 	/**
 		A short tournament number from the message: "/cmd 2 …", "№2", "#2", "турнир 2".
 	*/
-	protected static function number(Message $message): ?int {
+	public static function numberFrom(Message $message): ?int {
 		$command = $message->command();
-		if ($command !== null && preg_match('/^[#№]?(\d{1,3})(?:\s|$)/u', trim($command['args']), $m)) {
+		if ($command !== null && preg_match('/^[#№]?(\d{1,9})(?:\s|$)/u', trim($command['args']), $m)) {
 			return (int) $m[1];
 		}
-		if (preg_match('/(?:[#№]\s?|турнир\w*\s+)(\d{1,3})(?!\d|[.:])/u', mb_strtolower($message->text), $m)) {
+		if (preg_match('/(?:[#№]\s?|турнир\w*\s+)(\d{1,9})(?!\d|[.:])/u', mb_strtolower($message->text), $m)) {
 			return (int) $m[1];
 		}
 		return null;

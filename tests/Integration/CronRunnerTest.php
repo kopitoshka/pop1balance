@@ -33,17 +33,19 @@ class CronRunnerTest extends IntegrationTestCase {
 		$this->clock->advance('+10 minutes');
 		self::assertSame(0, $cron->run()['reminders'], 'not twice');
 
+		$this->http->reset();
 		$this->clock->advance('+35 minutes'); // 15:46 UTC = 14 min before start
-		self::assertSame(1, $cron->run()['reminders']);
-		self::assertStringContainsString('Через 15 минут', $this->http->lastText());
+		self::assertSame(1, $cron->run()['reminders'], '15-min mark is still due and claimed');
+		self::assertSame([], $this->http->sent('sendMessage'), '15-min mark does not broadcast to groups');
 		self::assertSame(0, $cron->run()['reminders']);
 	}
 
-	public function testMissedWindowsSendOnlyTheLatestReminder(): void {
+	public function testMissedWindowsClaimLatestWithoutGroupBroadcastPastHour(): void {
 		$t = $this->openTournament();
+		$this->http->reset();
 		$this->clock->advance('+5 days +3 hours +50 minutes'); // 10 min before start, cron was down
 		self::assertSame(1, $this->app->cron()->run()['reminders']);
-		self::assertStringContainsString('Через 15 минут', $this->http->lastText());
+		self::assertSame([], $this->http->sent('sendMessage'), 'past the hour mark: 15-min does not broadcast');
 		self::assertSame(0, $this->app->cron()->run()['reminders']);
 		self::assertNotNull($this->app->tournament_repo->find($t->id)->reminded_at);
 	}

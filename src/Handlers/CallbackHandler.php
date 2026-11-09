@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace P1Bot\Handlers;
 
 use P1Bot\App\Announcer;
+use P1Bot\App\TeamDisbandNotifier;
 use P1Bot\App\DraftCards;
 use P1Bot\App\PrivateGroups;
 use P1Bot\App\PrivateViews;
@@ -44,6 +45,7 @@ class CallbackHandler {
 		protected ?ConversationRepository $conversations = null,
 		protected ?Clock $clock = null,
 		protected int $conversation_ttl_minutes = 30,
+		protected ?TeamDisbandNotifier $disband_notifier = null,
 	) {
 	}
 
@@ -134,7 +136,6 @@ class CallbackHandler {
 				return;
 			case 'psolo':
 				$t = $this->tournaments->get($id);
-				$this->assertMember($t, $player);
 				$this->teams->joinSolo($t->id, $player->id);
 				$this->announcer->refresh($t->id);
 				$placement = $this->tournaments->lineup($t->id)->placementOf($player->id);
@@ -162,7 +163,10 @@ class CallbackHandler {
 			case 'pdissolve':
 				$entry = $this->teams->get($id);
 				$t = $this->tournaments->get($entry->team->tournament_id);
-				$this->teams->withdrawTeam($player->id, $entry->team->id);
+				$disband = $this->teams->withdrawTeam($player->id, $entry->team->id);
+				if ($this->disband_notifier !== null) {
+					$this->disband_notifier->notify($player->id, $disband);
+				}
 				$this->announcer->refresh($t->id);
 				$this->done(
 					$query,
@@ -197,7 +201,6 @@ class CallbackHandler {
 		the dialog (the question is saved as conversation memory).
 	*/
 	protected function askTeam(CallbackQuery $query, Player $player, Tournament $t): void {
-		$this->assertMember($t, $player);
 		if (!$this->tournaments->isUserRegistrationOpen($t)) {
 			$minutes = $this->tournaments->registrationCloseMinutes();
 			$hint = $this->tournaments->isRegistrationTimeLocked($t) && $minutes > 0
@@ -272,12 +275,6 @@ class CallbackHandler {
 		);
 	}
 
-	protected function assertMember(Tournament $t, Player $player): void {
-		unset($t);
-		if ($this->groups !== null) {
-			$this->groups->assertInAnyGroup($player->tg_user_id);
-		}
-	}
 
 	protected function publishedText(Tournament $t): string {
 		unset($t);

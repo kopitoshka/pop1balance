@@ -6,6 +6,7 @@ namespace P1Bot\Ai;
 
 use P1Bot\App\Announcer;
 use P1Bot\App\CreateAccess;
+use P1Bot\App\TeamDisbandNotifier;
 use P1Bot\App\Confirmation;
 use P1Bot\App\DraftCards;
 use P1Bot\App\NeedGroupChoice;
@@ -58,6 +59,7 @@ class Dispatcher {
 		protected string $bot_username = '',
 		protected ?PrivateGroups $groups = null,
 		protected ?CreateAccess $create_access = null,
+		protected ?TeamDisbandNotifier $disband_notifier = null,
 	) {
 	}
 
@@ -139,7 +141,6 @@ class Dispatcher {
 
 			case 'register_team':
 				$t = $this->tournament($ctx, $a);
-				$this->assertMember($ctx, $t);
 				$ids = [];
 				foreach ((array) ($a['players'] ?? []) as $ref) {
 					$ids[] = $this->player_resolver->fromReference((string) $ref, $actor)->id;
@@ -194,7 +195,10 @@ class Dispatcher {
 
 			case 'withdraw_team':
 				[$t, $entry] = $this->team($ctx, $a);
-				$this->teams->withdrawTeam($actor->id, $entry->team->id);
+				$disband = $this->teams->withdrawTeam($actor->id, $entry->team->id);
+				if ($this->disband_notifier !== null) {
+					$this->disband_notifier->notify($actor->id, $disband);
+				}
 				return [
 					'tournament_id' => $this->no($t),
 					'message' => sprintf('Команда «%s» снята с турнира.', $entry->team->name),
@@ -212,7 +216,6 @@ class Dispatcher {
 
 			case 'join_solo':
 				$t = $this->tournament($ctx, $a);
-				$this->assertMember($ctx, $t);
 				$this->teams->joinSolo($t->id, $actor->id);
 				return [
 					'tournament_id' => $this->no($t),
@@ -506,12 +509,6 @@ class Dispatcher {
 	/**
 		In private anyone can open the bot: joining checks that the user is in the tournament's group.
 	*/
-	protected function assertMember(Context $ctx, Tournament $t): void {
-		unset($t);
-		if ($ctx->isPrivate() && $this->groups !== null) {
-			$this->groups->assertInAnyGroup($ctx->actor->tg_user_id);
-		}
-	}
 
 	protected function groupTitle(Tournament $t): string {
 		if ($this->groups === null || $t->chat_id === null) {

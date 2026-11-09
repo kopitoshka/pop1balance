@@ -23,11 +23,11 @@ use Throwable;
 /**
 	Runs every minute: reminders, automatic status changes, cleanup.
 
-	Tournaments are global. With REMIND_ALL_GROUPS=1 (default) every reminder mark
-	(REMINDER_MINUTES, e.g. 60 and 15) posts the short notice with the deep-link button
-	into every active group the bot is in. group_notices (tournament, chat, minutes) ensures
-	each group gets at most one message per mark. REMIND_ALL_GROUPS=0 turns group broadcasts off.
-	There is no private DM reminder path yet.
+	Tournaments are global. With REMIND_ALL_GROUPS=1 (default) the largest REMINDER_MINUTES
+	mark (60 by default — the hour-before notice) posts the short notice with the deep-link
+	button into every active group. Later marks (e.g. 15) do not broadcast to groups.
+	group_notices (tournament, chat, minutes) dedupes. REMIND_ALL_GROUPS=0 turns broadcasts off.
+	There is no private DM reminder path yet. REMINDER_MINUTES itself is unchanged.
 */
 class CronRunner {
 	public const GROUP_BUTTON = Announcer::BUTTON;
@@ -86,6 +86,10 @@ class CronRunner {
 
 	protected function remind(Tournament $t, int $minutes): void {
 		if (!$this->remind_all_groups || $this->chats === null || $this->notices === null) {
+			return;
+		}
+		// Only the hour-before mark (largest REMINDER_MINUTES) goes to groups.
+		if ($this->reminder_minutes === [] || $minutes !== max($this->reminder_minutes)) {
 			return;
 		}
 		$this->notifyAllGroups($t, $minutes);

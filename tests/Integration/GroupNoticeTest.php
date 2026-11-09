@@ -86,14 +86,12 @@ class GroupNoticeTest extends IntegrationTestCase {
 		}
 		self::assertStringContainsString('sent to 3 group(s)', $this->log->text());
 
-		// Rerun: nothing new. 15-minute mark: all groups again (separate minutes claim).
+		// Rerun: nothing new. 15-minute mark: claimed but no group broadcast.
 		$this->http->reset();
 		self::assertSame(0, $cron->run()['reminders']);
 		$this->clock->advance('+45 minutes');
 		self::assertSame(1, $cron->run()['reminders']);
-		$sent15 = $this->sentByChat();
-		self::assertSame([self::CHAT_ID, self::SECOND, self::THIRD], array_keys($sent15));
-		self::assertStringContainsString('Через 15 минут', $sent15[self::CHAT_ID][0]['text']);
+		self::assertSame([], $this->http->sent('sendMessage'), '15-min mark does not go to groups');
 	}
 
 	public function testOverlappingRunsDoNotDuplicate(): void {

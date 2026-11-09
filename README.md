@@ -237,18 +237,14 @@ for the webhook too, e.g. `sudo -u apache php bin/diag.php`.
   someone joins or leaves (no join messages in the group), and posts reminders.
 - Tournaments are **global**: on publish the announcement is posted into **every** active group in `chats`.
   `/tournaments` and `/info` in any group list all tournaments. `tournaments.chat_id` is kept as optional origin (nullable).
-- Reminders (`REMINDER_MINUTES`, default `60,15`) for published tournaments (registration open or closed; not drafts
-  or cancelled ones): with `REMIND_ALL_GROUPS=1` (default) **every** mark posts the short «⏰ Через час / Через N минут
-  стартует турнир …» notice (date and time MSK, team size, level, places) with the deep-link button into **every**
-  active group. Deduped per `(tournament, chat, minutes)` via `group_notices`. If a group fails, the error goes to the
-  main log and the others still get it; a 403 (bot kicked / not a member), «chat not found» or «upgraded to a
-  supergroup» marks the group inactive. Groups come from the `chats` table. `REMIND_ALL_GROUPS=0` turns group
-  broadcasts off (no private DM reminders yet).
-- Answered in the group: `/tournaments` (published only, no drafts), `/info N`, `/levels`, `/help` (only these
-  commands + «manage in private» with a deep-link button), `/start` (= `/help`).
-- Anything else addressed to the bot → one «Давай в личке 👉» with a button. The link opens the tournament
-  (`start=t_<id>`) when it is clear: a reply to its announcement/card, or its number (`/edit 2 …`, «№2», «турнир 2»);
-  otherwise `start=g_<group chat id>`. Nothing is auto-deleted.
+- Reminders (`REMINDER_MINUTES`, default `60,15`) for published tournaments: with `REMIND_ALL_GROUPS=1` (default)
+  only the **largest** mark (60 = hour before) posts the short «⏰ Через час стартует турнир …» notice into **every**
+  active group (deep-link button). The 15-minute mark does **not** broadcast to groups. Deduped via `group_notices`.
+  `REMIND_ALL_GROUPS=0` turns group broadcasts off (no private DM reminders yet). `REMINDER_MINUTES` key unchanged.
+- In the group when mentioned/replied: info (`/tournaments`, `/info`, `/levels`, `/help`, «какие турниры?»…) is
+  answered there (help ends with a private-chat hint + button); «запиши меня» / «удали меня» join/leave solo when
+  the tournament is unambiguous; management (`/new`, create/edit…) → random private redirect phrase + deep link;
+  off-topic → short AI reply. Deep link is `t_<id>` when clear, else `g_<chat id>`.
 - Buttons of old group messages (`solo`, `unsolo`, `howto`, `pub`, `fix`) answer «Теперь это в личке…» and open
   the private chat via `answerCallbackQuery(url=t.me/<bot>?start=t_<id>)`.
 
@@ -262,8 +258,8 @@ for the webhook too, e.g. `sudo -u apache php bin/diag.php`.
   memory), e.g. «Wolves: @vasya, @petya». Adding/removing/replacing players, renaming, captain transfer — in plain text.
 - Plain text: «какие турниры скоро?», «запиши команду Wolves: я, @vasya, @petya», «хочу участвовать соло»,
   «замени @vasya на @kolya», «где я записан?». Commands: `/tournaments`, `/info N`, `/levels`, `/help`.
-- Joining checks that the user is in **any** active group the bot is in (`getChatMember`: `left`/`kicked` → refused).
-  If Telegram can't tell for every group (errors), joining is allowed. Unseen users can join via the deep link.
+- Anyone may join (solo/team); no group-membership check for registration. Create still requires a shared active
+  group with the owner (or `ANYONE_CAN_CREATE_TOURNAMENT=1`).
 - Every private message marks the player as having started the bot (`players.dm_ok`, `dm_started_at`, migration 006).
   No private reminders yet; reminders stay in the group.
 - Edited messages in private get «Исправленные сообщения я не вижу…» once.

@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace P1Bot\Handlers;
 
+use P1Bot\App\GroupChat;
 use P1Bot\App\GroupRedirect;
 use P1Bot\Domain\AccessPolicy;
 use P1Bot\Domain\Model\Player;
@@ -25,16 +26,11 @@ use P1Bot\View\Messages;
 use P1Bot\View\Texts;
 
 /**
-	Entry point for every update. The group only gets announcements, reminders and the info commands
-	(/tournaments, /info N, /levels, /help); anything else addressed to the bot there (commands,
-	@mentions, replies) gets one «Давай в личке 👉» with a deep link. Everything else happens in the
-	private chat (see PrivateChatHandler).
+	Entry point for every update. In a group: info answers, solo join/leave, manage redirects and
+	short AI chat when mentioned; announcements/reminders are posted by other components. Full
+	management stays in the private chat (see PrivateChatHandler).
 */
 class UpdateRouter {
-	/**
-		Commands answered in the group itself.
-	*/
-	protected const GROUP_COMMANDS = ['help', 'start', 'tournaments', 'info', 'levels'];
 
 	public function __construct(
 		protected TelegramApi $api,
@@ -52,6 +48,7 @@ class UpdateRouter {
 		protected ?PrivateChatHandler $private_chat = null,
 		protected ?GroupRedirect $redirect = null,
 		protected ?DialogLog $dialogs = null,
+		protected ?GroupChat $group_chat = null,
 	) {
 	}
 
@@ -182,32 +179,34 @@ class UpdateRouter {
 		$this->registerMentionedPlayers($message);
 		$this->beginDialog($message);
 
-		if ($is_our_command && $command !== null && in_array(
-			mb_strtolower($command['name']),
-			self::GROUP_COMMANDS,
-			true,
-		)) {
-			$this->log($update, $message, 'group: info /' . $command['name']);
-			$this->commands->handle(
-				new Context(
-					$message,
-					$actor,
-					$this->access->isChatAdmin($message->chat_id, $actor->id),
-					$this->access->isOwner($actor->id),
-				),
-				mb_strtolower($command['name']),
-				$command['args'],
-			);
+		$ctx = new Context(
+			$message,
+			$actor,
+			$this->access->isChatAdmin($message->chat_id, $actor->id),
+			$this->access->isOwner($actor->id),
+			$message->chat_id,
+			$message->chat_title,
+		);
+		$cmd = $is_our_command && $command !== null
+			? ['name' => mb_strtolower($command['name']), 'args' => $command['args']]
+			: null;
+		if ($this->group_chat !== null) {
+			$label = $cmd !== null
+				? 'group: /' . $cmd['name']
+				: 'group: ' . $this->group_chat->intent($message->textWithoutMention($this->bot->username));
+			$this->log($update, $message, $label);
+			$this->group_chat->handle($ctx, $cmd);
 			return;
 		}
 
-		// No actions and no AI in the group: one short reply with a link to the private chat.
+		// Fallback when GroupChat is not wired: info commands or a fixed redirect.
+		if ($cmd !== null && in_array($cmd['name'], ['help', 'start', 'tournaments', 'info', 'levels'], true)) {
+			$this->log($update, $message, 'group: info /' . $cmd['name']);
+			$this->commands->handle($ctx, $cmd['name'], $cmd['args']);
+			return;
+		}
 		$payload = $this->redirect !== null ? $this->redirect->payload($message) : 'g_' . $message->chat_id;
-		$this->log($update, $message, sprintf(
-			'group: redirect (%s) start=%s',
-			$command !== null ? '/' . $command['name'] : ($message->mentions($this->bot->username) ? 'mention' : 'reply'),
-			$payload,
-		));
+		$this->log($update, $message, 'group: redirect start=' . $payload);
 		$this->api->sendMessage(
 			$message->chat_id,
 			Html::e(Messages::GROUP_REDIRECT),

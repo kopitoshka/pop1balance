@@ -10,9 +10,11 @@ use P1Bot\Ai\Dispatcher;
 use P1Bot\Ai\OpenAiClient;
 use P1Bot\App\Announcer;
 use P1Bot\App\CreateAccess;
+use P1Bot\App\GroupChat;
 use P1Bot\App\CronRunner;
 use P1Bot\App\DraftCards;
 use P1Bot\App\GroupRedirect;
+use P1Bot\App\TeamDisbandNotifier;
 use P1Bot\App\PlayerResolver;
 use P1Bot\App\PrivateGroups;
 use P1Bot\App\PrivateViews;
@@ -41,6 +43,8 @@ use P1Bot\Repository\TeamRepository;
 use P1Bot\Repository\TournamentAnnouncementRepository;
 use P1Bot\Repository\TournamentRepository;
 use P1Bot\Support\Clock;
+use P1Bot\Support\RandomSource;
+use P1Bot\Support\SystemRandom;
 use P1Bot\Support\Database;
 use P1Bot\Support\DialogLog;
 use P1Bot\Support\Logger;
@@ -84,6 +88,10 @@ class Bootstrap {
 	public ?Assistant $assistant = null;
 	public PrivateGroups $private_groups;
 	public CreateAccess $create_access;
+	public TeamDisbandNotifier $disband_notifier;
+	public RandomSource $random;
+	public GroupRedirect $group_redirect;
+	public ?GroupChat $group_chat = null;
 	public TournamentAnnouncementRepository $announcements;
 
 	/**
@@ -212,6 +220,14 @@ class Bootstrap {
 			(bool) ($config['tournament']['anyone_can_create'] ?? false),
 			$this->create_access,
 		);
+		$this->random = $config['random'] ?? new SystemRandom();
+		$this->disband_notifier = new TeamDisbandNotifier(
+			$this->telegram,
+			$this->bot,
+			$this->players,
+			$this->logger,
+		);
+		$this->group_redirect = new GroupRedirect($this->bot, $this->tournaments, $this->tournament_resolver);
 		$commands = new AdminCommands(
 			$this->telegram,
 			$this->bot,
@@ -244,6 +260,7 @@ class Bootstrap {
 			$this->bot->username,
 			$this->private_groups,
 			$this->create_access,
+			$this->disband_notifier,
 		);
 		$ai = $this->makeAiClient();
 		if ($ai !== null) {
@@ -278,7 +295,21 @@ class Bootstrap {
 			$this->private_groups,
 			$this->access,
 		);
+		$this->group_chat = new GroupChat(
+			$this->telegram,
+			$this->bot,
+			$this->tournaments,
+			$this->teams,
+			$this->tournament_resolver,
+			$this->group_redirect,
+			$commands,
+			$this->random,
+			$this->logger,
+			$this->assistant,
+			$this->announcer,
+		);
 		$this->router = new UpdateRouter(
+
 			$this->telegram,
 			$this->bot,
 			$this->chats,
@@ -300,6 +331,7 @@ class Bootstrap {
 				$this->conversations,
 				$clock,
 				(int) ($config['conversation_ttl_minutes'] ?? 30),
+				$this->disband_notifier,
 			),
 			new EditedReplyRepository($db),
 			$this->logger,
@@ -318,8 +350,9 @@ class Bootstrap {
 				$clock,
 				$this->create_access,
 			),
-			new GroupRedirect($this->bot, $this->tournaments, $this->tournament_resolver),
+			$this->group_redirect,
 			$this->dialogs,
+			$this->group_chat,
 		);
 	}
 

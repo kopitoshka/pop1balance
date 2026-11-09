@@ -61,6 +61,7 @@ class DialogLogTest extends IntegrationTestCase {
 	}
 
 	public function testGroupMentionAndInfoCommand(): void {
+		$this->openTournament(2, null);
 		$vasya = $this->player('vasya');
 		$this->dispatch($this->groupMessage($vasya, '@pop1_bot запиши меня'));
 		$this->dispatch($this->groupMessage($vasya, '/levels'));
@@ -68,7 +69,7 @@ class DialogLogTest extends IntegrationTestCase {
 
 		$log = $this->dialog('vasya.log');
 		self::assertStringContainsString('группа «P1 турниры» @vasya: @pop1_bot запиши меня', $log);
-		self::assertStringContainsString('группа «P1 турниры» бот → @vasya: Давай в личке 👉', $log);
+		self::assertStringContainsString('Записала тебя на «Субботний кубок»', $log);
 		self::assertStringContainsString('группа «P1 турниры» @vasya: /levels', $log);
 		self::assertStringContainsString('группа «P1 турниры» бот → @vasya: 📊 Уровни игроков', $log);
 		self::assertStringNotContainsString('просто болтаю', $log, 'messages not for the bot are not logged');

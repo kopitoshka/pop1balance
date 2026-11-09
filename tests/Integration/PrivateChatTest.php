@@ -344,18 +344,16 @@ class PrivateChatTest extends IntegrationTestCase {
 		self::assertNotNull($this->app->teams->findByName($t->id, 'Wolves'));
 	}
 
-	public function testAiCannotJoinNonMembers(): void {
+	public function testAiJoinDoesNotRequireGroupMembership(): void {
 		$this->openTournament(3);
 		$this->http->onTelegram('getChatMember', static function (): array {
 			return ['ok' => true, 'result' => ['status' => 'kicked']];
 		});
 		$stranger = $this->player('stranger');
 		$this->http->queueOpenAi($this->functionCall('join_solo', ['tournament_id' => 1]));
-		$this->http->queueOpenAi($this->text('Сначала вступи в группу.'));
+		$this->http->queueOpenAi($this->text('Записала!'));
 		$this->say($stranger, 'запиши соло');
-		self::assertSame(0, $this->app->tournaments->lineup(1)->occupied());
-		$requests = $this->aiRequests();
-		self::assertStringContainsString('участникам групп, где я есть', $requests[1]['json']['input'][0]['output']);
+		self::assertSame(1, $this->app->tournaments->lineup(1)->occupied());
 	}
 
 	public function testUnknownCommandAndEditedMessage(): void {

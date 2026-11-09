@@ -205,10 +205,11 @@ class TeamService {
 	}
 
 	/**
-		Disbands the team (row deleted, members cascade). Captain, organizer or chat admin.
+		Disbands the team (row deleted, members cascade). Captain, organizer or owner.
+		@return array{team_name: string, tournament_id: int, tournament_title: string, member_ids: list<int>, by_captain: bool}
 	*/
-	public function withdrawTeam(int $actor_id, int $team_id): void {
-		$this->db->transactional(function () use ($actor_id, $team_id): void {
+	public function withdrawTeam(int $actor_id, int $team_id): array {
+		return $this->db->transactional(function () use ($actor_id, $team_id): array {
 			$team = $this->teams->find($team_id) ?? throw new NotFound('Такой команды нет.');
 			$tournament = $this->changeableTournament($team->tournament_id, $actor_id);
 			if ($team->captain_id !== $actor_id && !$this->access->canManageTournament($tournament, $actor_id)) {
@@ -217,7 +218,18 @@ class TeamService {
 					$team->name,
 				));
 			}
+			$member_ids = [];
+			foreach ($this->teams->members($team->id) as $member) {
+				$member_ids[] = $member->player_id;
+			}
 			$this->teams->delete($team->id);
+			return [
+				'team_name' => $team->name,
+				'tournament_id' => $tournament->id,
+				'tournament_title' => $tournament->title,
+				'member_ids' => $member_ids,
+				'by_captain' => $team->captain_id === $actor_id,
+			];
 		});
 	}
 

@@ -14,8 +14,8 @@ use P1Bot\Telegram\TelegramApi;
 use Throwable;
 
 /**
-	Groups the bot is in and membership checks for joining. Tournaments are global;
-	create rights live in CreateAccess. players.dm_group_id is still remembered for deep links.
+	Groups the bot is in. Tournaments are global; create rights live in CreateAccess.
+	Joining no longer requires group membership. players.dm_group_id is remembered for deep links.
 */
 class PrivateGroups {
 	public const NOT_MEMBER = 'Записаться можно только участникам групп, где я есть. '
