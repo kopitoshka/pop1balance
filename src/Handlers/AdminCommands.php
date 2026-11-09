@@ -54,7 +54,7 @@ class AdminCommands {
 	/**
 		Owner only for now (scales are hidden from users, see AccessPolicy::LEVELS_OWNER_ONLY).
 	*/
-	protected const OWNER = ['balance'];
+	protected const OWNER = ['balance', 'adduser'];
 
 	protected const LEVEL_ALL_LIMIT = 80;
 
@@ -95,7 +95,9 @@ class AdminCommands {
 	protected array $reply_extra = [];
 
 	public function supports(string $command): bool {
-		return in_array($command, self::PUBLIC, true) || in_array($command, self::ADMIN, true);
+		return in_array($command, self::PUBLIC, true)
+			|| in_array($command, self::ADMIN, true)
+			|| in_array($command, self::OWNER, true);
 	}
 
 	public function handle(Context $ctx, string $command, string $args): void {
@@ -148,6 +150,8 @@ class AdminCommands {
 				return $this->listTournaments($ctx);
 			case 'history':
 				return $this->listHistory($ctx);
+			case 'adduser':
+				return $this->addUser($ctx);
 			case 'levels':
 				// Management examples only for the owner in private; groups always get the basic text.
 				return Texts::levels($ctx->isPrivate() && $ctx->is_owner);
@@ -689,5 +693,34 @@ class AdminCommands {
 			return $this->create_access->canCreate($ctx->actor->id);
 		}
 		return $ctx->is_admin || $ctx->is_owner;
+	}
+
+	/**
+		Owner-only private chat: reply keyboard with Telegram user picker.
+	*/
+	protected function addUser(Context $ctx): string {
+		if (!$ctx->isPrivate()) {
+			return 'Команда /adduser работает только в личке со мной.';
+		}
+		$this->reply_extra = [
+			'reply_markup' => [
+				'keyboard' => [[
+					[
+						'text' => '👤 Выбрать игроков',
+						'request_users' => [
+							'request_id' => 1,
+							'user_is_bot' => false,
+							'max_quantity' => 10,
+							'request_name' => true,
+							'request_username' => true,
+						],
+					],
+				]],
+				'resize_keyboard' => true,
+				'one_time_keyboard' => true,
+			],
+		];
+		return 'Нажми кнопку ниже и выбери до 10 игроков — я добавлю их в базу '
+			. '(с @username, если Telegram его отдаст).';
 	}
 }

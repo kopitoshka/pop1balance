@@ -20,6 +20,7 @@ use P1Bot\Telegram\ChatAdminSync;
 use P1Bot\Telegram\Message;
 use P1Bot\Telegram\TelegramApi;
 use P1Bot\View\DeepLink;
+use P1Bot\View\Html;
 use P1Bot\View\Texts;
 
 /**
@@ -39,6 +40,7 @@ class PrivateChatHandler {
 	public const TOURNAMENTS = 'tournaments';
 	public const AI = 'ai';
 	public const FALLBACK = 'fallback';
+	public const USERS_SHARED = 'users_shared';
 
 	/**
 		Plain phrases handled without the AI (matched before the model, even when AI is on).
@@ -88,6 +90,9 @@ class PrivateChatHandler {
 	*/
 	public function decide(Message $message, Player $actor): array {
 		$decision = ['kind' => self::AI, 'command' => null, 'args' => '', 'tournament' => null, 'group' => null];
+		if ($message->users_shared !== null) {
+			return ['kind' => self::USERS_SHARED] + $decision;
+		}
 		$command = $message->command();
 		if ($command !== null && ($command['bot'] === null || mb_strtolower($command['bot']) === mb_strtolower($this->bot->username))) {
 			$name = mb_strtolower($command['name']);
@@ -177,6 +182,9 @@ class PrivateChatHandler {
 					$decision['args'],
 				);
 				return;
+			case self::USERS_SHARED:
+				$this->onUsersShared($message, $actor);
+				return;
 		}
 		$this->messages->handle($this->context($message, $actor));
 	}
@@ -222,6 +230,8 @@ class PrivateChatHandler {
 				return $decision['kind'] . ' /' . $decision['command'];
 			case self::FALLBACK:
 				return 'fallback text (AI off: OPENAI_API_KEY is empty)';
+			case self::USERS_SHARED:
+				return 'users_shared';
 		}
 		return $decision['kind'];
 	}
@@ -257,6 +267,60 @@ class PrivateChatHandler {
 		}
 		$this->api->sendMessage($chat_id, Texts::welcomeTournament($first_name));
 		$this->views->tournament($chat_id, $t, $actor);
+	}
+
+
+	/**
+		Owner picked users via KeyboardButtonRequestUsers.
+	*/
+	protected function onUsersShared(Message $message, Player $actor): void {
+		$chat_id = $message->chat_id;
+		$remove = ['reply_markup' => ['remove_keyboard' => true]];
+		if (!$this->access->isOwner($actor->id)) {
+			$this->api->sendMessage(
+				$chat_id,
+				Html::e(AccessPolicy::OWNER_ONLY),
+				$message->message_id,
+				$remove,
+			);
+			return;
+		}
+		$shared = $message->users_shared;
+		if ($shared === null || $shared['users'] === []) {
+			$this->api->sendMessage($chat_id, 'Никого не выбрали.', $message->message_id, $remove);
+			return;
+		}
+		$lines = [];
+		foreach ($shared['users'] as $u) {
+			$tg_id = (int) $u['id'];
+			$username = $u['username'];
+			$display = trim($u['first_name'] . ' ' . $u['last_name']);
+			if ($display === '') {
+				$display = $username ?? ('user' . $tg_id);
+			}
+			$before = $this->players->findByTelegramId($tg_id);
+			$placeholder = null;
+			if ($before === null && $username !== null) {
+				$placeholder = $this->players->findByUsername($username);
+				if ($placeholder !== null && $placeholder->tg_user_id !== null) {
+					$placeholder = null;
+				}
+			}
+			$this->players->ensureByTelegram($tg_id, $username, $display, $this->clock->now());
+			$label = $username !== null
+				? '@' . $username
+				: $display;
+			if ($before === null && $placeholder !== null) {
+				$verb = 'слила с прежней записью';
+			} elseif ($before === null) {
+				$verb = 'новая';
+			} else {
+				$verb = 'обновила';
+			}
+			$lines[] = '• ' . Html::e($label) . ' — ' . $verb;
+		}
+		$text = "Готово! Обработала игроков:\n" . implode("\n", $lines);
+		$this->api->sendMessage($chat_id, $text, $message->message_id, $remove);
 	}
 
 	protected function isCardReply(Message $message, Player $actor): bool {

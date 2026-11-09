@@ -11,6 +11,7 @@ class Message {
 
 	/**
 		@param list<array<string, mixed>> $entities
+		@param array{request_id: int, users: list<array{id: int, username: ?string, first_name: string, last_name: string}>}|null $users_shared
 	*/
 	public function __construct(
 		public int $message_id,
@@ -22,6 +23,7 @@ class Message {
 		public array $entities,
 		public ?int $reply_to_message_id,
 		public ?TgUser $reply_to_from,
+		public ?array $users_shared = null,
 	) {
 	}
 
@@ -44,7 +46,57 @@ class Message {
 			is_array($entities) ? array_values($entities) : [],
 			is_array($reply) ? (int) ($reply['message_id'] ?? 0) : null,
 			is_array($reply) && isset($reply['from']) ? TgUser::fromArray($reply['from']) : null,
+			self::parseUsersShared($raw['users_shared'] ?? null),
 		);
+	}
+
+	/**
+		@param mixed $raw
+		@return array{request_id: int, users: list<array{id: int, username: ?string, first_name: string, last_name: string}>}|null
+	*/
+	protected static function parseUsersShared(mixed $raw): ?array {
+		if (!is_array($raw)) {
+			return null;
+		}
+		$users = [];
+		if (isset($raw['users']) && is_array($raw['users'])) {
+			foreach ($raw['users'] as $u) {
+				if (!is_array($u)) {
+					continue;
+				}
+				$id = (int) ($u['user_id'] ?? $u['id'] ?? 0);
+				if ($id <= 0) {
+					continue;
+				}
+				$username = isset($u['username']) && $u['username'] !== '' ? (string) $u['username'] : null;
+				$users[] = [
+					'id' => $id,
+					'username' => $username,
+					'first_name' => (string) ($u['first_name'] ?? ''),
+					'last_name' => (string) ($u['last_name'] ?? ''),
+				];
+			}
+		} elseif (isset($raw['user_ids']) && is_array($raw['user_ids'])) {
+			foreach ($raw['user_ids'] as $id) {
+				$id = (int) $id;
+				if ($id <= 0) {
+					continue;
+				}
+				$users[] = [
+					'id' => $id,
+					'username' => null,
+					'first_name' => '',
+					'last_name' => '',
+				];
+			}
+		}
+		if ($users === []) {
+			return null;
+		}
+		return [
+			'request_id' => (int) ($raw['request_id'] ?? 0),
+			'users' => $users,
+		];
 	}
 
 	public function isGroup(): bool {

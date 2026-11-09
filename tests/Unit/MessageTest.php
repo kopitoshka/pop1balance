@@ -98,4 +98,36 @@ class MessageTest extends TestCase {
 			'entities' => $entities,
 		]);
 	}
+	public function testUsersSharedWithNames(): void {
+		$msg = Message::fromArray([
+			'message_id' => 9,
+			'chat' => ['id' => 1000, 'type' => 'private'],
+			'from' => ['id' => 1000, 'first_name' => 'Owner'],
+			'users_shared' => [
+				'request_id' => 1,
+				'users' => [
+					['user_id' => 42, 'first_name' => 'Вася', 'last_name' => 'П', 'username' => 'vasya'],
+					['user_id' => 43, 'first_name' => 'Безника'],
+				],
+			],
+		]);
+		self::assertNotNull($msg->users_shared);
+		self::assertSame(1, $msg->users_shared['request_id']);
+		self::assertSame(42, $msg->users_shared['users'][0]['id']);
+		self::assertSame('vasya', $msg->users_shared['users'][0]['username']);
+		self::assertNull($msg->users_shared['users'][1]['username']);
+		self::assertSame('Безника', $msg->users_shared['users'][1]['first_name']);
+	}
+
+	public function testUsersSharedLegacyUserIds(): void {
+		$msg = Message::fromArray([
+			'message_id' => 9,
+			'chat' => ['id' => 1000, 'type' => 'private'],
+			'from' => ['id' => 1000, 'first_name' => 'Owner'],
+			'users_shared' => ['request_id' => 1, 'user_ids' => [7, 8]],
+		]);
+		self::assertSame([7, 8], array_column($msg->users_shared['users'], 'id'));
+	}
+
+
 }
