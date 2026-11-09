@@ -58,9 +58,4 @@ interface TelegramApi {
 	*/
 	public function setWebhook(string $url, string $secret_token, array $allowed_updates): void;
 
-	/**
-		@param list<array<string, mixed>> $results InlineQueryResult objects
-		@param array<string, mixed> $options cache_time, is_personal, …
-	*/
-	public function answerInlineQuery(string $inline_query_id, array $results, array $options = []): void;
 }

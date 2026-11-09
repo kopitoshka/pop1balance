@@ -237,66 +237,6 @@ class PlayerRepository {
 	}
 
 
-	/**
-		Autocomplete for inline mode: real players only (tg_user_id set).
-		Prefix matches first, then contains. Query is matched against username,
-		display_name and IGN (case-insensitive; works for Cyrillic too).
-
-		@return list<Player>
-	*/
-	public function searchKnown(string $query, int $limit = 20): array {
-		$query = trim($query);
-		$limit = max(1, min(50, $limit));
-		$rows = $this->db->fetchAll(
-			'SELECT * FROM players WHERE tg_user_id IS NOT NULL ORDER BY id DESC LIMIT 3000',
-		);
-		if ($query === '') {
-			usort($rows, static function (array $a, array $b): int {
-				return ((string) ($a['username'] ?? 'ÿ')) <=> ((string) ($b['username'] ?? 'ÿ'))
-					?: ((string) $a['display_name'] <=> (string) $b['display_name']);
-			});
-			return array_map([Player::class, 'fromRow'], array_slice($rows, 0, $limit));
-		}
-		$q = mb_strtolower($query);
-		$prefix = [];
-		$contains = [];
-		foreach ($rows as $row) {
-			$fields = [
-				mb_strtolower((string) ($row['username'] ?? '')),
-				mb_strtolower((string) ($row['display_name'] ?? '')),
-				mb_strtolower((string) ($row['ign_norm'] ?? '')),
-				mb_strtolower((string) ($row['ign'] ?? '')),
-			];
-			$is_prefix = false;
-			$is_contains = false;
-			foreach ($fields as $field) {
-				if ($field === '') {
-					continue;
-				}
-				if (str_starts_with($field, $q)) {
-					$is_prefix = true;
-					break;
-				}
-				if (str_contains($field, $q)) {
-					$is_contains = true;
-				}
-			}
-			if ($is_prefix) {
-				$prefix[] = $row;
-			} elseif ($is_contains) {
-				$contains[] = $row;
-			}
-		}
-		$sort = static function (array $a, array $b): int {
-			return ((string) ($a['username'] ?? 'ÿ')) <=> ((string) ($b['username'] ?? 'ÿ'))
-				?: ((string) $a['display_name'] <=> (string) $b['display_name']);
-		};
-		usort($prefix, $sort);
-		usort($contains, $sort);
-		$merged = array_slice(array_merge($prefix, $contains), 0, $limit);
-		return array_map([Player::class, 'fromRow'], $merged);
-	}
-
 	public function fuzzySuggest(string $needle, int $limit = 5): array {
 		$needle = mb_strtolower(ltrim(trim($needle), '@'));
 		$limit = max(1, min(10, $limit));

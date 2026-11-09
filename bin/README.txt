@@ -16,12 +16,6 @@ set_webhook.php
   Ставит webhook по TELEGRAM_* из .env.
   Также обновляет меню команд (в т.ч.
   /adduser и /history — только в личке).
-  После обновления бота перезапусти скрипт —
-  в allowed_updates появится inline_query.
-
-  Inline-режим (подбор @ника): в @BotFather
-  /setinline → выбрать бота → плейсхолдер
-  «ник игрока». Затем php bin/set_webhook.php.
 
 cron.php
   Напоминания и автозавершение турниров

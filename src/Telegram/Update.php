@@ -11,13 +11,10 @@ class Update {
 	/**
 		Update types requested in setWebhook.
 	*/
-	public const ALLOWED_UPDATES = ['message', 'edited_message', 'callback_query', 'my_chat_member', 'inline_query'];
+	public const ALLOWED_UPDATES = ['message', 'edited_message', 'callback_query', 'my_chat_member'];
 
 	/**
 		@param array<string, mixed>|null $my_chat_member raw ChatMemberUpdated
-	*/
-	/**
-		@param array<string, mixed>|null $inline_query raw InlineQuery
 	*/
 	protected function __construct(
 		public int $update_id,
@@ -26,7 +23,6 @@ class Update {
 		public ?array $my_chat_member,
 		public ?Message $edited_message = null,
 		public string $type = 'unknown',
-		public ?array $inline_query = null,
 	) {
 	}
 
@@ -41,7 +37,6 @@ class Update {
 			isset($raw['my_chat_member']) && is_array($raw['my_chat_member']) ? $raw['my_chat_member'] : null,
 			isset($raw['edited_message']) && is_array($raw['edited_message']) ? Message::fromArray($raw['edited_message']) : null,
 			self::typeOf($raw),
-			isset($raw['inline_query']) && is_array($raw['inline_query']) ? $raw['inline_query'] : null,
 		);
 	}
 

@@ -17,7 +17,6 @@ use P1Bot\App\GroupRedirect;
 use P1Bot\App\TeamDisbandNotifier;
 use P1Bot\App\PlayerResolver;
 use P1Bot\App\UsernameResolver;
-use P1Bot\App\InlinePlayers;
 use P1Bot\App\PendingPlayerRunner;
 use P1Bot\App\PrivateGroups;
 use P1Bot\App\PrivateViews;
@@ -89,7 +88,6 @@ class Bootstrap {
 	public DraftCards $drafts;
 	public TournamentListing $listing;
 	public PlayerResolver $player_resolver;
-	public InlinePlayers $inline_players;
 	public TournamentResolver $tournament_resolver;
 	public Dispatcher $dispatcher;
 	public ?Assistant $assistant = null;
@@ -206,7 +204,6 @@ class Bootstrap {
 			$username_lookup,
 			$pending_actions,
 		);
-		$this->inline_players = new InlinePlayers($this->telegram, $this->players, $this->balances);
 		$this->tournament_resolver = new TournamentResolver($this->tournament_repo);
 		$this->announcements = new TournamentAnnouncementRepository($db);
 		$this->announcer = new Announcer(
@@ -405,7 +402,6 @@ class Bootstrap {
 			$this->group_redirect,
 			$this->dialogs,
 			$this->group_chat,
-			$this->inline_players,
 		);
 	}
 
