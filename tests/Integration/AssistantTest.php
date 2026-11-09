@@ -18,6 +18,7 @@ class AssistantTest extends IntegrationTestCase {
 	public function testRegisterTeamThroughFunctionCall(): void {
 		$t = $this->openTournament(3, '3,3,4');
 		$cap = $this->player('cap');
+		$this->ownerAbsentFromGroups();
 		$this->player('vasya');
 		$this->http->queueOpenAi($this->functionCall('resp_1', 'call_1', 'register_team', [
 			'tournament_id' => $t->id,
@@ -115,7 +116,7 @@ class AssistantTest extends IntegrationTestCase {
 			'starts_at_msk' => '23.11 20:00',
 			'team_size' => 2,
 		]));
-		$this->http->queueOpenAi($this->text('r2', 'Создавать турниры могут только админы.'));
+		$this->http->queueOpenAi($this->text('r2', 'Создавать турниры могут только участники групп, где есть организатор P1.'));
 		$this->dispatch($this->privateMessage($vasya, '@' . self::BOT_USERNAME . ' создай турнир'));
 
 		self::assertNull($this->app->tournament_repo->find(1));

@@ -67,6 +67,13 @@ class FakeHttpClient implements HttpClient {
 		if ($method === 'getChatAdministrators') {
 			$result = [];
 		}
+		if ($method === 'getChatMember') {
+			// Default: user is a member (tests that need left/kicked set their own handler).
+			$result = [
+				'status' => 'member',
+				'user' => ['id' => (int) ($json['user_id'] ?? 0), 'is_bot' => false, 'first_name' => 'T'],
+			];
+		}
 		return new HttpResponse(200, (string) json_encode(['ok' => true, 'result' => $result]));
 	}
 

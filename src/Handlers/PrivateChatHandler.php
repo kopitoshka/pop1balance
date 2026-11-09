@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace P1Bot\Handlers;
 
+use P1Bot\App\CreateAccess;
 use P1Bot\App\DraftCards;
 use P1Bot\App\PrivateGroups;
 use P1Bot\App\PrivateViews;
@@ -24,7 +25,7 @@ use P1Bot\View\Texts;
 /**
 	Private chat with the bot: everything happens here. Deep links from the group (/start t_<id>,
 	/start g_<chat id>), all commands, buttons and the AI with all tools. Tournament numbers are
-	global (the tournament id). Creating a tournament still picks a group (PrivateGroups::forCreate).
+	global (the tournament id). Tournaments are global; create rights come from CreateAccess.
 */
 class PrivateChatHandler {
 	public const START = 'start';
@@ -69,6 +70,7 @@ class PrivateChatHandler {
 		protected AdminCommands $commands,
 		protected MessageHandler $messages,
 		protected Clock $clock,
+		protected ?CreateAccess $create_access = null,
 	) {
 	}
 
@@ -107,7 +109,7 @@ class PrivateChatHandler {
 			return ['kind' => self::KEYWORDS[$words] ?? self::FALLBACK] + $decision;
 		}
 		// Tournament numbers are global: free-text AI does not need a chosen group.
-		// /new still asks via GROUP_COMMANDS + NeedGroupChoice from forCreate.
+		// Tournaments are global: free-text AI does not need a chosen group to create.
 		return $decision;
 	}
 
@@ -137,7 +139,7 @@ class PrivateChatHandler {
 				$ctx = $this->context($message, $actor);
 				$this->api->sendMessage(
 					$chat_id,
-					Texts::help($this->bot->username, $ctx->is_admin, $is_owner),
+					Texts::help($this->bot->username, $this->canCreate($actor), $is_owner),
 				);
 				return;
 			case self::LEVELS:
@@ -158,8 +160,8 @@ class PrivateChatHandler {
 	}
 
 	/**
-		Author, rights and the current group. Admin tools are offered to an admin of any group;
-		every action still checks the rights for its tournament's group.
+		Author and rights. is_admin means «may create tournaments» (CreateAccess);
+		manage rights are still author|owner per tournament.
 	*/
 	public function context(Message $message, Player $actor): Context {
 		$is_owner = $this->access->isOwner($actor->id);
@@ -170,11 +172,18 @@ class PrivateChatHandler {
 		return new Context(
 			$message,
 			$actor,
-			$is_owner || $this->groups->isAdminSomewhere($actor->id),
+			$this->canCreate($actor),
 			$is_owner,
 			$group_id,
 			$group_id !== null ? $this->groups->title($group_id) : '',
 		);
+	}
+
+	protected function canCreate(Player $actor): bool {
+		if ($this->create_access !== null) {
+			return $this->create_access->canCreate($actor->id);
+		}
+		return $this->groups->canCreate($actor->id);
 	}
 
 	/**
@@ -217,7 +226,9 @@ class PrivateChatHandler {
 			);
 			return;
 		}
-		$this->groups->choose($actor->id, $t->chat_id);
+		if ($t->chat_id !== null) {
+			$this->groups->choose($actor->id, $t->chat_id);
+		}
 		if ($t->status === TournamentStatus::DRAFT) {
 			$this->drafts->show($t->id, $chat_id, null, $actor->id);
 			return;

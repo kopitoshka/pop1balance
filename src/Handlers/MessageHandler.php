@@ -148,7 +148,7 @@ class MessageHandler {
 				$this->drafts->publish($ctx->actor->id, $t->id, $reply_to);
 				$this->api->sendMessage(
 					$ctx->chatId(),
-					$this->publishedText($t->chat_id),
+					$this->publishedText(),
 					$ctx->message->message_id,
 				);
 			} catch (DomainError $e) {
@@ -167,8 +167,8 @@ class MessageHandler {
 		return false;
 	}
 
-	public function publishedText(int $group_id): string {
-		$where = $this->groups !== null ? ' в группе ' . Html::b($this->groups->title($group_id)) : ' в группе';
-		return 'Опубликовала! Анонс уже' . $where . ', регистрация открыта 🎉';
+	public function publishedText(?int $group_id = null): string {
+		unset($group_id);
+		return 'Опубликовала! Анонс уже во всех группах, регистрация открыта 🎉';
 	}
 }

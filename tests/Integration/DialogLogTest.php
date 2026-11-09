@@ -110,7 +110,7 @@ class DialogLogTest extends IntegrationTestCase {
 		$log = $this->dialog('andrey.log');
 		self::assertStringContainsString('Публикуем или что-то поправить?', $log);
 		self::assertStringContainsString('личка бот → @andrey: (исправила сообщение) 📝 Турнир №1', $log);
-		self::assertStringContainsString('Опубликовала! Анонс уже в группе P1 турниры', $log);
+		self::assertStringContainsString('Опубликовала! Анонс уже во всех группах', $log);
 		self::assertStringNotContainsString('Записаться командой или соло', $log, 'the announcement is a broadcast');
 	}
 

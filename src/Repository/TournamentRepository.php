@@ -28,7 +28,7 @@ class TournamentRepository {
 	}
 
 	/**
-		@param array{chat_id: int, organizer_id: int, title: string, starts_at: DateTimeImmutable, team_size: int,
+		@param array{chat_id: ?int, organizer_id: int, title: string, starts_at: DateTimeImmutable, team_size: int,
 		    balance_id: ?int, reference_team: ?string, max_points: ?int, max_players: int, status: string} $data
 	*/
 	public function create(array $data, DateTimeImmutable $now): Tournament {
@@ -102,7 +102,16 @@ class TournamentRepository {
 	*/
 	public function findByAnnounceMessage(int $chat_id, int $message_id): ?Tournament {
 		$row = $this->db->fetchOne(
-			'SELECT * FROM tournaments WHERE chat_id = :c AND announce_msg_id = :m',
+			'SELECT t.* FROM tournament_announcements a
+				INNER JOIN tournaments t ON t.id = a.tournament_id
+				WHERE a.chat_id = :c AND a.message_id = :m',
+			['c' => $chat_id, 'm' => $message_id],
+		);
+		if ($row !== null) {
+			return Tournament::fromRow($row);
+		}
+		$row = $this->db->fetchOne(
+			'SELECT * FROM tournaments WHERE announce_msg_id = :m AND (chat_id = :c OR chat_id IS NULL)',
 			['c' => $chat_id, 'm' => $message_id],
 		);
 		return $row === null ? null : Tournament::fromRow($row);

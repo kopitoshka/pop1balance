@@ -235,17 +235,15 @@ for the webhook too, e.g. `sudo -u apache php bin/diag.php`.
 
 - The bot posts announcements (one URL button «💬 Записаться / вопросы в личке» → `start=t_<id>`), edits them when
   someone joins or leaves (no join messages in the group), and posts reminders.
+- Tournaments are **global**: on publish the announcement is posted into **every** active group in `chats`.
+  `/tournaments` and `/info` in any group list all tournaments. `tournaments.chat_id` is kept as optional origin (nullable).
 - Reminders (`REMINDER_MINUTES`, default `60,15`) for published tournaments (registration open or closed; not drafts
-  or cancelled ones) go to the tournament's own group as a reply to its announcement. At the first mark (the largest
-  value, 60 by default) with `REMIND_ALL_GROUPS=1` (default) every **other** active group the bot is in also gets a
-  short «⏰ Через час стартует турнир …» (date and time MSK, team size, level, places taken/limit) with the same
-  button. The own group gets only its usual reminder, the 15-minute one stays there. Each group gets at most one such
-  message per tournament (`group_notices`, claimed before sending, so overlapping or repeated cron runs do not
-  duplicate it). If a group fails, the error goes to the main log and the others still get it; a 403 (bot kicked /
-  not a member), «chat not found» or «upgraded to a supergroup» marks the group inactive. Groups come from the
-  `chats` table: added when the bot joins or sees a message there, marked inactive by `my_chat_member` when the bot
-  leaves or is removed. If cron was down past the first mark, only the latest due reminder goes out and other groups
-  get nothing. `REMIND_ALL_GROUPS=0` turns it off.
+  or cancelled ones): with `REMIND_ALL_GROUPS=1` (default) **every** mark posts the short «⏰ Через час / Через N минут
+  стартует турнир …» notice (date and time MSK, team size, level, places) with the deep-link button into **every**
+  active group. Deduped per `(tournament, chat, minutes)` via `group_notices`. If a group fails, the error goes to the
+  main log and the others still get it; a 403 (bot kicked / not a member), «chat not found» or «upgraded to a
+  supergroup» marks the group inactive. Groups come from the `chats` table. `REMIND_ALL_GROUPS=0` turns group
+  broadcasts off (no private DM reminders yet).
 - Answered in the group: `/tournaments` (published only, no drafts), `/info N`, `/levels`, `/help` (only these
   commands + «manage in private» with a deep-link button), `/start` (= `/help`).
 - Anything else addressed to the bot → one «Давай в личке 👉» with a button. The link opens the tournament
@@ -264,31 +262,30 @@ for the webhook too, e.g. `sudo -u apache php bin/diag.php`.
   memory), e.g. «Wolves: @vasya, @petya». Adding/removing/replacing players, renaming, captain transfer — in plain text.
 - Plain text: «какие турниры скоро?», «запиши команду Wolves: я, @vasya, @petya», «хочу участвовать соло»,
   «замени @vasya на @kolya», «где я записан?». Commands: `/tournaments`, `/info N`, `/levels`, `/help`.
-- Joining checks that the user is in the tournament's group (`getChatMember`: `left`/`kicked` → refused). If Telegram
-  can't tell (error), joining is allowed. Unseen users can join via the deep link.
+- Joining checks that the user is in **any** active group the bot is in (`getChatMember`: `left`/`kicked` → refused).
+  If Telegram can't tell for every group (errors), joining is allowed. Unseen users can join via the deep link.
 - Every private message marks the player as having started the bot (`players.dm_ok`, `dm_started_at`, migration 006).
   No private reminders yet; reminders stay in the group.
 - Edited messages in private get «Исправленные сообщения я не вижу…» once.
 
-**Groups in private.** Tournament numbers are **global** (the tournament id). The player's current group
-(`players.dm_group_id`) is only for creating a tournament and membership checks: set by a deep link / «open»
-button / group picker, or automatically when the bot is in one group. With several groups, `/new` (and AI create)
-asks «В какой группе создаём турнир?» with buttons (`grp:<chat id>`). Lists in private show all groups with headers.
-Deep link `g_<chat id>` still opens the private chat and remembers that group for creation.
+**Groups in private.** Tournament numbers are **global** (the tournament id). Lists show all tournaments (no
+per-group headers). `players.dm_group_id` / deep link `g_<chat id>` / `grp:` buttons are kept for remembering a
+group (legacy), but creating a tournament no longer asks which group it is for.
 
 **Who may create / manage:**
-- **Create** (`/new`, AI create): Telegram chat admins of the group (and the owner); or anyone if
-  `ANYONE_CAN_CREATE_TOURNAMENT=1`. Chat admins are synced from Telegram.
+- **Create** (`/new`, AI create): the bot **owner** always; otherwise a user who shares at least one **active** group
+  with both the bot and the owner (`getChatMember`: member/administrator/creator/restricted-but-member), with a short
+  cache. Or anyone if `ANYONE_CAN_CREATE_TOURNAMENT=1` (override, key kept). Refusal (feminine):
+  «Создавать турниры могут только участники групп, где есть организатор P1. Записаться на турнир при этом можно 🙂».
 - **Manage** (`/edit`, `/open`, `/close`, `/cancel`, publish): only the tournament's **author** (organizer) and
   the bot **owner** (`BOT_OWNER_TG_ID`). Group admins have no special rights to manage someone else's tournament.
 
-Admins of a group (for creation):
+Creating:
 - `/new 23.11 20:00 | Кубок | 3 | 10 | 24` — date/time MSK | title | team size |
   tournament level (required, see «Tournament level» below) | player limit (default 24).
-  Creates a **draft** in the group where the admin may create (the current one; the only one; or the bot asks with
-  buttons) and shows its card **in private** ending with «Публикуем или что-то поправить?» and the buttons
-  «✅ Публикуем» / «✏️ Поправить». On a clear confirmation the announcement goes **to the group**.
-  `ANYONE_CAN_CREATE_TOURNAMENT=1` allows any player in any group the bot is in.
+  Creates a **draft** (optional origin `chat_id` for history) and shows its card **in private** ending with
+  «Публикуем или что-то поправить?» and the buttons «✅ Публикуем» / «✏️ Поправить». On a clear confirmation the
+  announcement goes into **every** active group.
 - `/edit [N] время 23.11 21:00` (fields: название, время, размер, уровень, лимит; `баланс N` — owner only). Editing a draft shows a fresh card.
   `/edit 1 уровень 10`, `/edit 1 уровень средний, средний, высокий`, `/edit 1 размер 2 уровень 7`.
 - `/levels` — the six levels with points and synonyms and how the tournament level works (for everyone).

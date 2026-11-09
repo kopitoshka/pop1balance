@@ -122,8 +122,9 @@ class AdminCommandsTest extends IntegrationTestCase {
 
 	public function testRegularPlayerCannotUseAdminCommands(): void {
 		$vasya = $this->player('vasya');
+		$this->withoutSharedOwnerGroup($vasya);
 		$this->dispatch($this->privateMessage($vasya, '/new 23.11 20:00 | Кубок | 3'));
-		self::assertStringContainsString('админы группы', $this->http->lastText());
+		self::assertStringContainsString('организатор P1', $this->http->lastText());
 		self::assertNull($this->app->tournament_repo->find(1));
 	}
 
@@ -323,10 +324,11 @@ class AdminCommandsTest extends IntegrationTestCase {
 		self::assertStringStartsWith("📋 <b>Турниры</b>\n\n🏆 <b>Кубок</b> · №1\n🗓 23.11.2026 ⏰ 20:00 МСК", $list);
 		self::assertStringContainsString('<i>Пока никто не записался.</i>', $list);
 
+		$this->withoutSharedOwnerGroup($vasya);
 		$this->dispatch($this->privateMessage($vasya, '/help'));
-		self::assertStringNotContainsString('Для админов', $this->http->lastText());
+		self::assertStringNotContainsString('Создание турниров', $this->http->lastText());
 		$this->dispatch($this->privateMessage($this->owner, '/help'));
-		self::assertStringContainsString('Для админов', $this->http->lastText());
+		self::assertStringContainsString('Создание турниров', $this->http->lastText());
 	}
 
 	public function testNoServerLinksInTexts(): void {

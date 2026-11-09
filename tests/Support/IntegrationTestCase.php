@@ -252,6 +252,62 @@ abstract class IntegrationTestCase extends TestCase {
 	/**
 		A null reference creates a legacy row without a level limit (no longer possible via the bot).
 	*/
+	/**
+		Mock getChatMember so $player is left from every group (cannot create; join also refused).
+		Use when the test only checks create refusal. Prefer ownerAbsentFromGroups() when the
+		player must still be able to join.
+	*/
+	protected function withoutSharedOwnerGroup(Player $player): void {
+		$this->app->create_access->clearCache();
+		$this->http->onTelegram('getChatMember', function (array $json) use ($player): array {
+			$user_id = (int) $json['user_id'];
+			$status = $user_id === self::OWNER_TG_ID ? 'member' : (
+				$user_id === $this->tgIdOf($player) ? 'left' : 'member'
+			);
+			return [
+				'ok' => true,
+				'result' => [
+					'status' => $status,
+					'user' => ['id' => $user_id, 'is_bot' => false, 'first_name' => 'U'],
+				],
+			];
+		});
+	}
+
+	/**
+		Owner looks absent from groups: only the owner (isOwner) may create; everyone else is a
+		member and can join. Clears CreateAccess cache by rebuilding? Cache is per Bootstrap —
+		call before the first membership check for the player under test.
+	*/
+	protected function ownerAbsentFromGroups(): void {
+		$this->app->create_access->clearCache();
+		$this->http->onTelegram('getChatMember', function (array $json): array {
+			$user_id = (int) $json['user_id'];
+			$status = $user_id === self::OWNER_TG_ID ? 'left' : 'member';
+			return [
+				'ok' => true,
+				'result' => [
+					'status' => $status,
+					'user' => ['id' => $user_id, 'is_bot' => false, 'first_name' => 'U'],
+				],
+			];
+		});
+	}
+
+	protected function everyoneIsGroupMember(): void {
+		$this->app->create_access->clearCache();
+		$this->http->onTelegram('getChatMember', function (array $json): array {
+			$user_id = (int) $json['user_id'];
+			return [
+				'ok' => true,
+				'result' => [
+					'status' => 'member',
+					'user' => ['id' => $user_id, 'is_bot' => false, 'first_name' => 'U'],
+				],
+			];
+		});
+	}
+
 	protected function openTournament(
 		int $team_size = 3,
 		?string $reference = '3,3,4',

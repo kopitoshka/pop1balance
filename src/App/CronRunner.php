@@ -4,11 +4,9 @@ declare(strict_types=1);
 
 namespace P1Bot\App;
 
-use P1Bot\Domain\Model\Player;
 use P1Bot\Domain\Model\Tournament;
 use P1Bot\Domain\MoscowTime;
 use P1Bot\Domain\TournamentService;
-use P1Bot\Domain\TournamentStatus;
 use P1Bot\Repository\ChatRepository;
 use P1Bot\Repository\ConversationRepository;
 use P1Bot\Repository\GroupNoticeRepository;
@@ -25,10 +23,11 @@ use Throwable;
 /**
 	Runs every minute: reminders, automatic status changes, cleanup.
 
-	At the first reminder mark (the largest REMINDER_MINUTES, 60 by default) the tournament's own group
-	gets its usual reminder and, with REMIND_ALL_GROUPS, every other group the bot is in gets a short
-	announcement with the deep-link button. Each group gets at most one such message per tournament
-	(group_notices). Later reminders (15 minutes) go to the tournament's own group only.
+	Tournaments are global. With REMIND_ALL_GROUPS=1 (default) every reminder mark
+	(REMINDER_MINUTES, e.g. 60 and 15) posts the short notice with the deep-link button
+	into every active group the bot is in. group_notices (tournament, chat, minutes) ensures
+	each group gets at most one message per mark. REMIND_ALL_GROUPS=0 turns group broadcasts off.
+	There is no private DM reminder path yet.
 */
 class CronRunner {
 	public const GROUP_BUTTON = Announcer::BUTTON;
@@ -71,14 +70,11 @@ class CronRunner {
 		}
 
 		$changed = $this->tournaments->autoAdvance($this->finish_after_hours);
-		$chats = [];
 		foreach ($changed as $t) {
 			$this->announcer->refresh($t->id);
-			$chats[$t->chat_id] = true;
 		}
-		foreach (array_keys($chats) as $chat_id) {
-			// Finished tournaments drop out of the numbering: others may get new numbers.
-			$this->announcer->renumber((int) $chat_id);
+		if ($changed !== []) {
+			$this->announcer->renumber();
 		}
 
 		return [
@@ -89,57 +85,53 @@ class CronRunner {
 	}
 
 	protected function remind(Tournament $t, int $minutes): void {
-		$first_mark = $this->reminder_minutes !== [] && $minutes === max($this->reminder_minutes);
-		if ($first_mark && $this->notices !== null) {
-			// The own group's reminder is its «in an hour» message: exactly one, even if cron overlaps.
-			if (!$this->notices->claim($t->id, $t->chat_id, $this->clock->now())) {
-				$this->logger->info(sprintf('reminder %d: group %d already notified, skipped', $t->id, $t->chat_id));
-				return;
-			}
-			$this->sendOwnReminder($t, $minutes);
-			$this->notices->setResult($t->id, $t->chat_id, 'sent');
-			if ($this->remind_all_groups) {
-				$this->notifyOtherGroups($t, $minutes);
-			}
+		if (!$this->remind_all_groups || $this->chats === null || $this->notices === null) {
 			return;
 		}
-		$this->sendOwnReminder($t, $minutes);
+		$this->notifyAllGroups($t, $minutes);
 	}
 
 	/**
-		The short announcement for every other active group; failures are logged and skipped,
+		Short notice for every active group; failures are logged and skipped,
 		a group the bot was removed from is marked inactive.
 	*/
-	protected function notifyOtherGroups(Tournament $t, int $minutes): void {
-		if ($this->chats === null || $this->notices === null) {
-			return;
-		}
+	protected function notifyAllGroups(Tournament $t, int $minutes): void {
 		$text = $this->groupNotice($t, $minutes);
 		$markup = DeepLink::button(self::GROUP_BUTTON, DeepLink::tournament($this->bot_username, $t->id));
 		$sent = 0;
 		foreach (array_keys($this->chats->listActiveGroups()) as $chat_id) {
-			if ($chat_id === $t->chat_id || !$this->notices->claim($t->id, $chat_id, $this->clock->now())) {
+			if (!$this->notices->claim($t->id, $chat_id, $this->clock->now(), $minutes)) {
 				continue;
 			}
 			try {
 				$this->api->sendMessage($chat_id, $text, null, $markup);
-				$this->notices->setResult($t->id, $chat_id, 'sent');
+				$this->notices->setResult($t->id, $chat_id, 'sent', $minutes);
 				$sent++;
 			} catch (Throwable $e) {
-				$this->notices->setResult($t->id, $chat_id, 'error: ' . $e->getMessage());
+				$this->notices->setResult($t->id, $chat_id, 'error: ' . $e->getMessage(), $minutes);
 				if (self::isGone($e)) {
 					$this->chats->deactivate($chat_id);
-					$this->logger->info(sprintf('group notice %d: bot is not in group %d any more, marked inactive', $t->id, $chat_id));
+					$this->logger->info(sprintf(
+						'group notice %d: bot is not in group %d any more, marked inactive',
+						$t->id,
+						$chat_id,
+					));
 				} else {
 					$this->logger->exception($e, sprintf('group notice %d to %d', $t->id, $chat_id));
 				}
 			}
 		}
-		$this->logger->info(sprintf('group notice %d «%s»: sent to %d other group(s)', $t->id, $t->title, $sent));
+		$this->logger->info(sprintf(
+			'group notice %d «%s» −%d min: sent to %d group(s)',
+			$t->id,
+			$t->title,
+			$minutes,
+			$sent,
+		));
 	}
 
 	/**
-		«Tournament in an hour» for groups other than the tournament's own one (HTML).
+		«Tournament in an hour / in N minutes» for every active group (HTML).
 	*/
 	public function groupNotice(Tournament $t, int $minutes): string {
 		$lineup = $this->tournaments->lineup($t->id);
@@ -171,45 +163,5 @@ class CronRunner {
 		return $e->getCode() === 403
 			|| str_contains($message, 'chat not found')
 			|| str_contains($message, 'upgraded to a supergroup');
-	}
-
-	protected function sendOwnReminder(Tournament $t, int $minutes): void {
-		$lineup = $this->tournaments->lineup($t->id);
-		$mentions = [];
-		foreach ($lineup->main_teams as $entry) {
-			foreach ($entry->members as $member) {
-				$mentions[] = $this->mention($member->player_id);
-			}
-		}
-		foreach ($lineup->main_solo as $solo) {
-			$mentions[] = $this->mention($solo->player_id);
-		}
-
-		$text = sprintf(
-			'⏰ Через %d %s старт турнира %s (%s)!',
-			$minutes,
-			RuPlural::choose($minutes, ['минуту', 'минуты', 'минут']),
-			Html::b($t->title),
-			MoscowTime::format($t->starts_at, 'H:i'),
-		);
-		$text .= "\n" . Html::e(mb_strtoupper(mb_substr($lineup->summary(), 0, 1)) . mb_substr($lineup->summary(), 1)) . '.';
-		if ($mentions !== []) {
-			$text .= "\n\nИграют: " . implode(', ', $mentions) . "\nУдачи всем, заходите в игру заранее!";
-		}
-		if ($lineup->reserveCount() > 0) {
-			$text .= "\nРезерв, будьте на связи: если кто-то не придёт, позовём вас.";
-		}
-		$this->api->sendMessage($t->chat_id, $text, $t->announce_msg_id);
-	}
-
-	protected function mention(int $player_id): string {
-		$player = $this->players->find($player_id);
-		if (!$player instanceof Player) {
-			return '#' . $player_id;
-		}
-		if ($player->username === null && $player->tg_user_id !== null) {
-			return '<a href="tg://user?id=' . $player->tg_user_id . '">' . Html::e($player->display_name) . '</a>';
-		}
-		return Html::e($player->mention());
 	}
 }

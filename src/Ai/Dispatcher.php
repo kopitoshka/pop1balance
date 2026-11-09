@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace P1Bot\Ai;
 
 use P1Bot\App\Announcer;
+use P1Bot\App\CreateAccess;
 use P1Bot\App\Confirmation;
 use P1Bot\App\DraftCards;
 use P1Bot\App\NeedGroupChoice;
@@ -56,6 +57,7 @@ class Dispatcher {
 		protected ?DraftCards $drafts = null,
 		protected string $bot_username = '',
 		protected ?PrivateGroups $groups = null,
+		protected ?CreateAccess $create_access = null,
 	) {
 	}
 
@@ -68,8 +70,8 @@ class Dispatcher {
 			if (in_array($tool, Tools::OWNER_TOOLS, true) && !$ctx->is_owner) {
 				throw new PermissionDenied($tool === 'set_level' ? AccessPolicy::LEVELS_OWNER_ONLY : AccessPolicy::OWNER_ONLY);
 			}
-			if (in_array($tool, Tools::ADMIN_TOOLS, true) && !$ctx->is_admin) {
-				throw new PermissionDenied('Это действие доступно только админам чата.');
+			if (in_array($tool, Tools::ADMIN_TOOLS, true) && !$this->canOrganize($ctx)) {
+				throw new PermissionDenied(CreateAccess::REFUSAL);
 			}
 			$result = $this->run($tool, $args, $ctx);
 			if (in_array($tool, Tools::MUTATING, true) && isset($result['tournament_id'])) {
@@ -237,7 +239,7 @@ class Dispatcher {
 				$reference = self::levelArg($a);
 				// Always a draft: publishing needs the organizer's explicit confirmation of the card.
 				$t = $this->tournaments->create(new CreateTournament(
-					$ctx->isPrivate() && $this->groups !== null ? $this->groups->forCreate($actor->id) : $ctx->groupId(),
+					$this->groups !== null ? $this->groups->originForCreate($actor->id) : ($ctx->isPrivate() ? null : $ctx->groupId()),
 					$actor->id,
 					(string) ($a['title'] ?? ''),
 					MoscowTime::toInput($starts_at),
@@ -247,7 +249,7 @@ class Dispatcher {
 					$ctx->is_owner && isset($a['balance_id']) ? (int) $a['balance_id'] : null,
 					isset($a['max_players']) ? (int) $a['max_players'] : null,
 				));
-				$this->announcer->renumber($t->chat_id, $t->id);
+				$this->announcer->renumber($t->id);
 				return $this->cardResult($t, 'Черновик создан.');
 
 			case 'edit_tournament':
@@ -269,7 +271,7 @@ class Dispatcher {
 					isset($a['max_players']) ? (int) $a['max_players'] : null,
 					false,
 				));
-				$this->announcer->renumber($t->chat_id, $t->id); // a new start time may change the order
+				$this->announcer->renumber($t->id); // a new start time may change the order
 				if ($t->status === TournamentStatus::DRAFT) {
 					return $this->cardResult($t, 'Черновик обновлён.');
 				}
@@ -299,7 +301,7 @@ class Dispatcher {
 				return [
 					'tournament_id' => $this->no($t),
 					'published' => true,
-					'message' => 'Опубликовано: регистрация открыта, анонс в группе «' . $this->groupTitle($t) . '».',
+					'message' => 'Опубликовано: регистрация открыта, анонс отправлен во все активные группы.',
 				];
 
 			case 'cancel_tournament':
@@ -311,7 +313,7 @@ class Dispatcher {
 				$number = $this->no($target);
 				$t = $this->tournaments->cancel($actor->id, $target->id);
 				$this->announcer->refresh($t->id);
-				$this->announcer->renumber($t->chat_id, $t->id);
+				$this->announcer->renumber($t->id);
 				return [
 					'tournament_id' => $number,
 					'message' => sprintf('Турнир «%s» отменён. Номера остальных турниров могли сдвинуться.', $t->title),
@@ -332,7 +334,7 @@ class Dispatcher {
 				$this->announcer->publish($t->id);
 				return [
 					'tournament_id' => $this->no($t),
-					'message' => 'Регистрация снова открыта, анонс опубликован в группе «' . $this->groupTitle($t) . '».',
+					'message' => 'Регистрация снова открыта, анонс опубликован во всех активных группах.',
 				];
 
 			case 'close_registration':
@@ -505,13 +507,24 @@ class Dispatcher {
 		In private anyone can open the bot: joining checks that the user is in the tournament's group.
 	*/
 	protected function assertMember(Context $ctx, Tournament $t): void {
+		unset($t);
 		if ($ctx->isPrivate() && $this->groups !== null) {
-			$this->groups->assertMember($t->chat_id, $ctx->actor->tg_user_id);
+			$this->groups->assertInAnyGroup($ctx->actor->tg_user_id);
 		}
 	}
 
 	protected function groupTitle(Tournament $t): string {
-		return $this->groups !== null ? $this->groups->title($t->chat_id) : 'турнира';
+		if ($this->groups === null || $t->chat_id === null) {
+			return 'всех групп';
+		}
+		return $this->groups->title($t->chat_id);
+	}
+
+	protected function canOrganize(Context $ctx): bool {
+		if ($this->create_access !== null) {
+			return $this->create_access->canCreate($ctx->actor->id);
+		}
+		return $ctx->is_admin || $ctx->is_owner;
 	}
 
 	/**
@@ -532,32 +545,16 @@ class Dispatcher {
 		@return list<Tournament>
 	*/
 	protected function listVisible(Context $ctx): array {
-		if (!$ctx->isPrivate() || $this->groups === null) {
-			return $this->tournaments->listActive($ctx->groupId());
-		}
-		$result = [];
-		foreach (array_keys($this->groups->all()) as $chat_id) {
-			foreach ($this->tournaments->listActive($chat_id) as $t) {
-				$result[] = $t;
-			}
-		}
-		return $result;
+		unset($ctx);
+		return $this->tournaments->listAllActive();
 	}
 
 	/**
 		@return list<Tournament>
 	*/
 	protected function draftCandidates(Context $ctx): array {
-		if (!$ctx->isPrivate() || $this->groups === null) {
-			return $this->tournaments->listByStatus($ctx->groupId(), [TournamentStatus::DRAFT]);
-		}
-		$result = [];
-		foreach (array_keys($this->groups->all()) as $chat_id) {
-			foreach ($this->tournaments->listByStatus($chat_id, [TournamentStatus::DRAFT]) as $t) {
-				$result[] = $t;
-			}
-		}
-		return $result;
+		unset($ctx);
+		return $this->tournaments->listAllByStatus([TournamentStatus::DRAFT]);
 	}
 
 	protected function placementLabel(Tournament $t, int $player_id): string {

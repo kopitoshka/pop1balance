@@ -9,6 +9,7 @@ use P1Bot\Ai\Assistant;
 use P1Bot\Ai\Dispatcher;
 use P1Bot\Ai\OpenAiClient;
 use P1Bot\App\Announcer;
+use P1Bot\App\CreateAccess;
 use P1Bot\App\CronRunner;
 use P1Bot\App\DraftCards;
 use P1Bot\App\GroupRedirect;
@@ -37,6 +38,7 @@ use P1Bot\Repository\ConversationRepository;
 use P1Bot\Repository\PlayerRepository;
 use P1Bot\Repository\SoloPlayerRepository;
 use P1Bot\Repository\TeamRepository;
+use P1Bot\Repository\TournamentAnnouncementRepository;
 use P1Bot\Repository\TournamentRepository;
 use P1Bot\Support\Clock;
 use P1Bot\Support\Database;
@@ -81,6 +83,8 @@ class Bootstrap {
 	public Dispatcher $dispatcher;
 	public ?Assistant $assistant = null;
 	public PrivateGroups $private_groups;
+	public CreateAccess $create_access;
+	public TournamentAnnouncementRepository $announcements;
 
 	/**
 		@var array<string, mixed>
@@ -164,6 +168,7 @@ class Bootstrap {
 
 		$this->player_resolver = new PlayerResolver($this->players, $clock);
 		$this->tournament_resolver = new TournamentResolver($this->tournament_repo);
+		$this->announcements = new TournamentAnnouncementRepository($db);
 		$this->announcer = new Announcer(
 			$this->telegram,
 			$this->tournaments,
@@ -171,6 +176,8 @@ class Bootstrap {
 			$this->bot,
 			$this->logger,
 			$this->tournament_resolver,
+			$this->chats,
+			$this->announcements,
 		);
 		$this->listing = new TournamentListing($this->tournaments, $this->announcer);
 		$this->drafts = new DraftCards(
@@ -185,6 +192,16 @@ class Bootstrap {
 			$this->logger,
 			(int) ($config['conversation_ttl_minutes'] ?? 30),
 		);
+		$this->create_access = new CreateAccess(
+			$this->telegram,
+			$this->chats,
+			$this->players,
+			$this->access,
+			$clock,
+			$this->logger,
+			$owner_tg_id,
+			(bool) ($config['tournament']['anyone_can_create'] ?? false),
+		);
 		$this->private_groups = new PrivateGroups(
 			$this->chats,
 			$this->players,
@@ -193,6 +210,7 @@ class Bootstrap {
 			$this->telegram,
 			$this->logger,
 			(bool) ($config['tournament']['anyone_can_create'] ?? false),
+			$this->create_access,
 		);
 		$commands = new AdminCommands(
 			$this->telegram,
@@ -208,6 +226,7 @@ class Bootstrap {
 			$this->drafts,
 			$this->listing,
 			$this->private_groups,
+			$this->create_access,
 		);
 
 		$this->dispatcher = new Dispatcher(
@@ -224,6 +243,7 @@ class Bootstrap {
 			$this->drafts,
 			$this->bot->username,
 			$this->private_groups,
+			$this->create_access,
 		);
 		$ai = $this->makeAiClient();
 		if ($ai !== null) {
@@ -296,6 +316,7 @@ class Bootstrap {
 				$commands,
 				$messages,
 				$clock,
+				$this->create_access,
 			),
 			new GroupRedirect($this->bot, $this->tournaments, $this->tournament_resolver),
 			$this->dialogs,

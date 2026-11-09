@@ -23,13 +23,12 @@ class CronRunnerTest extends IntegrationTestCase {
 		$this->clock->advance('+5 days +3 hours +1 minute'); // 15:01 UTC = 59 min before start
 		self::assertSame(1, $cron->run()['reminders']);
 		$reminder = $this->http->sent('sendMessage')[0];
-		self::assertStringContainsString(
-			'Через 60 минут старт турнира <b>Субботний кубок</b> (19:00 МСК)',
-			$reminder['text'],
+		self::assertStringContainsString('Через час стартует турнир <b>Субботний кубок</b>!', $reminder['text']);
+		self::assertStringContainsString('🎟 Занято 3/24', $reminder['text']);
+		self::assertSame(
+			[['text' => '💬 Записаться / вопросы в личке', 'url' => 'https://t.me/pop1_bot?start=t_' . $t->id]],
+			$reminder['reply_markup']['inline_keyboard'][0],
 		);
-		self::assertStringContainsString('Занято 3/24, резерв 0.', $reminder['text']);
-		self::assertStringContainsString('Играют: @cap, @mate, @solo', $reminder['text']);
-		self::assertSame(1000, $reminder['reply_parameters']['message_id'], 'reply to the announcement');
 
 		$this->clock->advance('+10 minutes');
 		self::assertSame(0, $cron->run()['reminders'], 'not twice');

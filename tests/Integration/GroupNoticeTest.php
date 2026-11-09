@@ -68,35 +68,32 @@ class GroupNoticeTest extends IntegrationTestCase {
 		self::assertSame(1, $cron->run()['reminders']);
 		$sent = $this->sentByChat();
 		self::assertSame([self::CHAT_ID, self::SECOND, self::THIRD], array_keys($sent));
-		self::assertCount(1, $sent[self::CHAT_ID], 'own group: just the usual reminder');
-		self::assertStringContainsString('Через 60 минут старт турнира', $sent[self::CHAT_ID][0]['text']);
-		foreach ([self::SECOND, self::THIRD] as $chat_id) {
+		$expected = "⏰ Через час стартует турнир <b>Субботний кубок</b>!\n"
+			. "🗓 14.11.2026 ⏰ 19:00 МСК\n"
+			. "👥 Команды по 2 игрока\n"
+			. "⚖️ Уровень: без ограничения по уровню\n"
+			. "🎟 Занято 1/24\n"
+			. "\n"
+			. 'Ещё можно успеть! Записаться соло или командой — у меня в личке 👇';
+		foreach ([self::CHAT_ID, self::SECOND, self::THIRD] as $chat_id) {
 			self::assertCount(1, $sent[$chat_id]);
 			$notice = $sent[$chat_id][0];
-			self::assertSame(
-				"⏰ Через час стартует турнир <b>Субботний кубок</b>!\n"
-					. "🗓 14.11.2026 ⏰ 19:00 МСК\n"
-					. "👥 Команды по 2 игрока\n"
-					. "⚖️ Уровень: без ограничения по уровню\n"
-					. "🎟 Занято 1/24\n"
-					. "\n"
-					. 'Ещё можно успеть! Записаться соло или командой — у меня в личке 👇',
-				$notice['text'],
-			);
+			self::assertSame($expected, $notice['text']);
 			self::assertSame(
 				[['text' => '💬 Записаться / вопросы в личке', 'url' => 'https://t.me/pop1_bot?start=t_' . $t->id]],
 				$notice['reply_markup']['inline_keyboard'][0],
 			);
 		}
-		self::assertStringContainsString('sent to 2 other group(s)', $this->log->text());
+		self::assertStringContainsString('sent to 3 group(s)', $this->log->text());
 
-		// Reruns and the 15-minute reminder: nothing new for other groups.
+		// Rerun: nothing new. 15-minute mark: all groups again (separate minutes claim).
 		$this->http->reset();
 		self::assertSame(0, $cron->run()['reminders']);
 		$this->clock->advance('+45 minutes');
 		self::assertSame(1, $cron->run()['reminders']);
-		self::assertSame([self::CHAT_ID], array_keys($this->sentByChat()));
-		self::assertStringContainsString('Через 15 минут', $this->http->lastText());
+		$sent15 = $this->sentByChat();
+		self::assertSame([self::CHAT_ID, self::SECOND, self::THIRD], array_keys($sent15));
+		self::assertStringContainsString('Через 15 минут', $sent15[self::CHAT_ID][0]['text']);
 	}
 
 	public function testOverlappingRunsDoNotDuplicate(): void {
@@ -120,7 +117,7 @@ class GroupNoticeTest extends IntegrationTestCase {
 		$this->openTournament(2, null);
 		$this->toHourBefore();
 		$this->app->cron()->run();
-		self::assertSame([self::CHAT_ID], array_keys($this->sentByChat()));
+		self::assertSame([], $this->http->sent('sendMessage'), 'REMIND_ALL_GROUPS=0: no group broadcasts');
 	}
 
 	public function testKickedGroupIsDeactivatedAndOthersStillGetIt(): void {
@@ -144,7 +141,7 @@ class GroupNoticeTest extends IntegrationTestCase {
 		self::assertSame('sent', $results[-100555]);
 		self::assertStringContainsString('error: ', $results[self::THIRD]);
 		self::assertStringContainsString('marked inactive', $this->log->text());
-		self::assertStringContainsString('sent to 1 other group(s)', $this->log->text());
+		self::assertStringContainsString('sent to 2 group(s)', $this->log->text());
 	}
 
 	public function testOnlyPublishedTournaments(): void {

@@ -14,12 +14,12 @@ use P1Bot\Telegram\TelegramApi;
 use Throwable;
 
 /**
-	Which group a private conversation creates tournaments in. Tournament numbers are global (ids);
-	the player's current group (players.dm_group_id) is remembered for /new and membership checks.
-	With a single group it is chosen automatically; with several, forCreate asks via inline buttons.
+	Groups the bot is in and membership checks for joining. Tournaments are global;
+	create rights live in CreateAccess. players.dm_group_id is still remembered for deep links.
 */
 class PrivateGroups {
-	public const NOT_MEMBER = 'Записаться можно только участникам группы турнира. Сначала вступи в группу, потом возвращайся 🙂';
+	public const NOT_MEMBER = 'Записаться можно только участникам групп, где я есть. '
+		. 'Сначала вступи в одну из групп, потом возвращайся 🙂';
 
 	public function __construct(
 		protected ChatRepository $chats,
@@ -29,6 +29,7 @@ class PrivateGroups {
 		protected TelegramApi $api,
 		protected Logger $logger,
 		protected bool $anyone_can_create = false,
+		protected ?CreateAccess $create_access = null,
 	) {
 	}
 
@@ -44,7 +45,7 @@ class PrivateGroups {
 	}
 
 	/**
-		The player's current group, or the only group there is; null when a choice is needed.
+		The player's remembered group, or the only group there is; null when a choice is needed.
 	*/
 	public function current(int $player_id): ?int {
 		$groups = $this->all();
@@ -61,7 +62,7 @@ class PrivateGroups {
 	}
 
 	/**
-		Current group or NeedGroupChoice with all groups.
+		Current group or NeedGroupChoice with all groups (legacy deep-link / start g_ flows).
 	*/
 	public function require(int $player_id): int {
 		$current = $this->current($player_id);
@@ -84,49 +85,30 @@ class PrivateGroups {
 	}
 
 	/**
-		Groups where the player may create tournaments: where they are a chat admin (owner: all;
-		ANYONE_CAN_CREATE_TOURNAMENT: all groups the bot is in).
-
-		@return array<int, string>
+		Whether the player may create tournaments (CreateAccess / override).
 	*/
-	public function creatable(int $player_id): array {
+	public function canCreate(int $player_id): bool {
+		if ($this->create_access !== null) {
+			return $this->create_access->canCreate($player_id);
+		}
+		return $this->anyone_can_create || $this->access->isOwner($player_id);
+	}
+
+	/**
+		Origin chat_id for a new tournament (history); null when none / not allowed.
+	*/
+	public function originForCreate(int $player_id): ?int {
+		if ($this->create_access !== null) {
+			$this->create_access->assertCanCreate($player_id);
+			return $this->create_access->originChatId($player_id);
+		}
+		$this->access->assertCanCreateTournament(0, $player_id);
 		$groups = $this->all();
-		if ($this->anyone_can_create || $this->access->isOwner($player_id)) {
-			return $groups;
-		}
-		$result = [];
-		foreach ($groups as $chat_id => $title) {
-			$this->admin_sync->syncIfStale($chat_id);
-			if ($this->access->isChatAdmin($chat_id, $player_id)) {
-				$result[$chat_id] = $title;
-			}
-		}
-		return $result;
+		return $groups === [] ? null : (int) array_key_first($groups);
 	}
 
 	/**
-		Group for a new tournament: the current one when allowed, else the only allowed one,
-		else NeedGroupChoice. Switches the player's current group to it.
-	*/
-	public function forCreate(int $player_id): int {
-		$allowed = $this->creatable($player_id);
-		if ($allowed === []) {
-			throw new PermissionDenied('Создавать турниры могут только админы группы.');
-		}
-		$current = $this->players->dmGroup($player_id);
-		if ($current !== null && isset($allowed[$current])) {
-			return $current;
-		}
-		if (count($allowed) === 1) {
-			$only = (int) array_key_first($allowed);
-			$this->players->setDmGroup($player_id, $only);
-			return $only;
-		}
-		throw new NeedGroupChoice($allowed, 'В какой группе создаём турнир? Выбери кнопкой ниже и повтори запрос.');
-	}
-
-	/**
-		Admin of at least one group (admin tools are offered; every action re-checks per tournament).
+		Admin of at least one group (legacy helpers).
 	*/
 	public function isAdminSomewhere(int $player_id): bool {
 		if ($this->access->isOwner($player_id)) {
@@ -142,23 +124,44 @@ class PrivateGroups {
 	}
 
 	/**
-		Blocks joining a tournament for users who are not in its group (getChatMember).
-		If Telegram cannot tell (error, bot without rights), joining is allowed.
+		Blocks joining when the user is not in any active group the bot is in (getChatMember).
+		If Telegram cannot tell for every group (errors), joining is allowed.
 	*/
-	public function assertMember(int $chat_id, ?int $tg_user_id): void {
+	public function assertMember(?int $chat_id, ?int $tg_user_id): void {
+		unset($chat_id);
+		$this->assertInAnyGroup($tg_user_id);
+	}
+
+	public function assertInAnyGroup(?int $tg_user_id): void {
 		if ($tg_user_id === null) {
 			return;
 		}
-		try {
-			$member = $this->api->getChatMember($chat_id, $tg_user_id);
-		} catch (Throwable $e) {
-			$this->logger->exception($e, 'getChatMember ' . $chat_id);
+		$groups = array_keys($this->all());
+		if ($groups === []) {
 			return;
 		}
-		$status = (string) ($member['status'] ?? '');
-		if ($status === 'left' || $status === 'kicked' || ($status === 'restricted' && empty($member['is_member']))) {
-			throw new PermissionDenied(self::NOT_MEMBER);
+		$checked = 0;
+		foreach ($groups as $chat_id) {
+			try {
+				$member = $this->api->getChatMember((int) $chat_id, $tg_user_id);
+			} catch (Throwable $e) {
+				// Telegram could not tell — skip this group; if none succeed, joining is allowed.
+				$this->logger->exception($e, 'getChatMember ' . $chat_id);
+				continue;
+			}
+			$checked++;
+			$status = (string) ($member['status'] ?? '');
+			if ($status === 'creator' || $status === 'administrator' || $status === 'member') {
+				return;
+			}
+			if ($status === 'restricted' && !empty($member['is_member'])) {
+				return;
+			}
 		}
+		if ($checked === 0) {
+			return;
+		}
+		throw new PermissionDenied(self::NOT_MEMBER);
 	}
 
 	/**

@@ -6,6 +6,7 @@ namespace P1Bot\Domain;
 
 /**
 	Input for TournamentService::create(). Times are Moscow time strings, e.g. "2026-11-14 19:00".
+	chat_id is optional origin/history; null = CreateAccess picks a shared group (or leaves null).
 */
 class CreateTournament {
 
@@ -15,7 +16,7 @@ class CreateTournament {
 		@param int|null    $max_players    null = configured default (24)
 	*/
 	public function __construct(
-		public int $chat_id,
+		public ?int $chat_id,
 		public int $organizer_id,
 		public string $title,
 		public string $starts_at_msk,

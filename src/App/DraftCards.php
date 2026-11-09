@@ -110,7 +110,7 @@ class DraftCards {
 		$card = $this->cardText($t);
 		$published = $this->tournaments->openRegistration($actor_id, $t->id);
 		$this->announcer->publish($published->id);
-		$this->announcer->renumber($t->chat_id, $t->id);
+		$this->announcer->renumber($t->id);
 		try {
 			$this->api->editMessageText(
 				$this->cardChatId($t),

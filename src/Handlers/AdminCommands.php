@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace P1Bot\Handlers;
 
 use P1Bot\App\Announcer;
+use P1Bot\App\CreateAccess;
 use P1Bot\App\DraftCards;
 use P1Bot\App\NeedGroupChoice;
 use P1Bot\App\PrivateGroups;
@@ -77,6 +78,7 @@ class AdminCommands {
 		protected DraftCards $drafts,
 		protected TournamentListing $listing,
 		protected ?PrivateGroups $groups = null,
+		protected ?CreateAccess $create_access = null,
 	) {
 	}
 
@@ -96,10 +98,13 @@ class AdminCommands {
 			if (in_array($command, self::OWNER, true) && !$ctx->is_owner) {
 				throw new PermissionDenied($command === 'level' ? AccessPolicy::LEVELS_OWNER_ONLY : AccessPolicy::OWNER_ONLY);
 			}
-			// /new: chat admins (domain re-checks the chosen group). Manage commands: author or owner only
-			// (AccessPolicy::assertCanManageTournament) — group admins have no special rights there.
-			if (in_array($command, self::CREATE, true) && !$ctx->is_admin) {
-				throw new PermissionDenied('Создавать турниры могут админы группы. Посмотреть турниры: /tournaments');
+			// /new: CreateAccess (shared group with owner, or ANYONE_CAN_CREATE). Manage: author|owner only.
+			if (in_array($command, self::CREATE, true)) {
+				if ($this->create_access !== null) {
+					$this->create_access->assertCanCreate($ctx->actor->id);
+				} elseif (!$ctx->is_admin && !$ctx->is_owner) {
+					throw new PermissionDenied(CreateAccess::REFUSAL);
+				}
 			}
 			$reply = $this->run($ctx, $command, $args);
 		} catch (NeedGroupChoice $e) {
@@ -127,7 +132,7 @@ class AdminCommands {
 			case 'help':
 			case 'start':
 				if ($ctx->isPrivate()) {
-					return Texts::help($this->bot->username, $ctx->is_admin, $ctx->is_owner);
+					return Texts::help($this->bot->username, $this->canCreate($ctx), $ctx->is_owner);
 				}
 				$this->reply_extra = DeepLink::button(
 					Messages::GROUP_REDIRECT_BUTTON,
@@ -158,7 +163,7 @@ class AdminCommands {
 			case 'cancel':
 				$t = $this->tournaments->cancel($ctx->actor->id, $this->target($ctx, $args)->id);
 				$this->announcer->refresh($t->id);
-				$this->announcer->renumber($t->chat_id, $t->id);
+				$this->announcer->renumber($t->id);
 				return sprintf('Турнир %s отменён. Жаль!', Html::b($t->title));
 			case 'level':
 				return $this->setLevel($ctx, $args);
@@ -173,7 +178,7 @@ class AdminCommands {
 			$groups = $this->groups->all();
 			$messages = $this->listing->privateMessages($groups, $ctx->actor->id, $ctx->is_owner);
 			if ($messages === []) {
-				return 'Сейчас активных турниров нет.' . ($ctx->is_admin ? ' Создать: /new 23.11 20:00 | Название | 3 | средний, средний, средний+ | 24 или просто напиши, какой турнир нужен.' : '');
+				return 'Сейчас активных турниров нет.' . ($this->canCreate($ctx) ? ' Создать: /new 23.11 20:00 | Название | 3 | средний, средний, средний+ | 24 или просто напиши, какой турнир нужен.' : '');
 			}
 			$this->reply_extra = TournamentListing::openButtons(
 				$this->listing->privateTournaments($groups, $ctx->actor->id, $ctx->is_owner),
@@ -184,7 +189,7 @@ class AdminCommands {
 		// The group list never shows drafts: drafts live in the organizer's private chat.
 		$messages = $this->listing->messages($ctx->groupId(), false);
 		if ($messages === []) {
-			return 'Сейчас активных турниров нет.' . ($ctx->is_admin ? ' Создать: /new 23.11 20:00 | Название | 3 | средний, средний, средний+ | 24' : '');
+			return 'Сейчас активных турниров нет.' . ($this->canCreate($ctx) ? ' Создать: /new 23.11 20:00 | Название | 3 | средний, средний, средний+ | 24' : '');
 		}
 		return $this->sendAllButLast($ctx, $messages);
 	}
@@ -225,9 +230,9 @@ class AdminCommands {
 		$reference = $parts[3];
 		$max_players = isset($parts[4]) && $parts[4] !== '' ? self::intArg($parts[4], 'лимит участников') : null;
 
-		$chat_id = $ctx->isPrivate() && $this->groups !== null
-			? $this->groups->forCreate($ctx->actor->id)
-			: $ctx->groupId();
+		$chat_id = $this->groups !== null
+			? $this->groups->originForCreate($ctx->actor->id)
+			: ($ctx->isPrivate() ? null : $ctx->groupId());
 		try {
 			$t = $this->tournaments->create(new CreateTournament(
 				$chat_id,
@@ -243,7 +248,7 @@ class AdminCommands {
 			throw new ValidationError($e->getMessage() . "\n\n" . Texts::levelUsage('new', null, $team_size));
 		}
 
-		$this->announcer->renumber($t->chat_id, $t->id);
+		$this->announcer->renumber($t->id);
 		$this->drafts->show($t->id, $ctx->chatId(), $ctx->message->message_id, $ctx->actor->id, [
 			['role' => 'user', 'content' => '/new ' . $args],
 		]);
@@ -327,7 +332,7 @@ class AdminCommands {
 				$edit->team_size ?? $t->team_size,
 			));
 		}
-		$this->announcer->renumber($t->chat_id, $t->id); // a new start time may change the order
+		$this->announcer->renumber($t->id); // a new start time may change the order
 		if ($t->status === TournamentStatus::DRAFT) {
 			$this->drafts->show($t->id, $ctx->chatId(), $ctx->message->message_id, $ctx->actor->id, [
 				['role' => 'user', 'content' => '/edit ' . $args],
@@ -466,5 +471,12 @@ class AdminCommands {
 			$parts[] = "$level — $name";
 		}
 		return implode(', ', $parts);
+	}
+
+	protected function canCreate(Context $ctx): bool {
+		if ($this->create_access !== null) {
+			return $this->create_access->canCreate($ctx->actor->id);
+		}
+		return $ctx->is_admin || $ctx->is_owner;
 	}
 }

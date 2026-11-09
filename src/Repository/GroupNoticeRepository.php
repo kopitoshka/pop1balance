@@ -10,7 +10,7 @@ use P1Bot\Support\DateFormat;
 use PDOException;
 
 /**
-	Which groups already got the «tournament in an hour» message (one per tournament and group).
+	Which groups already got a reminder for a tournament at a given offset (minutes before start).
 */
 class GroupNoticeRepository {
 
@@ -18,34 +18,44 @@ class GroupNoticeRepository {
 	}
 
 	/**
-		True the first time for (tournament, group), false afterwards: claim before sending.
+		True the first time for (tournament, group, minutes), false afterwards: claim before sending.
 	*/
-	public function claim(int $tournament_id, int $chat_id, DateTimeImmutable $now): bool {
+	public function claim(int $tournament_id, int $chat_id, DateTimeImmutable $now, int $minutes = 0): bool {
 		try {
 			$this->db->run(
-				'INSERT INTO group_notices (tournament_id, chat_id, created_at) VALUES (:t, :c, :n)',
-				['t' => $tournament_id, 'c' => $chat_id, 'n' => DateFormat::toDb($now)],
+				'INSERT INTO group_notices (tournament_id, chat_id, minutes, created_at) VALUES (:t, :c, :m, :n)',
+				[
+					't' => $tournament_id,
+					'c' => $chat_id,
+					'm' => $minutes,
+					'n' => DateFormat::toDb($now),
+				],
 			);
 			return true;
 		} catch (PDOException $e) {
-			return false; // primary key: already sent (or being sent by another cron run)
+			return false;
 		}
 	}
 
-	public function setResult(int $tournament_id, int $chat_id, string $result): void {
+	public function setResult(int $tournament_id, int $chat_id, string $result, int $minutes = 0): void {
 		$this->db->run(
-			'UPDATE group_notices SET result = :r WHERE tournament_id = :t AND chat_id = :c',
-			['r' => mb_substr($result, 0, 255), 't' => $tournament_id, 'c' => $chat_id],
+			'UPDATE group_notices SET result = :r WHERE tournament_id = :t AND chat_id = :c AND minutes = :m',
+			[
+				'r' => mb_substr($result, 0, 255),
+				't' => $tournament_id,
+				'c' => $chat_id,
+				'm' => $minutes,
+			],
 		);
 	}
 
 	/**
-		@return array<int, string> chat_id => result ('' while sending)
+		@return array<int, string> chat_id => result ('' while sending); ignores minutes distinction
 	*/
 	public function listForTournament(int $tournament_id): array {
 		$result = [];
 		foreach ($this->db->fetchAll(
-			'SELECT chat_id, result FROM group_notices WHERE tournament_id = :t ORDER BY chat_id',
+			'SELECT chat_id, result FROM group_notices WHERE tournament_id = :t ORDER BY chat_id, minutes',
 			['t' => $tournament_id],
 		) as $row) {
 			$result[(int) $row['chat_id']] = (string) ($row['result'] ?? '');

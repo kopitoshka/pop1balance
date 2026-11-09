@@ -14,7 +14,7 @@ class Tournament {
 
 	public function __construct(
 		public int $id,
-		public int $chat_id,
+		public ?int $chat_id,
 		public int $organizer_id,
 		public string $title,
 		public DateTimeImmutable $starts_at,
@@ -43,7 +43,7 @@ class Tournament {
 	public static function fromRow(array $row): self {
 		return new self(
 			(int) $row['id'],
-			(int) $row['chat_id'],
+			$row['chat_id'] === null ? null : (int) $row['chat_id'],
 			(int) $row['organizer_id'],
 			(string) $row['title'],
 			DateFormat::fromDb((string) $row['starts_at']),

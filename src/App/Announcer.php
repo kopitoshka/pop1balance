@@ -9,7 +9,9 @@ use P1Bot\Domain\Model\Player;
 use P1Bot\Domain\Model\Tournament;
 use P1Bot\Domain\TournamentService;
 use P1Bot\Domain\TournamentStatus;
+use P1Bot\Repository\ChatRepository;
 use P1Bot\Repository\PlayerRepository;
+use P1Bot\Repository\TournamentAnnouncementRepository;
 use P1Bot\Support\Logger;
 use P1Bot\Telegram\BotIdentity;
 use P1Bot\Telegram\TelegramApi;
@@ -19,7 +21,7 @@ use P1Bot\View\DeepLink;
 use Throwable;
 
 /**
-	Posts the tournament announcement and keeps it up to date.
+	Posts the tournament announcement into every active group and keeps those messages up to date.
 */
 class Announcer {
 	public const BUTTON = '💬 Записаться / вопросы в личке';
@@ -31,55 +33,90 @@ class Announcer {
 		protected BotIdentity $bot,
 		protected Logger $logger,
 		protected ?TournamentResolver $resolver = null,
+		protected ?ChatRepository $chats = null,
+		protected ?TournamentAnnouncementRepository $announcements = null,
 	) {
 	}
 
 	/**
-		Sets the short per-chat number users see (№1, №2, ...).
+		Sets the short number users see (№N = tournament id).
 	*/
 	public function number(Tournament $t): Tournament {
 		return $this->resolver !== null ? $this->resolver->number($t) : $t;
 	}
 
 	/**
-		After a tournament was created, published, finished or cancelled, re-render the other
-		announcements in the chat (status lines). Numbers are global ids and do not shift. Never throws.
+		After a tournament was created, published, finished or cancelled, re-render other active
+		announcements (status lines). Numbers are global ids and do not shift. Never throws.
 	*/
-	public function renumber(int $chat_id, ?int $except_id = null): void {
+	public function renumber(?int $except_id = null): void {
 		try {
-			foreach ($this->tournaments->listByStatus($chat_id, TournamentStatus::active()) as $t) {
-				if ($t->id !== $except_id && $t->announce_msg_id !== null) {
+			foreach ($this->tournaments->listAllActive() as $t) {
+				if ($t->id !== $except_id) {
 					$this->refresh($t->id);
 				}
 			}
 		} catch (Throwable $e) {
-			$this->logger->exception($e, 'renumber ' . $chat_id);
+			$this->logger->exception($e, 'renumber');
 		}
 	}
 
 	/**
-		Sends a new announcement and remembers its message id. Returns the message id.
+		Sends a new announcement into every active group and remembers message ids.
+		Returns the message id in the first group that accepted it (0 if none).
 	*/
 	public function publish(int $tournament_id): int {
 		$t = $this->tournaments->get($tournament_id);
-		$message_id = $this->api->sendMessage($t->chat_id, $this->text($t), null, $this->markup($t));
-		$this->tournaments->setAnnounceMessage($t->id, $message_id);
-		return $message_id;
+		$text = $this->text($t);
+		$markup = $this->markup($t);
+		$messages = [];
+		$primary = 0;
+		$groups = $this->chats !== null ? $this->chats->listActiveGroups() : [];
+		if ($groups === [] && $t->chat_id !== null) {
+			$groups = [$t->chat_id => ''];
+		}
+		foreach (array_keys($groups) as $chat_id) {
+			try {
+				$message_id = $this->api->sendMessage((int) $chat_id, $text, null, $markup);
+				$messages[(int) $chat_id] = $message_id;
+				if ($primary === 0) {
+					$primary = $message_id;
+				}
+			} catch (Throwable $e) {
+				$this->logger->exception($e, sprintf('publish %d to %d', $tournament_id, $chat_id));
+			}
+		}
+		if ($this->announcements !== null) {
+			$this->announcements->replaceAll($tournament_id, $messages);
+		}
+		if ($primary !== 0) {
+			$this->tournaments->setAnnounceMessage($t->id, $primary);
+		}
+		return $primary;
 	}
 
 	/**
-		Re-renders the announcement after any change. Never throws.
+		Re-renders every stored announcement after any change. Never throws.
 	*/
 	public function refresh(int $tournament_id): void {
 		try {
 			$t = $this->tournaments->get($tournament_id);
-			if ($t->announce_msg_id === null) {
+			$targets = $this->announcementTargets($t);
+			if ($targets === []) {
 				return;
 			}
-			$this->api->editMessageText($t->chat_id, $t->announce_msg_id, $this->text($t), $this->markup($t));
-		} catch (TelegramError $e) {
-			if (!$e->isNotModified()) {
-				$this->logger->exception($e, 'refresh announcement ' . $tournament_id);
+			$text = $this->text($t);
+			$markup = $this->markup($t);
+			foreach ($targets as $chat_id => $message_id) {
+				try {
+					$this->api->editMessageText($chat_id, $message_id, $text, $markup);
+				} catch (TelegramError $e) {
+					if (!$e->isNotModified()) {
+						$this->logger->exception($e, sprintf('refresh announcement %d in %d', $tournament_id, $chat_id));
+					}
+				} catch (Throwable $e) {
+					$this->logger->exception($e, sprintf('refresh announcement %d in %d', $tournament_id, $chat_id));
+				}
 			}
 		} catch (Throwable $e) {
 			$this->logger->exception($e, 'refresh announcement ' . $tournament_id);
@@ -126,8 +163,23 @@ class Announcer {
 		if (!in_array($t->status, TournamentStatus::active(), true)) {
 			return ['reply_markup' => ['inline_keyboard' => []]];
 		}
-		// Everything happens in private: a single URL button with a deep link to this tournament.
 		return DeepLink::button(self::BUTTON, DeepLink::tournament($this->bot->username, $t->id));
+	}
+
+	/**
+		@return array<int, int> chat_id => message_id
+	*/
+	protected function announcementTargets(Tournament $t): array {
+		if ($this->announcements !== null) {
+			$stored = $this->announcements->listForTournament($t->id);
+			if ($stored !== []) {
+				return $stored;
+			}
+		}
+		if ($t->announce_msg_id !== null && $t->chat_id !== null) {
+			return [$t->chat_id => $t->announce_msg_id];
+		}
+		return [];
 	}
 
 	protected function view(Tournament $t, Lineup $lineup): AnnouncementView {

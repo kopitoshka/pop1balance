@@ -58,13 +58,23 @@ class AccessPolicy {
 	}
 
 	/**
-		Who may create a tournament in a group: chat admins (and the owner), unless
-		ANYONE_CAN_CREATE_TOURNAMENT is on — then any player.
+		Legacy helper: ANYONE_CAN_CREATE_TOURNAMENT=1 or the bot owner.
+		Real create gate is CreateAccess (shared active group with the owner); handlers use that.
+		@param int $chat_id unused (kept for call-site compatibility)
 	*/
 	public function assertCanCreateTournament(int $chat_id, int $player_id): void {
-		if (!$this->anyone_can_create_tournament) {
-			$this->assertChatAdmin($chat_id, $player_id);
+		unset($chat_id);
+		if ($this->anyone_can_create_tournament || $this->isOwner($player_id)) {
+			return;
 		}
+		throw new PermissionDenied(
+			'Создавать турниры могут только участники групп, где есть организатор P1. '
+			. 'Записаться на турнир при этом можно 🙂',
+		);
+	}
+
+	public function anyoneCanCreateTournament(): bool {
+		return $this->anyone_can_create_tournament;
 	}
 
 	/**

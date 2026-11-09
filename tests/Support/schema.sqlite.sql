@@ -46,7 +46,7 @@ CREATE TABLE balance_ratings (
 
 CREATE TABLE tournaments (
 	id              INTEGER PRIMARY KEY AUTOINCREMENT,
-	chat_id         INTEGER NOT NULL REFERENCES chats(id),
+	chat_id         INTEGER NULL REFERENCES chats(id),
 	organizer_id    INTEGER NOT NULL REFERENCES players(id),
 	title           TEXT NOT NULL,
 	starts_at       TEXT NOT NULL,
@@ -116,7 +116,15 @@ CREATE TABLE edited_replies (
 CREATE TABLE group_notices (
 	tournament_id  INTEGER NOT NULL REFERENCES tournaments (id) ON DELETE CASCADE,
 	chat_id        INTEGER NOT NULL,
+	minutes        INTEGER NOT NULL DEFAULT 0,
 	created_at     TEXT NOT NULL,
 	result         TEXT NULL,
+	PRIMARY KEY (tournament_id, chat_id, minutes)
+);
+
+CREATE TABLE tournament_announcements (
+	tournament_id  INTEGER NOT NULL REFERENCES tournaments (id) ON DELETE CASCADE,
+	chat_id        INTEGER NOT NULL,
+	message_id     INTEGER NOT NULL,
 	PRIMARY KEY (tournament_id, chat_id)
 );

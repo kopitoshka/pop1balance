@@ -49,7 +49,7 @@ class TournamentService {
 		Creates a draft tournament; the author becomes the organizer.
 	*/
 	public function create(CreateTournament $input): Tournament {
-		$this->access->assertCanCreateTournament($input->chat_id, $input->organizer_id);
+		// Create permission is enforced by CreateAccess in handlers (shared group with owner).
 		if ($input->balance_id !== null) {
 			// Picking a scale is owner only for now; others always get the default scale.
 			$this->access->assertOwner($input->organizer_id);
@@ -332,10 +332,27 @@ class TournamentService {
 	}
 
 	/**
-		@return list<Tournament> registration / closed / running, soonest first
+		@return list<Tournament> registration / closed / running, soonest first (global)
+	*/
+	public function listAllActive(): array {
+		return $this->tournaments->listByStatuses(TournamentStatus::active());
+	}
+
+	/**
+		@param list<string> $statuses
+		@return list<Tournament>
+	*/
+	public function listAllByStatus(array $statuses): array {
+		return $this->tournaments->listByStatuses($statuses);
+	}
+
+	/**
+		Kept for callers that still pass a chat; tournaments are global so this equals listAllActive.
+		@return list<Tournament>
 	*/
 	public function listActive(int $chat_id): array {
-		return $this->tournaments->listByChat($chat_id, TournamentStatus::active());
+		unset($chat_id);
+		return $this->listAllActive();
 	}
 
 	/**
@@ -343,7 +360,8 @@ class TournamentService {
 		@return list<Tournament>
 	*/
 	public function listByStatus(int $chat_id, array $statuses): array {
-		return $this->tournaments->listByChat($chat_id, $statuses);
+		unset($chat_id);
+		return $this->listAllByStatus($statuses);
 	}
 
 	public function lineup(int $tournament_id): Lineup {

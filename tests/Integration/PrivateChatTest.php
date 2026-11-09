@@ -134,13 +134,15 @@ class PrivateChatTest extends IntegrationTestCase {
 
 	public function testHelpAndLevels(): void {
 		$vasya = $this->player('vasya');
+		$this->withoutSharedOwnerGroup($vasya);
 		$reply = $this->say($vasya, '/help');
 		self::assertStringContainsString('Пиши мне обычным языком', $reply);
-		self::assertStringNotContainsString('Для админов', $reply);
+		self::assertStringNotContainsString('Создание турниров', $reply);
 		self::assertStringNotContainsString('/level @', $reply);
 		self::assertStringNotContainsString('/group', $reply);
+		$this->everyoneIsGroupMember();
 		$admin_help = $this->say($this->admin, '/help');
-		self::assertStringContainsString('Для админов группы', $admin_help);
+		self::assertStringContainsString('Создание турниров', $admin_help);
 		self::assertStringContainsString('только его автор и главный админ', $admin_help);
 		self::assertStringNotContainsString('Только для главного админа', $admin_help);
 		$owner_help = $this->say($this->owner, '/help');
@@ -187,8 +189,7 @@ class PrivateChatTest extends IntegrationTestCase {
 		$this->app->tournaments->openRegistration($this->owner->id, $t->id); // id 2
 
 		$reply = $this->say($vasya, '/tournaments');
-		self::assertStringContainsString('👥 Группа <b>P1 турниры</b>', $reply);
-		self::assertStringContainsString('👥 Группа <b>Вторая группа</b>', $reply);
+		self::assertStringNotContainsString('👥 Группа', $reply, 'global list: no per-group headers');
 		self::assertStringContainsString('· №1', $reply);
 		self::assertStringContainsString('· №2', $reply);
 
@@ -239,48 +240,35 @@ class PrivateChatTest extends IntegrationTestCase {
 		$sent = $this->http->sent('sendMessage');
 		self::assertSame(self::CHAT_ID, $sent[0]['chat_id']);
 		self::assertSame('💬 Записаться / вопросы в личке', $sent[0]['reply_markup']['inline_keyboard'][0][0]['text']);
-		self::assertStringContainsString('Опубликовала! Анонс уже в группе <b>P1 турниры</b>', end($sent)['text']);
+		self::assertStringContainsString('Опубликовала! Анонс уже во всех группах', end($sent)['text']);
 		self::assertStringContainsString('private: card reply', $this->log->text());
 	}
 
-	public function testCreationAsksForTheGroupWhenAdminOfSeveral(): void {
+	public function testCreationIsGlobalWithoutGroupPicker(): void {
 		$this->app->chats->ensure(self::SECOND_CHAT, 'Вторая группа');
 		$reply = $this->say($this->owner, '/new 23.11 20:00 | Кубок | 2 | 3,4');
-		self::assertStringContainsString('В какой группе создаём турнир', $reply);
-		self::assertSame(['grp:' . self::CHAT_ID, 'grp:' . self::SECOND_CHAT], $this->lastButtons());
-		self::assertNull($this->app->tournament_repo->find(1));
-
-		$this->dispatch($this->press($this->owner, 'grp:' . self::SECOND_CHAT));
-		$this->say($this->owner, '/new 23.11 20:00 | Кубок | 2 | 3,4');
-		self::assertSame(self::SECOND_CHAT, $this->app->tournament_repo->find(1)->chat_id);
+		self::assertStringContainsString('Публикуем', $reply);
+		self::assertSame(['pub:1', 'fix:1'], $this->lastButtons());
+		$t = $this->app->tournament_repo->find(1);
+		self::assertNotNull($t);
+		self::assertContains($t->chat_id, [self::CHAT_ID, self::SECOND_CHAT]);
 	}
 
-	public function testOnlyAdminGroupIsUsedForCreation(): void {
-		// admin2 is an admin of the main group only: the second group is not offered.
-		$this->app->chats->ensure(self::SECOND_CHAT, 'Вторая группа');
-		$this->http->onTelegram('getChatAdministrators', function (array $json): array {
-			$admins = $json['chat_id'] === self::CHAT_ID
-				? [[
-					'status' => 'administrator',
-					'user' => ['id' => $this->tgIdOf($this->admin), 'is_bot' => false, 'first_name' => 'A'],
-				]]
-				: [];
-			return ['ok' => true, 'result' => $admins];
-		});
+	public function testCreateRequiresSharedGroupWithOwner(): void {
 		self::assertStringContainsString('Публикуем', $this->say($this->admin, '/new 23.11 20:00 | Кубок | 2 | 3,4'));
-		self::assertSame(self::CHAT_ID, $this->app->tournament_repo->find(1)->chat_id);
+		self::assertNotNull($this->app->tournament_repo->find(1));
 
 		$vasya = $this->player('vasya');
+		$this->withoutSharedOwnerGroup($vasya);
 		self::assertStringContainsString(
-			'админы группы',
+			'организатор P1',
 			$this->say($vasya, '/new 23.11 20:00 | Кубок | 2 | 3,4'),
 		);
+		self::assertStringContainsString('Записаться на турнир при этом можно', $this->http->lastText());
 	}
 
-	public function testAiCreationAsksForTheGroupWithButtons(): void {
+	public function testAiCreationIsGlobalWithoutGroupPicker(): void {
 		$this->app->chats->ensure(self::SECOND_CHAT, 'Вторая группа');
-		$this->dispatch($this->press($this->owner, 'grp:' . self::CHAT_ID));
-		// The owner may create in both groups; the current one is used without asking.
 		$this->http->queueOpenAi($this->functionCall('create_tournament', [
 			'title' => 'Кубок',
 			'starts_at_msk' => '23.11 20:00',
@@ -289,56 +277,20 @@ class PrivateChatTest extends IntegrationTestCase {
 		]));
 		$card = $this->say($this->owner, 'создай кубок 23.11 в 20, двойки, уровень 7');
 		self::assertStringContainsString('Публикуем или что-то поправить?', $card);
-		self::assertSame(self::CHAT_ID, $this->app->tournament_repo->find(1)->chat_id);
-		self::assertStringContainsString(
-			'Номера турниров общие для всех групп',
-			$this->aiRequests()[0]['json']['input'][0]['content'],
-		);
+		self::assertNotNull($this->app->tournament_repo->find(1));
+		self::assertSame(['pub:1', 'fix:1'], $this->lastButtons());
 	}
 
-	public function testAiCreationWithoutCurrentGroupShowsGroupButtons(): void {
-		$this->app->chats->ensure(self::SECOND_CHAT, 'Вторая группа');
-		// Free text always goes to the AI; create_tournament without a creatable current group asks with buttons.
-		$this->http->queueOpenAi($this->functionCall('create_tournament', [
-			'title' => 'Кубок',
-			'starts_at_msk' => '23.11 20:00',
-			'team_size' => 2,
-			'level' => '7',
-		]));
-		$this->http->queueOpenAi($this->text('Выбери группу, пожалуйста.'));
-		$reply = $this->say($this->owner, 'создай кубок');
-		self::assertSame('Выбери группу, пожалуйста.', $reply);
-		self::assertSame(['grp:' . self::CHAT_ID, 'grp:' . self::SECOND_CHAT], $this->lastButtons());
-		self::assertNull($this->app->tournament_repo->find(1));
-
-		// The current group is one where he is not an admin: creation offers the groups he can use.
-		$third = -100333;
-		$this->app->chats->ensure($third, 'Третья группа');
-		$this->http->onTelegram('getChatAdministrators', function (array $json) use ($third): array {
-			$admins = $json['chat_id'] === $third
-				? []
-				: [[
-					'status' => 'administrator',
-					'user' => ['id' => $this->tgIdOf($this->admin), 'is_bot' => false, 'first_name' => 'A'],
-				]];
-			return ['ok' => true, 'result' => $admins];
-		});
-		$this->app->players->setDmGroup($this->admin->id, $third);
-		$this->http->queueOpenAi($this->functionCall('create_tournament', [
-			'title' => 'Кубок',
-			'starts_at_msk' => '23.11 20:00',
-			'team_size' => 2,
-			'level' => '7',
-		]));
-		$this->http->queueOpenAi($this->text('Выбери группу, пожалуйста.'));
-		$reply = $this->say($this->admin, 'создай кубок 23.11 в 20, двойки, уровень 7');
-		self::assertSame('Выбери группу, пожалуйста.', $reply);
-		self::assertSame(['grp:' . self::CHAT_ID, 'grp:' . self::SECOND_CHAT], $this->lastButtons());
+	public function testAiCreationRefusesWithoutSharedOwnerGroup(): void {
+		$vasya = $this->player('vasya');
+		$this->withoutSharedOwnerGroup($vasya);
+		self::assertStringContainsString('организатор P1', $this->say($vasya, '/new 23.11 20:00 | Кубок | 2 | 3,4'));
 		self::assertNull($this->app->tournament_repo->find(1));
 	}
 
 	public function testFreeTextGoesToAiWithAllToolsAndMemory(): void {
 		$vasya = $this->player('vasya');
+		$this->ownerAbsentFromGroups();
 		$t = $this->openTournament(3);
 		$this->http->queueOpenAi($this->text('На какой турнир записать?'));
 		self::assertSame('На какой турнир записать?', $this->say($vasya, 'хочу поиграть соло'));
@@ -403,7 +355,7 @@ class PrivateChatTest extends IntegrationTestCase {
 		$this->say($stranger, 'запиши соло');
 		self::assertSame(0, $this->app->tournaments->lineup(1)->occupied());
 		$requests = $this->aiRequests();
-		self::assertStringContainsString('только участникам группы', $requests[1]['json']['input'][0]['output']);
+		self::assertStringContainsString('участникам групп, где я есть', $requests[1]['json']['input'][0]['output']);
 	}
 
 	public function testUnknownCommandAndEditedMessage(): void {

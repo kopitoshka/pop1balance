@@ -138,10 +138,11 @@ class TournamentServiceTest extends IntegrationTestCase {
 		}
 	}
 
-	public function testOnlyAdminsCreateByDefault(): void {
+	public function testOnlySharedOwnerGroupMayCreate(): void {
 		$vasya = $this->player('vasya');
+		$this->withoutSharedOwnerGroup($vasya);
 		$this->expectException(PermissionDenied::class);
-		$this->app->tournaments->create(new CreateTournament(self::CHAT_ID, $vasya->id, 'X', '2026-11-14 19:00', 3));
+		$this->app->create_access->assertCanCreate($vasya->id);
 	}
 
 	public function testStatusFlowAndPermissions(): void {

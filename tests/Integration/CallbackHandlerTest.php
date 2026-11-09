@@ -159,7 +159,7 @@ class CallbackHandlerTest extends IntegrationTestCase {
 		self::assertSame(self::CHAT_ID, $sent[0]['chat_id'], 'the announcement goes to the group');
 		self::assertSame('https://t.me/pop1_bot?start=t_1', $sent[0]['reply_markup']['inline_keyboard'][0][0]['url']);
 		self::assertSame(self::OWNER_TG_ID, end($sent)['chat_id']);
-		self::assertStringContainsString('в группе <b>P1 турниры</b>', end($sent)['text']);
+		self::assertStringContainsString('во всех группах', end($sent)['text']);
 		$edits = $this->http->sent('editMessageText');
 		self::assertSame(self::OWNER_TG_ID, end($edits)['chat_id'], 'the private card is edited');
 		self::assertSame([], end($edits)['reply_markup']['inline_keyboard'], 'card buttons removed');

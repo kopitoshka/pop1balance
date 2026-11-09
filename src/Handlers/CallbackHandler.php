@@ -177,7 +177,9 @@ class CallbackHandler {
 
 	protected function open(CallbackQuery $query, Player $player, Tournament $t): void {
 		if ($this->groups !== null) {
+			if ($t->chat_id !== null) {
 			$this->groups->choose($player->id, $t->chat_id);
+		}
 		}
 		$this->api->answerCallbackQuery($query->id);
 		if ($t->status === TournamentStatus::DRAFT) {
@@ -214,7 +216,9 @@ class CallbackHandler {
 			return;
 		}
 		if ($this->groups !== null) {
+			if ($t->chat_id !== null) {
 			$this->groups->choose($player->id, $t->chat_id);
+		}
 		}
 		$number = (int) $this->announcer->number($t)->number;
 		$others = $t->team_size - 1;
@@ -269,13 +273,14 @@ class CallbackHandler {
 	}
 
 	protected function assertMember(Tournament $t, Player $player): void {
+		unset($t);
 		if ($this->groups !== null) {
-			$this->groups->assertMember($t->chat_id, $player->tg_user_id);
+			$this->groups->assertInAnyGroup($player->tg_user_id);
 		}
 	}
 
 	protected function publishedText(Tournament $t): string {
-		$where = $this->groups !== null ? ' в группе ' . Html::b($this->groups->title($t->chat_id)) : ' в группе';
-		return 'Опубликовала! Анонс уже' . $where . ', регистрация открыта 🎉';
+		unset($t);
+		return 'Опубликовала! Анонс уже во всех группах, регистрация открыта 🎉';
 	}
 }
