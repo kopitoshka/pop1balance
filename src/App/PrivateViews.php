@@ -101,10 +101,25 @@ class PrivateViews {
 		if (
 			$can_manage
 			&& in_array($t->status, [TournamentStatus::REGISTRATION, TournamentStatus::CLOSED], true)
+			&& !self::hasCallback($rows, 'oteams:' . $t->id)
 		) {
 			$rows[] = [['text' => '👥 Команды', 'callback_data' => 'oteams:' . $t->id]];
 		}
 		return $rows;
+	}
+
+	/**
+		@param list<list<array<string, string>>> $rows
+	*/
+	protected static function hasCallback(array $rows, string $callback_data): bool {
+		foreach ($rows as $row) {
+			foreach ($row as $btn) {
+				if (($btn['callback_data'] ?? null) === $callback_data) {
+					return true;
+				}
+			}
+		}
+		return false;
 	}
 
 	/**

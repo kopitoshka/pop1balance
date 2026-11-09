@@ -25,6 +25,21 @@ class OrganizerTeamsTest extends IntegrationTestCase {
 		return $out;
 	}
 
+
+	public function testNoDuplicateOteamsWhenOrganizerOnTeam(): void {
+		$t = $this->openTournament(3);
+		$mate = $this->player('mate_org');
+		$this->rate($this->owner, 3);
+		$this->rate($mate, 3);
+		$entry = $this->app->teams->createTeam($t->id, $this->owner->id, 'Owners', [$mate->id]);
+		$this->dispatch($this->press($this->owner, 'popen:' . $t->id));
+		$callbacks = $this->allCallbacks();
+		$oteams = array_values(array_filter($callbacks, static fn ($c) => $c === 'oteams:' . $t->id));
+		self::assertCount(1, $oteams, 'one oteams button, not Команды + К списку команд');
+		self::assertContains('oteams:' . $t->id, $callbacks);
+		self::assertContains('padd:' . $entry->team->id, $callbacks);
+	}
+
 	public function testTournamentCardShowsTeamsButtonForOrganizer(): void {
 		$t = $this->openTournament(3);
 		$this->dispatch($this->press($this->owner, 'popen:' . $t->id));
