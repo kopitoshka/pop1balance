@@ -84,16 +84,16 @@ class TeamService {
 			$breakdown = [];
 			foreach ($roster as $player_id) {
 				$this->assertFreeForTeam($tournament, $player_id, null);
-				[$level, $row] = $this->playerLevelRow($tournament, $player_id);
+				[$level, $row] = $this->playerLevelRow($player_id);
 				$levels[$player_id] = $level;
 				$breakdown[] = $row;
 			}
 			$this->assertWithinLimit($tournament, array_sum($levels), $breakdown);
 
 			$team = $this->teams->create($tournament->id, $captain_id, $name, $this->clock->now());
-			foreach ($levels as $player_id => $level) {
+			foreach (array_keys($levels) as $player_id) {
 				$this->solos->remove($tournament->id, $player_id);
-				$this->teams->addMember($team, $player_id, $level, $this->clock->now());
+				$this->teams->addMember($team, $player_id, $this->clock->now());
 			}
 			$this->syncStatus($team, $tournament);
 			return $this->get($team->id);
@@ -113,13 +113,13 @@ class TeamService {
 				));
 			}
 			$this->assertFreeForTeam($tournament, $player_id, $team->id);
-			[$level, $row] = $this->playerLevelRow($tournament, $player_id);
+			[$level, $row] = $this->playerLevelRow($player_id);
 			$breakdown = $this->membersBreakdown($members);
 			$breakdown[] = $row;
-			$this->assertWithinLimit($tournament, self::points($members) + $level, $breakdown);
+			$this->assertWithinLimit($tournament, $this->pointsOfMembers($members) + $level, $breakdown);
 
 			$this->solos->remove($tournament->id, $player_id);
-			$this->teams->addMember($team, $player_id, $level, $this->clock->now());
+			$this->teams->addMember($team, $player_id, $this->clock->now());
 			$this->syncStatus($team, $tournament);
 			return $this->get($team->id);
 		});
@@ -162,14 +162,14 @@ class TeamService {
 				$this->teams->members($team->id),
 				static fn (TeamMember $m): bool => $m->player_id !== $out_player_id,
 			);
-			[$level, $row] = $this->playerLevelRow($tournament, $in_player_id);
+			[$level, $row] = $this->playerLevelRow($in_player_id);
 			$breakdown = $this->membersBreakdown(array_values($members));
 			$breakdown[] = $row;
-			$this->assertWithinLimit($tournament, self::points(array_values($members)) + $level, $breakdown);
+			$this->assertWithinLimit($tournament, $this->pointsOfMembers(array_values($members)) + $level, $breakdown);
 
 			$this->teams->removeMember($team->id, $out_player_id);
 			$this->solos->remove($tournament->id, $in_player_id);
-			$this->teams->addMember($team, $in_player_id, $level, $this->clock->now());
+			$this->teams->addMember($team, $in_player_id, $this->clock->now());
 			return $this->get($team->id);
 		});
 	}
@@ -256,9 +256,7 @@ class TeamService {
 			if ($this->solos->find($tournament->id, $player_id) !== null) {
 				throw new ValidationError('Ты уже записан соло на этот турнир.');
 			}
-			$scale_id = $this->balance->viewScaleId() ?? $tournament->balance_id;
-			$level = $this->balance->levelOf($scale_id, $player_id);
-			$this->solos->add($tournament->id, $player_id, $level, $this->clock->now());
+			$this->solos->add($tournament->id, $player_id, $this->clock->now());
 		});
 	}
 
@@ -383,18 +381,39 @@ class TeamService {
 	}
 
 	/**
-		Level for enrollment: same scale as /level (default / view scale), so the numbers match.
-		Falls back to tournament.balance_id only when no default scale exists yet.
+		Live profile level (same source as /level): default/view scale, unset = Levels::DEFAULT.
 
 		@return array{0: int, 1: array{label: string, level: int, explicit: bool}}
 	*/
-	protected function playerLevelRow(Tournament $tournament, int $player_id): array {
-		$scale_id = $this->balance->viewScaleId() ?? $tournament->balance_id;
+	protected function playerLevelRow(int $player_id): array {
+		$scale_id = $this->balance->viewScaleId();
 		$explicit = $this->balance->explicitLevel($scale_id, $player_id);
-		$level = $explicit ?? \P1Bot\Domain\Levels::DEFAULT;
+		$level = $explicit ?? Levels::DEFAULT;
 		$player = $this->players->find($player_id);
 		$label = $player !== null ? $player->plainLabel() : ('#' . $player_id);
 		return [$level, ['label' => $label, 'level' => $level, 'explicit' => $explicit !== null]];
+	}
+
+	public function liveLevel(int $player_id): int {
+		return $this->playerLevelRow($player_id)[0];
+	}
+
+	/**
+		Team points from live profile ratings (not a stored snapshot).
+	*/
+	public function pointsOf(TeamEntry $entry): int {
+		return $this->pointsOfMembers($entry->members);
+	}
+
+	/**
+		@param list<TeamMember> $members
+	*/
+	protected function pointsOfMembers(array $members): int {
+		$sum = 0;
+		foreach ($members as $member) {
+			$sum += $this->liveLevel($member->player_id);
+		}
+		return $sum;
 	}
 
 	/**
@@ -402,19 +421,10 @@ class TeamService {
 		@return list<array{label: string, level: int, explicit: bool}>
 	*/
 	protected function membersBreakdown(array $members): array {
-		$scale_id = $this->balance->viewScaleId();
 		$rows = [];
 		foreach ($members as $member) {
-			$player = $this->players->find($member->player_id);
-			$label = $player !== null ? $player->plainLabel() : ('#' . $member->player_id);
-			$explicit = $scale_id !== null
-				? $this->balance->explicitLevel($scale_id, $member->player_id)
-				: null;
-			$rows[] = [
-				'label' => $label,
-				'level' => $member->level_snapshot,
-				'explicit' => $explicit !== null,
-			];
+			[, $row] = $this->playerLevelRow($member->player_id);
+			$rows[] = $row;
 		}
 		return $rows;
 	}
@@ -449,10 +459,4 @@ class TeamService {
 		}
 	}
 
-	/**
-		@param list<TeamMember> $members
-	*/
-	protected static function points(array $members): int {
-		return array_sum(array_map(static fn (TeamMember $m): int => $m->level_snapshot, $members));
-	}
 }

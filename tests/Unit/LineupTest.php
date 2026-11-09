@@ -66,12 +66,12 @@ class LineupTest extends TestCase {
 		$team = new Team($id, 1, $this->next_player, "Team $id", $status, $now, $now);
 		$members = [];
 		for ($i = 0; $i < $size; $i++) {
-			$members[] = new TeamMember($id, 1, $this->next_player++, 3);
+			$members[] = new TeamMember($id, 1, $this->next_player++);
 		}
 		return new TeamEntry($team, $members);
 	}
 
 	protected function solo(): SoloPlayer {
-		return new SoloPlayer(1, $this->next_player++, 3, new DateTimeImmutable('2026-11-09 12:00:00'));
+		return new SoloPlayer(1, $this->next_player++, new DateTimeImmutable('2026-11-09 12:00:00'));
 	}
 }

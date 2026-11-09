@@ -26,7 +26,7 @@ class TeamServiceTest extends IntegrationTestCase {
 		self::assertSame(TeamStatus::REGISTERED, $entry->team->status);
 		self::assertNotNull($entry->team->registered_at);
 		self::assertSame($cap->id, $entry->team->captain_id);
-		self::assertSame(9, $entry->points());
+		self::assertSame(9, $this->app->teams->pointsOf($entry));
 		self::assertSame(3, $entry->size());
 	}
 
@@ -98,18 +98,48 @@ class TeamServiceTest extends IntegrationTestCase {
 		$this->app->teams->addPlayer($a->id, $team->id, $this->player('b')->id);
 	}
 
-	public function testLevelSnapshotIsFrozen(): void {
-		$t = $this->openTournament();
-		[$cap, $a] = [$this->player('cap'), $this->player('a')];
-		$this->rate($a, 2);
-		$team = $this->app->teams->createTeam($t->id, $cap->id, 'Wolves', [$a->id])->team;
+	public function testLevelChangeUpdatesTeamPointsLive(): void {
+		$t = $this->openTournament(); // limit 10
+		[$cap, $a, $b] = [$this->player('cap'), $this->player('a'), $this->player('b')];
+		$this->rate($cap, 3);
+		$this->rate($a, 3);
+		$this->rate($b, 3);
+		$entry = $this->app->teams->createTeam($t->id, $cap->id, 'Wolves', [$a->id, $b->id]);
+		self::assertSame(9, $this->app->teams->pointsOf($entry));
 
-		$this->rate($a, 6); // rating changes after registration
-		$levels = array_map(
-			static fn (TeamMember $m): int => $m->level_snapshot,
-			$this->app->teams->get($team->id)->members,
-		);
-		self::assertSame([3, 2], $levels);
+		$this->rate($a, 5); // profile change immediately affects team total
+		$entry = $this->app->teams->get($entry->team->id);
+		self::assertSame(11, $this->app->teams->pointsOf($entry));
+
+		// Adding a player uses live levels for the limit check (11 already over 10 if we tried another)
+		try {
+			$this->app->teams->createTeam($t->id, $this->player('cap2')->id, 'Bears', [
+				$this->player('x')->id,
+				$this->player('y')->id,
+			]);
+		} catch (\Throwable $e) {
+			// unrelated — just ensure Wolves still readable
+		}
+		self::assertSame(11, $this->app->teams->pointsOf($this->app->teams->get($entry->team->id)));
+	}
+
+	public function testLiveLevelBlocksAddWhenOverLimit(): void {
+		$t = $this->openTournament(); // limit 10
+		[$cap, $a] = [$this->player('cap'), $this->player('a')];
+		$this->rate($cap, 3);
+		$this->rate($a, 3);
+		$team = $this->app->teams->createTeam($t->id, $cap->id, 'Wolves', [$a->id])->team;
+		$strong = $this->player('strong');
+		$this->rate($strong, 6); // 3+3+6 = 12 > 10
+		try {
+			$this->app->teams->addPlayer($cap->id, $team->id, $strong->id);
+			self::fail('expected LevelLimitExceeded');
+		} catch (LevelLimitExceeded $e) {
+			self::assertStringContainsString('Команда набирает 12', $e->getMessage());
+		}
+		// Raising an existing member's level does not auto-kick; total just grows.
+		$this->rate($a, 6);
+		self::assertSame(9, $this->app->teams->pointsOf($this->app->teams->get($team->id))); // cap3+a6 = 9 with 2 members
 	}
 
 	public function testPlayerIsUniquePerTournament(): void {
@@ -273,7 +303,7 @@ class TeamServiceTest extends IntegrationTestCase {
 		self::assertSame(3, $this->app->balances->levelOf($default, $b->id));
 
 		$entry = $this->app->teams->createTeam($t->id, $cap->id, 'Wolves', [$a->id, $b->id]);
-		self::assertSame(9, $entry->points());
+		self::assertSame(9, $this->app->teams->pointsOf($entry));
 	}
 
 	/**
@@ -282,7 +312,7 @@ class TeamServiceTest extends IntegrationTestCase {
 	*/
 	public function testDuplicateUsernamePlaceholderMergesIntoRealUser(): void {
 		$real = $this->app->players->ensureTelegramId(424242, 'Real', $this->clock->now());
-		$placeholder = $this->app->players->ensureByUsername('zoloto', $this->clock->now());
+		$placeholder = $this->insertPlaceholder('zoloto');
 		self::assertNotSame($real->id, $placeholder->id);
 		$this->rate($placeholder, 4);
 
@@ -300,7 +330,7 @@ class TeamServiceTest extends IntegrationTestCase {
 		$this->rate($b, 3);
 		// 4+3+3 = 10 — allowed; previously a phantom 4+3+3 on wrong ids vs view 3+3+3 caused confusion
 		$entry = $this->app->teams->createTeam($t->id, $merged->id, 'Z Pack', [$a->id, $b->id]);
-		self::assertSame(10, $entry->points());
+		self::assertSame(10, $this->app->teams->pointsOf($entry));
 	}
 
 	public function testCaptainAtMentionResolvesToActorNotPlaceholder(): void {

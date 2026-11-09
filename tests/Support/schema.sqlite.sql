@@ -92,7 +92,6 @@ CREATE TABLE team_members (
 	team_id         INTEGER NOT NULL,
 	tournament_id   INTEGER NOT NULL,
 	player_id       INTEGER NOT NULL REFERENCES players(id),
-	level_snapshot  INTEGER NOT NULL CHECK (level_snapshot BETWEEN 1 AND 6),
 	joined_at       TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
 	PRIMARY KEY (team_id, player_id),
 	UNIQUE (tournament_id, player_id),
@@ -102,7 +101,6 @@ CREATE TABLE team_members (
 CREATE TABLE solo_players (
 	tournament_id   INTEGER NOT NULL REFERENCES tournaments(id) ON DELETE CASCADE,
 	player_id       INTEGER NOT NULL REFERENCES players(id),
-	level_snapshot  INTEGER NOT NULL CHECK (level_snapshot BETWEEN 1 AND 6),
 	created_at      TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
 	PRIMARY KEY (tournament_id, player_id)
 );

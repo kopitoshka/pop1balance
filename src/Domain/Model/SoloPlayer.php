@@ -12,7 +12,6 @@ class SoloPlayer {
 	public function __construct(
 		public int $tournament_id,
 		public int $player_id,
-		public int $level_snapshot,
 		public DateTimeImmutable $created_at,
 	) {
 	}
@@ -24,7 +23,6 @@ class SoloPlayer {
 		return new self(
 			(int) $row['tournament_id'],
 			(int) $row['player_id'],
-			(int) $row['level_snapshot'],
 			DateFormat::fromDb((string) $row['created_at']),
 		);
 	}

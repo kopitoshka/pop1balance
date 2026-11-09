@@ -6,6 +6,7 @@ namespace P1Bot\Domain\Model;
 
 /**
 	A registered team together with its roster, as used in the lineup.
+	Points are computed live from player profiles via TeamService::pointsOf().
 */
 class TeamEntry {
 
@@ -20,9 +21,5 @@ class TeamEntry {
 
 	public function size(): int {
 		return count($this->members);
-	}
-
-	public function points(): int {
-		return array_sum(array_map(static fn (TeamMember $m): int => $m->level_snapshot, $this->members));
 	}
 }

@@ -105,14 +105,13 @@ class TeamRepository {
 		return (int) $this->db->fetchValue('SELECT COUNT(*) FROM team_members WHERE team_id = :id', ['id' => $team_id]);
 	}
 
-	public function addMember(Team $team, int $player_id, int $level_snapshot, DateTimeImmutable $now): void {
+	public function addMember(Team $team, int $player_id, DateTimeImmutable $now): void {
 		$this->db->run(
-			'INSERT INTO team_members (team_id, tournament_id, player_id, level_snapshot, joined_at) VALUES (:team, :t, :p, :l, :j)',
+			'INSERT INTO team_members (team_id, tournament_id, player_id, joined_at) VALUES (:team, :t, :p, :j)',
 			[
 				'team' => $team->id,
 				't' => $team->tournament_id,
 				'p' => $player_id,
-				'l' => $level_snapshot,
 				'j' => DateFormat::toDb($now),
 			],
 		);

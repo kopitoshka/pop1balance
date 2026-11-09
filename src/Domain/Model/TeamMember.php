@@ -10,7 +10,6 @@ class TeamMember {
 		public int $team_id,
 		public int $tournament_id,
 		public int $player_id,
-		public int $level_snapshot,
 	) {
 	}
 
@@ -22,7 +21,6 @@ class TeamMember {
 			(int) $row['team_id'],
 			(int) $row['tournament_id'],
 			(int) $row['player_id'],
-			(int) $row['level_snapshot'],
 		);
 	}
 }

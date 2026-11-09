@@ -598,7 +598,7 @@ class Dispatcher {
 			'placement' => $placement ?? 'команда ещё собирается: не хватает игроков',
 			'points' => $t->hasLevelLimit() ? sprintf(
 				'%d из %d',
-				$entry->points(),
+				$this->teams->pointsOf($entry),
 				(int) $t->max_points,
 			) : 'без лимита',
 		];

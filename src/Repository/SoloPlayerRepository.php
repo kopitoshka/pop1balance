@@ -22,10 +22,10 @@ class SoloPlayerRepository {
 		return $row === null ? null : SoloPlayer::fromRow($row);
 	}
 
-	public function add(int $tournament_id, int $player_id, int $level_snapshot, DateTimeImmutable $now): void {
+	public function add(int $tournament_id, int $player_id, DateTimeImmutable $now): void {
 		$this->db->run(
-			'INSERT INTO solo_players (tournament_id, player_id, level_snapshot, created_at) VALUES (:t, :p, :l, :c)',
-			['t' => $tournament_id, 'p' => $player_id, 'l' => $level_snapshot, 'c' => DateFormat::toDb($now)],
+			'INSERT INTO solo_players (tournament_id, player_id, created_at) VALUES (:t, :p, :c)',
+			['t' => $tournament_id, 'p' => $player_id, 'c' => DateFormat::toDb($now)],
 		);
 	}
 

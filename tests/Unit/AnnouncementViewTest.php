@@ -50,13 +50,13 @@ class AnnouncementViewTest extends TestCase {
 			array $member_ids,
 			string $status = TeamStatus::REGISTERED,
 		) use ($starts): TeamEntry {
-			$members = array_map(static fn (int $p): TeamMember => new TeamMember($id, 7, $p, 3), $member_ids);
+			$members = array_map(static fn (int $p): TeamMember => new TeamMember($id, 7, $p), $member_ids);
 			return new TeamEntry(new Team($id, 7, $member_ids[0], $name, $status, $starts, $starts), $members);
 		};
 		$lineup = Lineup::compute(
 			4,
 			[$team(1, 'Wolves', [2, 3]), $team(2, 'Bears', [4, 5]), $team(3, 'Late', [6, 7])],
-			[new SoloPlayer(7, 8, 3, $starts)],
+			[new SoloPlayer(7, 8, $starts)],
 			[$team(4, 'Forming', [9], TeamStatus::FORMING)],
 		);
 
@@ -124,7 +124,7 @@ class AnnouncementViewTest extends TestCase {
 				$ids[] = ++$pid;
 				$players[$pid] = new Player($pid, 1000 + $pid, 'player_with_long_name_' . $pid, 'P');
 			}
-			$members = array_map(static fn (int $p): TeamMember => new TeamMember($i, 9, $p, 3), $ids);
+			$members = array_map(static fn (int $p): TeamMember => new TeamMember($i, 9, $p), $ids);
 			$teams[] = new TeamEntry(
 				new Team($i, 9, $ids[0], 'Команда номер ' . $i, TeamStatus::REGISTERED, $starts, $starts),
 				$members,
