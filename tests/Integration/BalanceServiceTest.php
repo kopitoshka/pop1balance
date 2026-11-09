@@ -91,11 +91,12 @@ class BalanceServiceTest extends IntegrationTestCase {
 		$this->rate($vasya, 7);
 	}
 
-	public function testCreateScaleWithoutParent(): void {
+	public function testCreateScaleWithoutParentFallsBackToDefaultRatings(): void {
 		$vasya = $this->player('vasya');
 		$this->rate($vasya, 6);
 		$scale = $this->app->balances->create(self::CHAT_ID, $this->owner->id, 'Своя шкала');
 		self::assertNull($scale->parent_id);
-		self::assertSame(Levels::DEFAULT, $this->app->balances->levelOf($scale->id, $vasya->id));
+		// Empty unrelated scale still sees ratings from the default scale (same as /level).
+		self::assertSame(6, $this->app->balances->levelOf($scale->id, $vasya->id));
 	}
 }

@@ -90,23 +90,34 @@ class PlayerRepository {
 			}
 
 			if ($existing === null) {
+				$orphan_ids = $username !== null ? $this->idsWithUsername($username) : [];
 				if ($username !== null) {
-					// Username moved to another account: free it on the old row.
+					// Free the unique username before insert; ratings are merged below.
 					$this->db->run('UPDATE players SET username = NULL WHERE username = :u', ['u' => $username]);
 				}
 				$id = $this->db->insert(
 					'INSERT INTO players (tg_user_id, username, display_name, created_at) VALUES (:tg, :u, :d, :c)',
 					['tg' => $tg_user_id, 'u' => $username, 'd' => $display_name, 'c' => DateFormat::toDb($now)],
 				);
+				foreach ($orphan_ids as $orphan_id) {
+					$this->mergePlayerInto($id, $orphan_id);
+				}
 				return $this->find($id) ?? throw new \LogicException('Player insert failed');
 			}
 
 			if ($existing->username !== $username || $existing->display_name !== $display_name) {
-				if ($username !== null) {
+				if ($username !== null && $existing->username !== $username) {
+					$orphan_ids = array_values(array_filter(
+						$this->idsWithUsername($username),
+						static fn (int $id): bool => $id !== $existing->id,
+					));
 					$this->db->run(
 						'UPDATE players SET username = NULL WHERE username = :u AND id <> :id',
 						['u' => $username, 'id' => $existing->id],
 					);
+					foreach ($orphan_ids as $orphan_id) {
+						$this->mergePlayerInto($existing->id, $orphan_id);
+					}
 				}
 				$this->db->run(
 					'UPDATE players SET username = :u, display_name = :d WHERE id = :id',
@@ -115,6 +126,51 @@ class PlayerRepository {
 			}
 			return $this->find($existing->id) ?? throw new \LogicException('Player vanished');
 		});
+	}
+
+	/**
+		@return list<int>
+	*/
+	protected function idsWithUsername(string $username): array {
+		$rows = $this->db->fetchAll(
+			'SELECT id FROM players WHERE username = :u',
+			['u' => self::normalizeUsername($username)],
+		);
+		return array_map(static fn (array $r): int => (int) $r['id'], $rows);
+	}
+
+	/**
+		Move ratings / IGN from a duplicate placeholder onto the surviving player.
+		The orphan row is kept (FKs on past team memberships) but stripped of username/ign.
+	*/
+	protected function mergePlayerInto(int $into_id, int $from_id): void {
+		if ($into_id === $from_id) {
+			return;
+		}
+		// Copy ratings the survivor does not already have.
+		$this->db->run(
+			'INSERT INTO balance_ratings (balance_id, player_id, level, updated_by, updated_at)
+				SELECT br.balance_id, :into, br.level, br.updated_by, br.updated_at
+				FROM balance_ratings br
+				WHERE br.player_id = :from
+					AND NOT EXISTS (
+						SELECT 1 FROM balance_ratings x
+						WHERE x.balance_id = br.balance_id AND x.player_id = :into2
+					)',
+			['into' => $into_id, 'from' => $from_id, 'into2' => $into_id],
+		);
+		$this->db->run('DELETE FROM balance_ratings WHERE player_id = :from', ['from' => $from_id]);
+
+		$into = $this->find($into_id);
+		$from = $this->find($from_id);
+		if ($into !== null && $from !== null && !$into->hasIgn() && $from->hasIgn()) {
+			$this->updateIgn($into_id, $from->ign, $from->ign_norm);
+			$this->updateIgn($from_id, null, null);
+		}
+		$this->db->run(
+			'UPDATE players SET username = NULL WHERE id = :id',
+			['id' => $from_id],
+		);
 	}
 
 	/**

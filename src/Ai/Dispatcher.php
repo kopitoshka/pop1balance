@@ -162,7 +162,7 @@ class Dispatcher {
 				$player = $ref === ''
 					? $actor
 					: $this->player_resolver->fromReference($ref, $actor);
-				$scale_id = $this->balances->findDefault()?->id;
+				$scale_id = $this->balances->viewScaleId();
 				$explicit = $this->balances->explicitLevel($scale_id, $player->id);
 				$level = $explicit ?? Levels::DEFAULT;
 				$own = $player->id === $actor->id;

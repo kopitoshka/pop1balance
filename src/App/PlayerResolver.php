@@ -37,6 +37,12 @@ class PlayerResolver {
 		if (str_starts_with($ref, '@') || preg_match('/^[A-Za-z][A-Za-z0-9_]{3,31}$/', $ref)) {
 			$username = ltrim($ref, '@');
 			if (preg_match('/^[A-Za-z][A-Za-z0-9_]{3,31}$/', $username)) {
+				// Same person as the author (avoids a second placeholder row for the captain).
+				if ($actor->username !== null
+					&& strcasecmp($actor->username, $username) === 0
+				) {
+					return $actor;
+				}
 				return $this->players->ensureByUsername($username, $this->clock->now());
 			}
 		}

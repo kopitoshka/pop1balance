@@ -42,7 +42,11 @@ class TeamServiceTest extends IntegrationTestCase {
 			self::fail('Expected LevelLimitExceeded');
 		} catch (LevelLimitExceeded $e) {
 			self::assertSame(2, $e->excess());
-			self::assertStringContainsString('перебор на 2 балла', $e->getMessage());
+			self::assertStringContainsString('Команда набирает 12', $e->getMessage());
+			self::assertStringContainsString('лимит турнира 10', $e->getMessage());
+			self::assertStringContainsString('@cap 4', $e->getMessage());
+			self::assertStringContainsString('@a 4', $e->getMessage());
+			self::assertStringContainsString('@b 4', $e->getMessage());
 		}
 		self::assertNull($this->app->teams->findByName($t->id, 'Too strong'), 'nothing persisted');
 	}
@@ -247,5 +251,88 @@ class TeamServiceTest extends IntegrationTestCase {
 		$this->rate($a, 6);
 		$entry = $this->app->teams->createTeam($t->id, $cap->id, 'Pros', [$a->id]);
 		self::assertSame(TeamStatus::REGISTERED, $entry->team->status);
+	}
+
+	/**
+		/level (default scale) and createTeam must count the same levels.
+		A tournament pointing at another empty scale must not invent different points.
+	*/
+	public function testLevelViewMatchesTeamPointsEvenIfTournamentScaleDiffers(): void {
+		$t = $this->openTournament(); // limit 10
+		[$cap, $a, $b] = [$this->player('cap'), $this->player('a'), $this->player('b')];
+		$this->rate($cap, 3);
+		$this->rate($a, 3);
+		$this->rate($b, 3);
+		$other = $this->app->balances->create(self::CHAT_ID, $this->owner->id, 'Другая');
+		$this->app->tournament_repo->update($t->id, ['balance_id' => $other->id]);
+		$t = $this->app->tournament_repo->find($t->id);
+
+		$default = $this->app->balances->viewScaleId();
+		self::assertSame(3, $this->app->balances->levelOf($default, $cap->id));
+		self::assertSame(3, $this->app->balances->levelOf($default, $a->id));
+		self::assertSame(3, $this->app->balances->levelOf($default, $b->id));
+
+		$entry = $this->app->teams->createTeam($t->id, $cap->id, 'Wolves', [$a->id, $b->id]);
+		self::assertSame(9, $entry->points());
+	}
+
+	/**
+		Duplicate rows: real user without @username + placeholder @username with a level.
+		Team used to count the placeholder (higher), while /level @mention showed the real user (default 3).
+	*/
+	public function testDuplicateUsernamePlaceholderMergesIntoRealUser(): void {
+		$real = $this->app->players->ensureTelegramId(424242, 'Real', $this->clock->now());
+		$placeholder = $this->app->players->ensureByUsername('zoloto', $this->clock->now());
+		self::assertNotSame($real->id, $placeholder->id);
+		$this->rate($placeholder, 4);
+
+		// Real user publishes username — placeholder ratings must move over.
+		$merged = $this->app->players->ensureByTelegram(424242, 'zoloto', 'Real', $this->clock->now());
+		self::assertSame($real->id, $merged->id);
+		self::assertSame('zoloto', $merged->username);
+		self::assertSame(4, $this->app->balances->levelOf($this->app->balances->viewScaleId(), $merged->id));
+		self::assertNull($this->app->players->find($placeholder->id)->username);
+
+		$t = $this->openTournament(); // limit 10
+		$a = $this->player('mate_a');
+		$b = $this->player('mate_b');
+		$this->rate($a, 3);
+		$this->rate($b, 3);
+		// 4+3+3 = 10 — allowed; previously a phantom 4+3+3 on wrong ids vs view 3+3+3 caused confusion
+		$entry = $this->app->teams->createTeam($t->id, $merged->id, 'Z Pack', [$a->id, $b->id]);
+		self::assertSame(10, $entry->points());
+	}
+
+	public function testCaptainAtMentionResolvesToActorNotPlaceholder(): void {
+		$cap = $this->player('cap');
+		$resolved = $this->app->player_resolver->fromReference('@cap', $cap);
+		self::assertSame($cap->id, $resolved->id);
+		$mate = $this->player('mate');
+		$ids = [];
+		foreach (['@cap', '@mate'] as $ref) {
+			$ids[] = $this->app->player_resolver->fromReference($ref, $cap)->id;
+		}
+		$roster = array_values(array_unique(array_merge([$cap->id], $ids)));
+		self::assertSame([$cap->id, $mate->id], $roster, 'captain must not appear twice');
+	}
+
+	public function testRefusalShowsPerPlayerBreakdownIncludingDefault(): void {
+		$t = $this->openTournament(); // limit 10 → set to 9
+		$this->app->tournament_repo->update($t->id, ['max_points' => 9]);
+		[$cap, $a, $b] = [$this->player('cap'), $this->player('a'), $this->player('b')];
+		$this->rate($cap, 4);
+		$this->app->nicks->setOwn($cap->id, 'Zoloto');
+		// a and b unknown → default 3
+		try {
+			$this->app->teams->createTeam($t->id, $cap->id, 'Nope', [$a->id, $b->id]);
+			self::fail('expected limit');
+		} catch (LevelLimitExceeded $e) {
+			$msg = $e->getMessage();
+			self::assertStringContainsString('Команда набирает 10', $msg);
+			self::assertStringContainsString('лимит турнира 9', $msg);
+			self::assertStringContainsString('Zoloto (@cap) 4', $msg);
+			self::assertStringContainsString('@a 3 — уровень не задан, считаю 3', $msg);
+			self::assertStringContainsString('@b 3 — уровень не задан, считаю 3', $msg);
+		}
 	}
 }

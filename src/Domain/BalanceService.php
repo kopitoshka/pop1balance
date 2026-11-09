@@ -38,6 +38,15 @@ class BalanceService {
 	}
 
 	/**
+		Scale used for /level and for team point limits — always the default (global) scale.
+		Keeps what users see in /level identical to enrollment math. Tournament.balance_id may
+		still be stored for owner /balance tooling; enrollment reads this view scale.
+	*/
+	public function viewScaleId(): ?int {
+		return $this->findDefault()?->id;
+	}
+
+	/**
 		Creates the default scale owned by the bot owner if it does not exist yet.
 	*/
 	public function ensureDefault(int $owner_player_id): Balance {
@@ -82,7 +91,10 @@ class BalanceService {
 		}
 
 		return $this->db->transactional(function () use ($actor_id, $player_id, $level, $balance_id): Balance {
-			$balance = $balance_id === null ? $this->ownScaleFor($actor_id) : $this->get($balance_id);
+			// No id → public/default scale (same one /level and team points read).
+			$balance = $balance_id === null
+				? ($this->findDefault() ?? $this->ownScaleFor($actor_id))
+				: $this->get($balance_id);
 			if ($balance->owner_id !== $actor_id) {
 				throw new PermissionDenied(sprintf(
 					'Шкала «%s» принадлежит другому админу, её менять нельзя.',
@@ -159,6 +171,12 @@ class BalanceService {
 			}
 			$chain[] = $balance;
 			$balance_id = $balance->parent_id;
+		}
+		// Ultimate fallback: ratings on the default scale apply even if the tournament
+		// points at an unrelated empty scale (keeps /level and team points aligned).
+		$default = $this->balances->findDefault();
+		if ($default !== null && !isset($seen[$default->id])) {
+			$chain[] = $default;
 		}
 		return $chain;
 	}

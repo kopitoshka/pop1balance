@@ -379,7 +379,7 @@ class AdminCommands {
 
 	/**
 		/level | /level @user | /level all (private) | /level @user 4 (owner).
-		Reads the default (global) balance scale — scales stay hidden from non-owners.
+		Reads the same global view scale that team point limits use (default scale).
 	*/
 	protected function levelCommand(Context $ctx, string $args): string {
 		$args = trim($args);
@@ -449,7 +449,7 @@ class AdminCommands {
 	}
 
 	protected function showPlayerLevel(Context $ctx, Player $player, bool $own): string {
-		$scale_id = $this->balances->findDefault()?->id;
+		$scale_id = $this->balances->viewScaleId();
 		$explicit = $this->balances->explicitLevel($scale_id, $player->id);
 		if ($explicit === null) {
 			$body = $own
@@ -473,7 +473,8 @@ class AdminCommands {
 	}
 
 	protected function listAllLevels(Context $ctx): string {
-		$scale = $this->balances->findDefault();
+		$scale_id = $this->balances->viewScaleId();
+		$scale = $scale_id !== null ? $this->balances->findDefault() : null;
 		if ($scale === null) {
 			return 'Пока никому уровень не ставили 🙂' . $this->levelFooter($ctx->is_owner);
 		}

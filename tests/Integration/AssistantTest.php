@@ -344,12 +344,15 @@ class AssistantTest extends IntegrationTestCase {
 			'register_team',
 			['team_name' => 'Pros', 'players' => ['@pro']],
 		));
-		$this->http->queueOpenAi($this->text('r2', 'Не выйдет: перебор на 4 балла.'));
+		$this->http->queueOpenAi($this->text('r2', 'Не выйдет: команда набирает 10 баллов.'));
 		$this->dispatch($this->privateMessage($cap, '@' . self::BOT_USERNAME . ' запиши Pros со @pro'));
 
 		$output = json_decode($this->lastOpenAiRequest()['input'][0]['output'], true);
 		self::assertFalse($output['ok']);
-		self::assertStringContainsString('перебор на 4 балла', $output['error']);
+		self::assertStringContainsString('Команда набирает 10 баллов', $output['error']);
+		self::assertStringContainsString('@cap 5', $output['error']);
+		self::assertStringContainsString('@pro 5', $output['error']);
+		self::assertStringContainsString('лимит турнира 6', $output['error']);
 		self::assertNull($this->app->teams->findByName($t->id, 'Pros'));
 	}
 

@@ -20,6 +20,22 @@ class PlayerRepositoryTest extends IntegrationTestCase {
 		self::assertSame('Вася', $real->display_name);
 	}
 
+	public function testRatingsMergeWhenUsernameClaimedByExistingTgUser(): void {
+		$real = $this->app->players->ensureTelegramId(9001, 'NoNick', $this->clock->now());
+		$placeholder = $this->app->players->ensureByUsername('zoloto', $this->clock->now());
+		self::assertNotSame($real->id, $placeholder->id);
+		$this->rate($placeholder, 4);
+
+		$merged = $this->app->players->ensureByTelegram(9001, 'zoloto', 'Zoloto', $this->clock->now());
+		self::assertSame($real->id, $merged->id);
+		self::assertSame(4, $this->app->balances->levelOf($this->app->balances->viewScaleId(), $real->id));
+		self::assertNull($this->app->players->find($placeholder->id)->username);
+		self::assertSame(
+			[],
+			$this->db->fetchAll('SELECT * FROM balance_ratings WHERE player_id = :p', ['p' => $placeholder->id]),
+		);
+	}
+
 	public function testUsernameChangeUpdatesRow(): void {
 		$p = $this->app->players->ensureByTelegram(778, 'old', 'Old', $this->clock->now());
 		$p2 = $this->app->players->ensureByTelegram(778, 'new', 'New', $this->clock->now());
