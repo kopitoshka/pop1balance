@@ -6,8 +6,10 @@ namespace P1Bot\Support;
 
 use DateTimeImmutable;
 
-interface Clock
-{
-    /** Current time in UTC. */
-    public function now(): DateTimeImmutable;
+interface Clock {
+
+	/**
+		Current time in UTC.
+	*/
+	public function now(): DateTimeImmutable;
 }

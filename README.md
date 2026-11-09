@@ -286,6 +286,8 @@ cancelling and creating a new tournament. DB columns are unchanged (`reference_t
 
 ## Development
 
+Code style: see [CODE_STYLE.md](CODE_STYLE.md) (tabs, no `final`/`private`, snake_case variables, same-line braces).
+
 ```bash
 composer install
 vendor/bin/phpunit                    # SQLite in-memory, no network (HTTP is faked)

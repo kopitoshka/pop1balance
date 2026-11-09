@@ -8,108 +8,120 @@ use P1Bot\Domain\Model\SoloPlayer;
 use P1Bot\Domain\Model\TeamEntry;
 
 /**
- * Computed main/reserve split of a tournament. Nothing here is stored in the DB.
- *
- * Rules: registered teams go first in registered_at order, each fits wholly into the remaining
- * places or goes to reserve wholly; then solo players in created_at order fill what is left.
- */
-final class Lineup
-{
-    /**
-     * @param list<TeamEntry>  $mainTeams
-     * @param list<TeamEntry>  $reserveTeams
-     * @param list<SoloPlayer> $mainSolo
-     * @param list<SoloPlayer> $reserveSolo
-     * @param list<TeamEntry>  $formingTeams teams still assembling, not in the queue
-     */
-    private function __construct(
-        public int $maxPlayers,
-        public array $mainTeams,
-        public array $reserveTeams,
-        public array $mainSolo,
-        public array $reserveSolo,
-        public array $formingTeams,
-    ) {
-    }
+	Computed main/reserve split of a tournament. Nothing here is stored in the DB.
 
-    /**
-     * @param list<TeamEntry>  $registeredTeams already in registered_at order
-     * @param list<SoloPlayer> $soloPlayers     already in created_at order
-     * @param list<TeamEntry>  $formingTeams
-     */
-    public static function compute(int $maxPlayers, array $registeredTeams, array $soloPlayers, array $formingTeams = []): self
-    {
-        $free = $maxPlayers;
-        $mainTeams = $reserveTeams = $mainSolo = $reserveSolo = [];
+	Rules: registered teams go first in registered_at order, each fits wholly into the remaining
+	places or goes to reserve wholly; then solo players in created_at order fill what is left.
+*/
+class Lineup {
 
-        foreach ($registeredTeams as $entry) {
-            if ($entry->size() <= $free) {
-                $mainTeams[] = $entry;
-                $free -= $entry->size();
-            } else {
-                $reserveTeams[] = $entry;
-            }
-        }
-        foreach ($soloPlayers as $solo) {
-            if ($free > 0) {
-                $mainSolo[] = $solo;
-                $free--;
-            } else {
-                $reserveSolo[] = $solo;
-            }
-        }
+	/**
+		@param list<TeamEntry>  $main_teams
+		@param list<TeamEntry>  $reserve_teams
+		@param list<SoloPlayer> $main_solo
+		@param list<SoloPlayer> $reserve_solo
+		@param list<TeamEntry>  $forming_teams teams still assembling, not in the queue
+	*/
+	protected function __construct(
+		public int $max_players,
+		public array $main_teams,
+		public array $reserve_teams,
+		public array $main_solo,
+		public array $reserve_solo,
+		public array $forming_teams,
+	) {
+	}
 
-        return new self($maxPlayers, $mainTeams, $reserveTeams, $mainSolo, $reserveSolo, $formingTeams);
-    }
+	/**
+		@param list<TeamEntry>  $registered_teams already in registered_at order
+		@param list<SoloPlayer> $solo_players     already in created_at order
+		@param list<TeamEntry>  $forming_teams
+	*/
+	public static function compute(
+		int $max_players,
+		array $registered_teams,
+		array $solo_players,
+		array $forming_teams = [],
+	): self {
+		$free = $max_players;
+		$main_teams = $reserve_teams = $main_solo = $reserve_solo = [];
 
-    /** Players in the main lineup. */
-    public function occupied(): int
-    {
-        return self::teamPlayers($this->mainTeams) + count($this->mainSolo);
-    }
+		foreach ($registered_teams as $entry) {
+			if ($entry->size() <= $free) {
+				$main_teams[] = $entry;
+				$free -= $entry->size();
+			} else {
+				$reserve_teams[] = $entry;
+			}
+		}
+		foreach ($solo_players as $solo) {
+			if ($free > 0) {
+				$main_solo[] = $solo;
+				$free--;
+			} else {
+				$reserve_solo[] = $solo;
+			}
+		}
 
-    /** Players in reserve (teams counted by members). */
-    public function reserveCount(): int
-    {
-        return self::teamPlayers($this->reserveTeams) + count($this->reserveSolo);
-    }
+		return new self($max_players, $main_teams, $reserve_teams, $main_solo, $reserve_solo, $forming_teams);
+	}
 
-    public function freePlaces(): int
-    {
-        return $this->maxPlayers - $this->occupied();
-    }
+	/**
+		Players in the main lineup.
+	*/
+	public function occupied(): int {
+		return self::teamPlayers($this->main_teams) + count($this->main_solo);
+	}
 
-    /** "занято 18/24, резерв 2" */
-    public function summary(): string
-    {
-        return sprintf('занято %d/%d, резерв %d', $this->occupied(), $this->maxPlayers, $this->reserveCount());
-    }
+	/**
+		Players in reserve (teams counted by members).
+	*/
+	public function reserveCount(): int {
+		return self::teamPlayers($this->reserve_teams) + count($this->reserve_solo);
+	}
 
-    /** 'main' | 'reserve' | 'forming' | null — where the player is in this tournament. */
-    public function placementOf(int $playerId): ?string
-    {
-        foreach (['main' => $this->mainTeams, 'reserve' => $this->reserveTeams, 'forming' => $this->formingTeams] as $place => $teams) {
-            foreach ($teams as $entry) {
-                foreach ($entry->members as $member) {
-                    if ($member->playerId === $playerId) {
-                        return $place;
-                    }
-                }
-            }
-        }
-        foreach (['main' => $this->mainSolo, 'reserve' => $this->reserveSolo] as $place => $solos) {
-            foreach ($solos as $solo) {
-                if ($solo->playerId === $playerId) {
-                    return $place;
-                }
-            }
-        }
-        return null;
-    }
+	public function freePlaces(): int {
+		return $this->max_players - $this->occupied();
+	}
 
-    /** @param list<TeamEntry> $teams */
-    private static function teamPlayers(array $teams): int
-    {
-        return array_sum(array_map(static fn (TeamEntry $e): int => $e->size(), $teams));
-    }
+	/**
+		"занято 18/24, резерв 2"
+	*/
+	public function summary(): string {
+		return sprintf('занято %d/%d, резерв %d', $this->occupied(), $this->max_players, $this->reserveCount());
+	}
+
+	/**
+		'main' | 'reserve' | 'forming' | null — where the player is in this tournament.
+	*/
+	public function placementOf(int $player_id): ?string {
+		foreach ([
+			'main' => $this->main_teams,
+			'reserve' => $this->reserve_teams,
+			'forming' => $this->forming_teams,
+		] as $place => $teams) {
+			foreach ($teams as $entry) {
+				foreach ($entry->members as $member) {
+					if ($member->player_id === $player_id) {
+						return $place;
+					}
+				}
+			}
+		}
+		foreach (['main' => $this->main_solo, 'reserve' => $this->reserve_solo] as $place => $solos) {
+			foreach ($solos as $solo) {
+				if ($solo->player_id === $player_id) {
+					return $place;
+				}
+			}
+		}
+		return null;
+	}
+
+	/**
+		@param list<TeamEntry> $teams
+	*/
+	protected static function teamPlayers(array $teams): int {
+		return array_sum(array_map(static fn (TeamEntry $e): int => $e->size(), $teams));
+	}
 }

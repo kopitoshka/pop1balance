@@ -20,115 +20,120 @@ use P1Bot\View\TournamentCard;
 use Throwable;
 
 /**
- * Draft confirmation flow: show the card with «Публикуем или что-то поправить?» and publish
- * only after an explicit confirmation of the version that was shown.
- */
-final class DraftCards
-{
-    public function __construct(
-        private TelegramApi $api,
-        private TournamentService $tournaments,
-        private PlayerRepository $players,
-        private BalanceRepository $balances,
-        private ConversationRepository $conversations,
-        private Announcer $announcer,
-        private AccessPolicy $access,
-        private Clock $clock,
-        private Logger $logger,
-        private int $conversationTtlMinutes = 30,
-    ) {
-    }
+	Draft confirmation flow: show the card with «Публикуем или что-то поправить?» and publish
+	only after an explicit confirmation of the version that was shown.
+*/
+class DraftCards {
 
-    /** Short per-chat number users type (/edit N). */
-    public function numberOf(Tournament $t): ?int
-    {
-        return $this->announcer->number($t)->number;
-    }
+	public function __construct(
+		protected TelegramApi $api,
+		protected TournamentService $tournaments,
+		protected PlayerRepository $players,
+		protected BalanceRepository $balances,
+		protected ConversationRepository $conversations,
+		protected Announcer $announcer,
+		protected AccessPolicy $access,
+		protected Clock $clock,
+		protected Logger $logger,
+		protected int $conversation_ttl_minutes = 30,
+	) {
+	}
 
-    public function cardText(Tournament $t): string
-    {
-        $this->announcer->number($t);
-        return TournamentCard::render(
-            $t,
-            $this->players->find($t->organizerId),
-            $t->balanceId !== null ? $this->balances->find($t->balanceId) : null,
-        );
-    }
+	/**
+		Short per-chat number users type (/edit N).
+	*/
+	public function numberOf(Tournament $t): ?int {
+		return $this->announcer->number($t)->number;
+	}
 
-    /**
-     * Sends the card as a reply and remembers it as the version to confirm.
-     *
-     * @param list<array<string, mixed>> $history dialog to continue when the organizer replies to the card
-     * @return int message id of the card
-     */
-    public function show(int $tournamentId, int $replyTo, int $actorId, array $history = []): int
-    {
-        $t = $this->tournaments->get($tournamentId);
-        if ($t->status !== TournamentStatus::DRAFT) {
-            throw new ValidationError('Этот турнир уже не черновик.');
-        }
-        $text = $this->cardText($t);
-        $messageId = $this->api->sendMessage($t->chatId, $text, $replyTo, TournamentCard::buttons($t->id));
-        $this->tournaments->setCardMessage($t->id, $messageId, $actorId);
+	public function cardText(Tournament $t): string {
+		$this->announcer->number($t);
+		return TournamentCard::render(
+			$t,
+			$this->players->find($t->organizer_id),
+			$t->balance_id !== null ? $this->balances->find($t->balance_id) : null,
+		);
+	}
 
-        $history[] = ['role' => 'assistant', 'content' => self::plain($text)];
-        $this->conversations->save(
-            null,
-            $t->chatId,
-            $actorId,
-            $messageId,
-            array_slice($history, -12),
-            $this->clock->now()->modify("+{$this->conversationTtlMinutes} minutes"),
-        );
-        return $messageId;
-    }
+	/**
+		Sends the card as a reply and remembers it as the version to confirm.
 
-    /**
-     * Publishes a confirmed draft: opens registration and posts the announcement.
-     *
-     * @param int|null $cardMessageId the card the confirmation refers to (button / reply), if known
-     */
-    public function publish(int $actorId, int $tournamentId, ?int $cardMessageId = null): Tournament
-    {
-        $t = $this->tournaments->get($tournamentId);
-        if ($t->status !== TournamentStatus::DRAFT) {
-            throw new ValidationError(sprintf('Турнир «%s» уже не черновик (%s).', $t->title, TournamentStatus::label($t->status)));
-        }
-        if ($t->cardMsgId === null) {
-            throw new ValidationError('Сначала нужно показать актуальную карточку турнира и получить подтверждение.');
-        }
-        if ($cardMessageId !== null && $cardMessageId !== $t->cardMsgId) {
-            throw new ValidationError('Эта карточка устарела: турнир с тех пор меняли. Подтверди последнюю карточку.');
-        }
-        if (!$this->canConfirm($t, $actorId)) {
-            throw new PermissionDenied('Опубликовать турнир может только его организатор или тот, кто попросил показать карточку.');
-        }
+		@param list<array<string, mixed>> $history dialog to continue when the organizer replies to the card
+		@return int message id of the card
+	*/
+	public function show(int $tournament_id, int $reply_to, int $actor_id, array $history = []): int {
+		$t = $this->tournaments->get($tournament_id);
+		if ($t->status !== TournamentStatus::DRAFT) {
+			throw new ValidationError('Этот турнир уже не черновик.');
+		}
+		$text = $this->cardText($t);
+		$message_id = $this->api->sendMessage($t->chat_id, $text, $reply_to, TournamentCard::buttons($t->id));
+		$this->tournaments->setCardMessage($t->id, $message_id, $actor_id);
 
-        $card = $this->cardText($t);
-        $published = $this->tournaments->openRegistration($actorId, $t->id);
-        $this->announcer->publish($published->id);
-        $this->announcer->renumber($t->chatId, $t->id);
-        try {
-            $this->api->editMessageText($t->chatId, (int) $t->cardMsgId, TournamentCard::published($card), ['reply_markup' => ['inline_keyboard' => []]]);
-        } catch (Throwable $e) {
-            $this->logger->exception($e, 'card published ' . $t->id);
-        }
-        return $this->tournaments->get($t->id);
-    }
+		$history[] = ['role' => 'assistant', 'content' => self::plain($text)];
+		$this->conversations->save(
+			null,
+			$t->chat_id,
+			$actor_id,
+			$message_id,
+			array_slice($history, -12),
+			$this->clock->now()->modify("+{$this->conversation_ttl_minutes} minutes"),
+		);
+		return $message_id;
+	}
 
-    /**
-     * Who may confirm a draft card: the organizer, the admin the current card was shown to
-     * (e.g. who ran /open or /edit) and the bot owner.
-     */
-    public function canConfirm(Tournament $t, int $actorId): bool
-    {
-        return $t->organizerId === $actorId
-            || ($t->cardShownTo !== null && $t->cardShownTo === $actorId)
-            || $this->access->isOwner($actorId);
-    }
+	/**
+		Publishes a confirmed draft: opens registration and posts the announcement.
 
-    private static function plain(string $html): string
-    {
-        return html_entity_decode(strip_tags($html), ENT_QUOTES | ENT_HTML5, 'UTF-8');
-    }
+		@param int|null $card_message_id the card the confirmation refers to (button / reply), if known
+	*/
+	public function publish(int $actor_id, int $tournament_id, ?int $card_message_id = null): Tournament {
+		$t = $this->tournaments->get($tournament_id);
+		if ($t->status !== TournamentStatus::DRAFT) {
+			throw new ValidationError(sprintf(
+				'Турнир «%s» уже не черновик (%s).',
+				$t->title,
+				TournamentStatus::label($t->status),
+			));
+		}
+		if ($t->card_msg_id === null) {
+			throw new ValidationError('Сначала нужно показать актуальную карточку турнира и получить подтверждение.');
+		}
+		if ($card_message_id !== null && $card_message_id !== $t->card_msg_id) {
+			throw new ValidationError('Эта карточка устарела: турнир с тех пор меняли. Подтверди последнюю карточку.');
+		}
+		if (!$this->canConfirm($t, $actor_id)) {
+			throw new PermissionDenied('Опубликовать турнир может только его организатор или тот, кто попросил показать карточку.');
+		}
+
+		$card = $this->cardText($t);
+		$published = $this->tournaments->openRegistration($actor_id, $t->id);
+		$this->announcer->publish($published->id);
+		$this->announcer->renumber($t->chat_id, $t->id);
+		try {
+			$this->api->editMessageText(
+				$t->chat_id,
+				(int) $t->card_msg_id,
+				TournamentCard::published($card),
+				['reply_markup' => ['inline_keyboard' => []]],
+			);
+		} catch (Throwable $e) {
+			$this->logger->exception($e, 'card published ' . $t->id);
+		}
+		return $this->tournaments->get($t->id);
+	}
+
+	/**
+		Who may confirm a draft card: the organizer, the admin the current card was shown to
+		(e.g. who ran /open or /edit) and the bot owner.
+	*/
+	public function canConfirm(Tournament $t, int $actor_id): bool {
+		return $t->organizer_id === $actor_id
+			|| ($t->card_shown_to !== null && $t->card_shown_to === $actor_id)
+			|| $this->access->isOwner($actor_id);
+	}
+
+	protected static function plain(string $html): string {
+		return html_entity_decode(strip_tags($html), ENT_QUOTES | ENT_HTML5, 'UTF-8');
+	}
 }

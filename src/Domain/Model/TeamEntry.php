@@ -4,23 +4,25 @@ declare(strict_types=1);
 
 namespace P1Bot\Domain\Model;
 
-/** A registered team together with its roster, as used in the lineup. */
-final class TeamEntry
-{
-    /** @param list<TeamMember> $members */
-    public function __construct(
-        public Team $team,
-        public array $members,
-    ) {
-    }
+/**
+	A registered team together with its roster, as used in the lineup.
+*/
+class TeamEntry {
 
-    public function size(): int
-    {
-        return count($this->members);
-    }
+	/**
+		@param list<TeamMember> $members
+	*/
+	public function __construct(
+		public Team $team,
+		public array $members,
+	) {
+	}
 
-    public function points(): int
-    {
-        return array_sum(array_map(static fn (TeamMember $m): int => $m->levelSnapshot, $this->members));
-    }
+	public function size(): int {
+		return count($this->members);
+	}
+
+	public function points(): int {
+		return array_sum(array_map(static fn (TeamMember $m): int => $m->level_snapshot, $this->members));
+	}
 }

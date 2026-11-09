@@ -17,98 +17,99 @@ use P1Bot\Telegram\TelegramApi;
 use P1Bot\View\Html;
 use Throwable;
 
-/** Runs every minute: reminders, automatic status changes, cleanup. */
-final class CronRunner
-{
-    /**
-     * @param list<int> $reminderMinutes
-     */
-    public function __construct(
-        private TournamentService $tournaments,
-        private ConversationRepository $conversations,
-        private PlayerRepository $players,
-        private Announcer $announcer,
-        private TelegramApi $api,
-        private Clock $clock,
-        private Logger $logger,
-        private array $reminderMinutes,
-        private int $finishAfterHours,
-    ) {
-    }
+/**
+	Runs every minute: reminders, automatic status changes, cleanup.
+*/
+class CronRunner {
 
-    /** @return array{reminders: int, status_changes: int, conversations_deleted: int} */
-    public function run(): array
-    {
-        $reminders = 0;
-        foreach ($this->tournaments->dueReminders($this->reminderMinutes) as [$t, $minutes]) {
-            try {
-                $this->remind($t, $minutes);
-                $reminders++;
-            } catch (Throwable $e) {
-                $this->logger->exception($e, 'reminder ' . $t->id);
-            } finally {
-                // Mark even on failure so a broken chat does not get retried every minute.
-                $this->tournaments->markReminded($t->id);
-            }
-        }
+	/**
+		@param list<int> $reminder_minutes
+	*/
+	public function __construct(
+		protected TournamentService $tournaments,
+		protected ConversationRepository $conversations,
+		protected PlayerRepository $players,
+		protected Announcer $announcer,
+		protected TelegramApi $api,
+		protected Clock $clock,
+		protected Logger $logger,
+		protected array $reminder_minutes,
+		protected int $finish_after_hours,
+	) {
+	}
 
-        $changed = $this->tournaments->autoAdvance($this->finishAfterHours);
-        $chats = [];
-        foreach ($changed as $t) {
-            $this->announcer->refresh($t->id);
-            $chats[$t->chatId] = true;
-        }
-        foreach (array_keys($chats) as $chatId) {
-            // Finished tournaments drop out of the numbering: others may get new numbers.
-            $this->announcer->renumber((int) $chatId);
-        }
+	/**
+		@return array{reminders: int, status_changes: int, conversations_deleted: int}
+	*/
+	public function run(): array {
+		$reminders = 0;
+		foreach ($this->tournaments->dueReminders($this->reminder_minutes) as [$t, $minutes]) {
+			try {
+				$this->remind($t, $minutes);
+				$reminders++;
+			} catch (Throwable $e) {
+				$this->logger->exception($e, 'reminder ' . $t->id);
+			} finally {
+				// Mark even on failure so a broken chat does not get retried every minute.
+				$this->tournaments->markReminded($t->id);
+			}
+		}
 
-        return [
-            'reminders' => $reminders,
-            'status_changes' => count($changed),
-            'conversations_deleted' => $this->conversations->deleteExpired($this->clock->now()),
-        ];
-    }
+		$changed = $this->tournaments->autoAdvance($this->finish_after_hours);
+		$chats = [];
+		foreach ($changed as $t) {
+			$this->announcer->refresh($t->id);
+			$chats[$t->chat_id] = true;
+		}
+		foreach (array_keys($chats) as $chat_id) {
+			// Finished tournaments drop out of the numbering: others may get new numbers.
+			$this->announcer->renumber((int) $chat_id);
+		}
 
-    private function remind(Tournament $t, int $minutes): void
-    {
-        $lineup = $this->tournaments->lineup($t->id);
-        $mentions = [];
-        foreach ($lineup->mainTeams as $entry) {
-            foreach ($entry->members as $member) {
-                $mentions[] = $this->mention($member->playerId);
-            }
-        }
-        foreach ($lineup->mainSolo as $solo) {
-            $mentions[] = $this->mention($solo->playerId);
-        }
+		return [
+			'reminders' => $reminders,
+			'status_changes' => count($changed),
+			'conversations_deleted' => $this->conversations->deleteExpired($this->clock->now()),
+		];
+	}
 
-        $text = sprintf(
-            '⏰ Через %d %s старт турнира %s (%s)!',
-            $minutes,
-            RuPlural::choose($minutes, ['минуту', 'минуты', 'минут']),
-            Html::b($t->title),
-            MoscowTime::format($t->startsAt, 'H:i'),
-        );
-        $text .= "\n" . Html::e(mb_strtoupper(mb_substr($lineup->summary(), 0, 1)) . mb_substr($lineup->summary(), 1)) . '.';
-        if ($mentions !== []) {
-            $text .= "\n\nИграют: " . implode(', ', $mentions) . "\nУдачи всем, заходите в игру заранее!";
-        }
-        if ($lineup->reserveCount() > 0) {
-            $text .= "\nРезерв, будьте на связи: если кто-то не придёт, позовём вас.";
-        }
-        $this->api->sendMessage($t->chatId, $text, $t->announceMsgId);
-    }
+	protected function remind(Tournament $t, int $minutes): void {
+		$lineup = $this->tournaments->lineup($t->id);
+		$mentions = [];
+		foreach ($lineup->main_teams as $entry) {
+			foreach ($entry->members as $member) {
+				$mentions[] = $this->mention($member->player_id);
+			}
+		}
+		foreach ($lineup->main_solo as $solo) {
+			$mentions[] = $this->mention($solo->player_id);
+		}
 
-    private function mention(int $playerId): string
-    {
-        $player = $this->players->find($playerId);
-        if (!$player instanceof Player) {
-            return '#' . $playerId;
-        }
-        if ($player->username === null && $player->tgUserId !== null) {
-            return '<a href="tg://user?id=' . $player->tgUserId . '">' . Html::e($player->displayName) . '</a>';
-        }
-        return Html::e($player->mention());
-    }
+		$text = sprintf(
+			'⏰ Через %d %s старт турнира %s (%s)!',
+			$minutes,
+			RuPlural::choose($minutes, ['минуту', 'минуты', 'минут']),
+			Html::b($t->title),
+			MoscowTime::format($t->starts_at, 'H:i'),
+		);
+		$text .= "\n" . Html::e(mb_strtoupper(mb_substr($lineup->summary(), 0, 1)) . mb_substr($lineup->summary(), 1)) . '.';
+		if ($mentions !== []) {
+			$text .= "\n\nИграют: " . implode(', ', $mentions) . "\nУдачи всем, заходите в игру заранее!";
+		}
+		if ($lineup->reserveCount() > 0) {
+			$text .= "\nРезерв, будьте на связи: если кто-то не придёт, позовём вас.";
+		}
+		$this->api->sendMessage($t->chat_id, $text, $t->announce_msg_id);
+	}
+
+	protected function mention(int $player_id): string {
+		$player = $this->players->find($player_id);
+		if (!$player instanceof Player) {
+			return '#' . $player_id;
+		}
+		if ($player->username === null && $player->tg_user_id !== null) {
+			return '<a href="tg://user?id=' . $player->tg_user_id . '">' . Html::e($player->display_name) . '</a>';
+		}
+		return Html::e($player->mention());
+	}
 }

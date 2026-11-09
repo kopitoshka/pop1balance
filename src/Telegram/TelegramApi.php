@@ -4,29 +4,39 @@ declare(strict_types=1);
 
 namespace P1Bot\Telegram;
 
-/** Telegram Bot API surface the bot needs. */
-interface TelegramApi
-{
-    /** @return array<string, mixed> bot User object */
-    public function getMe(): array;
+/**
+	Telegram Bot API surface the bot needs.
+*/
+interface TelegramApi {
 
-    /**
-     * Sends an HTML message. When $replyToMessageId is set the message is a reply
-     * (sent even if the original was deleted).
-     *
-     * @param array<string, mixed> $options extra Bot API fields, e.g. reply_markup
-     * @return int message_id of the sent message
-     */
-    public function sendMessage(int $chatId, string $text, ?int $replyToMessageId = null, array $options = []): int;
+	/**
+		@return array<string, mixed> bot User object
+	*/
+	public function getMe(): array;
 
-    /** @param array<string, mixed> $options */
-    public function editMessageText(int $chatId, int $messageId, string $text, array $options = []): void;
+	/**
+		Sends an HTML message. When $reply_to_message_id is set the message is a reply
+		(sent even if the original was deleted).
 
-    public function answerCallbackQuery(string $callbackQueryId, string $text = '', bool $showAlert = false): void;
+		@param array<string, mixed> $options extra Bot API fields, e.g. reply_markup
+		@return int message_id of the sent message
+	*/
+	public function sendMessage(int $chat_id, string $text, ?int $reply_to_message_id = null, array $options = []): int;
 
-    /** @return list<array<string, mixed>> ChatMember objects */
-    public function getChatAdministrators(int $chatId): array;
+	/**
+		@param array<string, mixed> $options
+	*/
+	public function editMessageText(int $chat_id, int $message_id, string $text, array $options = []): void;
 
-    /** @param list<string> $allowedUpdates */
-    public function setWebhook(string $url, string $secretToken, array $allowedUpdates): void;
+	public function answerCallbackQuery(string $callback_query_id, string $text = '', bool $show_alert = false): void;
+
+	/**
+		@return list<array<string, mixed>> ChatMember objects
+	*/
+	public function getChatAdministrators(int $chat_id): array;
+
+	/**
+		@param list<string> $allowed_updates
+	*/
+	public function setWebhook(string $url, string $secret_token, array $allowed_updates): void;
 }

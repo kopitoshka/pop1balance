@@ -6,7 +6,8 @@ namespace P1Bot\Http;
 
 use RuntimeException;
 
-/** Transport-level failure (DNS, timeout, invalid JSON). */
-final class HttpError extends RuntimeException
-{
+/**
+	Transport-level failure (DNS, timeout, invalid JSON).
+*/
+class HttpError extends RuntimeException {
 }

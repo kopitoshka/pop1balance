@@ -6,6 +6,5 @@ namespace P1Bot\Ai;
 
 use RuntimeException;
 
-final class AiError extends RuntimeException
-{
+class AiError extends RuntimeException {
 }

@@ -17,20 +17,20 @@ $logger = Logger::fromConfig($config);
 
 $lock = fopen($config['paths']['logs'] . '/cron.lock', 'c');
 if ($lock === false || !flock($lock, LOCK_EX | LOCK_NB)) {
-    exit(0); // previous run still working
+	exit(0); // previous run still working
 }
 
 try {
-    $app = Bootstrap::fromConfig($config);
-    $app->ensureOwner();
-    $result = $app->cron()->run();
-    if ($result['reminders'] > 0 || $result['status_changes'] > 0) {
-        $logger->info('cron', $result);
-    }
+	$app = Bootstrap::fromConfig($config);
+	$app->ensureOwner();
+	$result = $app->cron()->run();
+	if ($result['reminders'] > 0 || $result['status_changes'] > 0) {
+		$logger->info('cron', $result);
+	}
 } catch (Throwable $e) {
-    $logger->exception($e, 'cron');
-    fwrite(STDERR, $e->getMessage() . "\n");
-    exit(1);
+	$logger->exception($e, 'cron');
+	fwrite(STDERR, $e->getMessage() . "\n");
+	exit(1);
 } finally {
-    flock($lock, LOCK_UN);
+	flock($lock, LOCK_UN);
 }

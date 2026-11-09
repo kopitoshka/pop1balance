@@ -9,86 +9,78 @@ use P1Bot\Domain\Exception\ValidationError;
 use P1Bot\Domain\Levels;
 use P1Bot\Tests\Support\IntegrationTestCase;
 
-final class BalanceServiceTest extends IntegrationTestCase
-{
-    public function testDefaultScaleBelongsToOwnerAndIsCreatedOnce(): void
-    {
-        $default = $this->app->balances->findDefault();
-        self::assertNotNull($default);
-        self::assertSame($this->owner->id, $default->ownerId);
-        self::assertTrue($default->isDefault);
-        self::assertSame($default->id, $this->app->balances->ensureDefault($this->owner->id)->id);
-    }
+class BalanceServiceTest extends IntegrationTestCase {
 
-    public function testUnknownPlayerIsAverage(): void
-    {
-        $vasya = $this->player('vasya');
-        $default = $this->app->balances->findDefault();
-        self::assertSame(Levels::DEFAULT, $this->app->balances->levelOf($default->id, $vasya->id));
-        self::assertSame(Levels::DEFAULT, $this->app->balances->levelOf(null, $vasya->id));
-    }
+	public function testDefaultScaleBelongsToOwnerAndIsCreatedOnce(): void {
+		$default = $this->app->balances->findDefault();
+		self::assertNotNull($default);
+		self::assertSame($this->owner->id, $default->owner_id);
+		self::assertTrue($default->is_default);
+		self::assertSame($default->id, $this->app->balances->ensureDefault($this->owner->id)->id);
+	}
 
-    public function testOwnerRatesInDefaultScale(): void
-    {
-        $vasya = $this->player('vasya');
-        $scale = $this->app->balances->setLevel(self::CHAT_ID, $this->owner->id, $vasya->id, 5);
-        self::assertTrue($scale->isDefault);
-        self::assertSame(5, $this->app->balances->levelOf($scale->id, $vasya->id));
-    }
+	public function testUnknownPlayerIsAverage(): void {
+		$vasya = $this->player('vasya');
+		$default = $this->app->balances->findDefault();
+		self::assertSame(Levels::DEFAULT, $this->app->balances->levelOf($default->id, $vasya->id));
+		self::assertSame(Levels::DEFAULT, $this->app->balances->levelOf(null, $vasya->id));
+	}
 
-    public function testAdminGetsOwnInheritedScaleAndOverridesLevels(): void
-    {
-        $vasya = $this->player('vasya');
-        $petya = $this->player('petya');
-        $this->rate($vasya, 5);
-        $this->rate($petya, 2);
+	public function testOwnerRatesInDefaultScale(): void {
+		$vasya = $this->player('vasya');
+		$scale = $this->app->balances->setLevel(self::CHAT_ID, $this->owner->id, $vasya->id, 5);
+		self::assertTrue($scale->is_default);
+		self::assertSame(5, $this->app->balances->levelOf($scale->id, $vasya->id));
+	}
 
-        $adminScale = $this->app->balances->setLevel(self::CHAT_ID, $this->admin->id, $vasya->id, 4);
-        $default = $this->app->balances->findDefault();
+	public function testAdminGetsOwnInheritedScaleAndOverridesLevels(): void {
+		$vasya = $this->player('vasya');
+		$petya = $this->player('petya');
+		$this->rate($vasya, 5);
+		$this->rate($petya, 2);
 
-        self::assertFalse($adminScale->isDefault);
-        self::assertSame($this->admin->id, $adminScale->ownerId);
-        self::assertSame($default->id, $adminScale->parentId);
-        self::assertSame(4, $this->app->balances->levelOf($adminScale->id, $vasya->id), 'own rating wins');
-        self::assertSame(2, $this->app->balances->levelOf($adminScale->id, $petya->id), 'inherited from parent');
-        self::assertSame(5, $this->app->balances->levelOf($default->id, $vasya->id), 'parent untouched');
+		$admin_scale = $this->app->balances->setLevel(self::CHAT_ID, $this->admin->id, $vasya->id, 4);
+		$default = $this->app->balances->findDefault();
 
-        $ratings = $this->app->balances->effectiveRatings($adminScale->id);
-        self::assertSame(['level' => 4, 'balance_id' => $adminScale->id], $ratings[$vasya->id]);
-        self::assertSame(['level' => 2, 'balance_id' => $default->id], $ratings[$petya->id]);
+		self::assertFalse($admin_scale->is_default);
+		self::assertSame($this->admin->id, $admin_scale->owner_id);
+		self::assertSame($default->id, $admin_scale->parent_id);
+		self::assertSame(4, $this->app->balances->levelOf($admin_scale->id, $vasya->id), 'own rating wins');
+		self::assertSame(2, $this->app->balances->levelOf($admin_scale->id, $petya->id), 'inherited from parent');
+		self::assertSame(5, $this->app->balances->levelOf($default->id, $vasya->id), 'parent untouched');
 
-        $this->app->balances->resetLevel(self::CHAT_ID, $this->admin->id, $vasya->id, $adminScale->id);
-        self::assertSame(5, $this->app->balances->levelOf($adminScale->id, $vasya->id));
-    }
+		$ratings = $this->app->balances->effectiveRatings($admin_scale->id);
+		self::assertSame(['level' => 4, 'balance_id' => $admin_scale->id], $ratings[$vasya->id]);
+		self::assertSame(['level' => 2, 'balance_id' => $default->id], $ratings[$petya->id]);
 
-    public function testAdminCannotEditSomeoneElsesScale(): void
-    {
-        $vasya = $this->player('vasya');
-        $default = $this->app->balances->findDefault();
-        $this->expectException(PermissionDenied::class);
-        $this->app->balances->setLevel(self::CHAT_ID, $this->admin->id, $vasya->id, 4, $default->id);
-    }
+		$this->app->balances->resetLevel(self::CHAT_ID, $this->admin->id, $vasya->id, $admin_scale->id);
+		self::assertSame(5, $this->app->balances->levelOf($admin_scale->id, $vasya->id));
+	}
 
-    public function testRegularPlayerCannotRate(): void
-    {
-        $vasya = $this->player('vasya');
-        $this->expectException(PermissionDenied::class);
-        $this->app->balances->setLevel(self::CHAT_ID, $vasya->id, $vasya->id, 6);
-    }
+	public function testAdminCannotEditSomeoneElsesScale(): void {
+		$vasya = $this->player('vasya');
+		$default = $this->app->balances->findDefault();
+		$this->expectException(PermissionDenied::class);
+		$this->app->balances->setLevel(self::CHAT_ID, $this->admin->id, $vasya->id, 4, $default->id);
+	}
 
-    public function testLevelRange(): void
-    {
-        $vasya = $this->player('vasya');
-        $this->expectException(ValidationError::class);
-        $this->rate($vasya, 7);
-    }
+	public function testRegularPlayerCannotRate(): void {
+		$vasya = $this->player('vasya');
+		$this->expectException(PermissionDenied::class);
+		$this->app->balances->setLevel(self::CHAT_ID, $vasya->id, $vasya->id, 6);
+	}
 
-    public function testCreateScaleWithoutParent(): void
-    {
-        $vasya = $this->player('vasya');
-        $this->rate($vasya, 6);
-        $scale = $this->app->balances->create(self::CHAT_ID, $this->admin->id, 'Своя шкала');
-        self::assertNull($scale->parentId);
-        self::assertSame(Levels::DEFAULT, $this->app->balances->levelOf($scale->id, $vasya->id));
-    }
+	public function testLevelRange(): void {
+		$vasya = $this->player('vasya');
+		$this->expectException(ValidationError::class);
+		$this->rate($vasya, 7);
+	}
+
+	public function testCreateScaleWithoutParent(): void {
+		$vasya = $this->player('vasya');
+		$this->rate($vasya, 6);
+		$scale = $this->app->balances->create(self::CHAT_ID, $this->admin->id, 'Своя шкала');
+		self::assertNull($scale->parent_id);
+		self::assertSame(Levels::DEFAULT, $this->app->balances->levelOf($scale->id, $vasya->id));
+	}
 }

@@ -17,340 +17,375 @@ use P1Bot\Repository\TournamentRepository;
 use P1Bot\Support\Clock;
 use P1Bot\Support\Database;
 
-final class TournamentService
-{
-    public const MIN_TEAM_SIZE = 2;
-    public const MAX_TEAM_SIZE = 4;
+class TournamentService {
+	public const MIN_TEAM_SIZE = 2;
+	public const MAX_TEAM_SIZE = 4;
 
-    public const REFERENCE_REQUIRED = 'Нужно указать уровень турнира: одним числом — сумму баллов на команду, '
-        . 'или уровнями всех игроков команды, например «средний, средний, средний+».';
+	public const REFERENCE_REQUIRED = 'Нужно указать уровень турнира: одним числом — сумму баллов на команду, '
+		. 'или уровнями всех игроков команды, например «средний, средний, средний+».';
 
-    public const LEVEL_LOCKED = 'Уровень турнира и размер команды уже не поменять: на турнир есть заявки, '
-        . 'и их проверяли по текущим правилам. Название, время и лимит участников менять можно. '
-        . 'Если нужен другой уровень — отмени этот турнир (/cancel с его номером) и создай новый (/new).';
+	public const LEVEL_LOCKED = 'Уровень турнира и размер команды уже не поменять: на турнир есть заявки, '
+		. 'и их проверяли по текущим правилам. Название, время и лимит участников менять можно. '
+		. 'Если нужен другой уровень — отмени этот турнир (/cancel с его номером) и создай новый (/new).';
 
-    public function __construct(
-        private TournamentRepository $tournaments,
-        private TeamRepository $teams,
-        private SoloPlayerRepository $solos,
-        private BalanceRepository $balances,
-        private AccessPolicy $access,
-        private Database $db,
-        private Clock $clock,
-        private int $defaultMaxPlayers = 24,
-    ) {
-    }
+	public function __construct(
+		protected TournamentRepository $tournaments,
+		protected TeamRepository $teams,
+		protected SoloPlayerRepository $solos,
+		protected BalanceRepository $balances,
+		protected AccessPolicy $access,
+		protected Database $db,
+		protected Clock $clock,
+		protected int $default_max_players = 24,
+	) {
+	}
 
-    public function get(int $tournamentId): Tournament
-    {
-        return $this->tournaments->find($tournamentId) ?? throw new NotFound('Такого турнира нет.');
-    }
+	public function get(int $tournament_id): Tournament {
+		return $this->tournaments->find($tournament_id) ?? throw new NotFound('Такого турнира нет.');
+	}
 
-    /** Creates a draft tournament; the author becomes the organizer. */
-    public function create(CreateTournament $input): Tournament
-    {
-        $this->access->assertCanCreateTournament($input->chatId, $input->organizerId);
+	/**
+		Creates a draft tournament; the author becomes the organizer.
+	*/
+	public function create(CreateTournament $input): Tournament {
+		$this->access->assertCanCreateTournament($input->chat_id, $input->organizer_id);
 
-        $title = $this->validTitle($input->title);
-        $startsAt = $this->validStart($input->startsAtMsk);
-        $teamSize = $this->validTeamSize($input->teamSize);
-        [$balanceId, $reference, $maxPoints] = $this->levelLimit($input->referenceTeam, $input->balanceId, $teamSize);
-        $maxPlayers = $this->validMaxPlayers($input->maxPlayers ?? $this->defaultMaxPlayers, $teamSize);
+		$title = $this->validTitle($input->title);
+		$starts_at = $this->validStart($input->starts_at_msk);
+		$team_size = $this->validTeamSize($input->team_size);
+		[$balance_id, $reference, $max_points] = $this->levelLimit(
+			$input->reference_team,
+			$input->balance_id,
+			$team_size,
+		);
+		$max_players = $this->validMaxPlayers($input->max_players ?? $this->default_max_players, $team_size);
 
-        return $this->tournaments->create([
-            'chat_id' => $input->chatId,
-            'organizer_id' => $input->organizerId,
-            'title' => $title,
-            'starts_at' => $startsAt,
-            'team_size' => $teamSize,
-            'balance_id' => $balanceId,
-            'reference_team' => $reference,
-            'max_points' => $maxPoints,
-            'max_players' => $maxPlayers,
-            'status' => TournamentStatus::DRAFT,
-        ], $this->clock->now());
-    }
+		return $this->tournaments->create([
+			'chat_id' => $input->chat_id,
+			'organizer_id' => $input->organizer_id,
+			'title' => $title,
+			'starts_at' => $starts_at,
+			'team_size' => $team_size,
+			'balance_id' => $balance_id,
+			'reference_team' => $reference,
+			'max_points' => $max_points,
+			'max_players' => $max_players,
+			'status' => TournamentStatus::DRAFT,
+		], $this->clock->now());
+	}
 
-    public function edit(int $actorId, int $tournamentId, EditTournament $edit): Tournament
-    {
-        return $this->db->transactional(function () use ($actorId, $tournamentId, $edit): Tournament {
-            $t = $this->get($tournamentId);
-            $this->access->assertCanManageTournament($t, $actorId);
-            $this->assertEditable($t);
+	public function edit(int $actor_id, int $tournament_id, EditTournament $edit): Tournament {
+		return $this->db->transactional(function () use ($actor_id, $tournament_id, $edit): Tournament {
+			$t = $this->get($tournament_id);
+			$this->access->assertCanManageTournament($t, $actor_id);
+			$this->assertEditable($t);
 
-            $fields = [];
-            if ($edit->title !== null) {
-                $fields['title'] = $this->validTitle($edit->title);
-            }
-            if ($edit->startsAtMsk !== null) {
-                $fields['starts_at'] = $this->validStart($edit->startsAtMsk);
-                $fields['reminded_at'] = null;
-            }
+			$fields = [];
+			if ($edit->title !== null) {
+				$fields['title'] = $this->validTitle($edit->title);
+			}
+			if ($edit->starts_at_msk !== null) {
+				$fields['starts_at'] = $this->validStart($edit->starts_at_msk);
+				$fields['reminded_at'] = null;
+			}
 
-            $limitTouched = $edit->teamSize !== null || $edit->referenceTeam !== null
-                || $edit->balanceId !== null || $edit->removeLevelLimit;
-            if ($limitTouched) {
-                if ($this->hasEntries($t->id)) {
-                    throw new ValidationError(self::LEVEL_LOCKED);
-                }
-                $teamSize = $this->validTeamSize($edit->teamSize ?? $t->teamSize);
-                if ($edit->removeLevelLimit) {
-                    throw new ValidationError('Турнир без уровня сделать нельзя. ' . self::REFERENCE_REQUIRED);
-                }
-                $level = $edit->referenceTeam;
-                if ($level === null) {
-                    if ($teamSize !== $t->teamSize) {
-                        throw new InvalidLevel(sprintf('Размер команды меняется на %d — укажи и уровень турнира под новый размер.', $teamSize));
-                    }
-                    // Only the scale changes: keep the current level.
-                    $level = $t->referenceTeam ?? ($t->maxPoints !== null ? (string) $t->maxPoints : null);
-                }
-                [$balanceId, $reference, $maxPoints] = $this->levelLimit($level, $edit->balanceId ?? $t->balanceId, $teamSize);
-                $fields += ['team_size' => $teamSize, 'balance_id' => $balanceId, 'reference_team' => $reference, 'max_points' => $maxPoints];
-            }
+			$limit_touched = $edit->team_size !== null || $edit->reference_team !== null
+				|| $edit->balance_id !== null || $edit->remove_level_limit;
+			if ($limit_touched) {
+				if ($this->hasEntries($t->id)) {
+					throw new ValidationError(self::LEVEL_LOCKED);
+				}
+				$team_size = $this->validTeamSize($edit->team_size ?? $t->team_size);
+				if ($edit->remove_level_limit) {
+					throw new ValidationError('Турнир без уровня сделать нельзя. ' . self::REFERENCE_REQUIRED);
+				}
+				$level = $edit->reference_team;
+				if ($level === null) {
+					if ($team_size !== $t->team_size) {
+						throw new InvalidLevel(sprintf(
+							'Размер команды меняется на %d — укажи и уровень турнира под новый размер.',
+							$team_size,
+						));
+					}
+					// Only the scale changes: keep the current level.
+					$level = $t->reference_team ?? ($t->max_points !== null ? (string) $t->max_points : null);
+				}
+				[$balance_id, $reference, $max_points] = $this->levelLimit(
+					$level,
+					$edit->balance_id ?? $t->balance_id,
+					$team_size,
+				);
+				$fields += [
+					'team_size' => $team_size,
+					'balance_id' => $balance_id,
+					'reference_team' => $reference,
+					'max_points' => $max_points,
+				];
+			}
 
-            if ($edit->maxPlayers !== null || isset($fields['team_size'])) {
-                $fields['max_players'] = $this->validMaxPlayers($edit->maxPlayers ?? $t->maxPlayers, $fields['team_size'] ?? $t->teamSize);
-            }
+			if ($edit->max_players !== null || isset($fields['team_size'])) {
+				$fields['max_players'] = $this->validMaxPlayers(
+					$edit->max_players ?? $t->max_players,
+					$fields['team_size'] ?? $t->team_size,
+				);
+			}
 
-            if ($fields !== [] && $t->status === TournamentStatus::DRAFT) {
-                // The changed draft must be shown again before it can be published.
-                $fields['card_msg_id'] = null;
-                $fields['card_shown_to'] = null;
-            }
-            $this->tournaments->update($t->id, $fields);
-            return $this->get($t->id);
-        });
-    }
+			if ($fields !== [] && $t->status === TournamentStatus::DRAFT) {
+				// The changed draft must be shown again before it can be published.
+				$fields['card_msg_id'] = null;
+				$fields['card_shown_to'] = null;
+			}
+			$this->tournaments->update($t->id, $fields);
+			return $this->get($t->id);
+		});
+	}
 
-    /** Lowering the limit is allowed: whoever no longer fits simply becomes reserve. */
-    public function setMaxPlayers(int $actorId, int $tournamentId, int $maxPlayers): Tournament
-    {
-        return $this->edit($actorId, $tournamentId, new EditTournament(maxPlayers: $maxPlayers));
-    }
+	/**
+		Lowering the limit is allowed: whoever no longer fits simply becomes reserve.
+	*/
+	public function setMaxPlayers(int $actor_id, int $tournament_id, int $max_players): Tournament {
+		return $this->edit($actor_id, $tournament_id, new EditTournament(max_players: $max_players));
+	}
 
-    public function openRegistration(int $actorId, int $tournamentId): Tournament
-    {
-        return $this->transition($actorId, $tournamentId, [TournamentStatus::DRAFT, TournamentStatus::CLOSED], TournamentStatus::REGISTRATION);
-    }
+	public function openRegistration(int $actor_id, int $tournament_id): Tournament {
+		return $this->transition(
+			$actor_id,
+			$tournament_id,
+			[TournamentStatus::DRAFT, TournamentStatus::CLOSED],
+			TournamentStatus::REGISTRATION,
+		);
+	}
 
-    public function closeRegistration(int $actorId, int $tournamentId): Tournament
-    {
-        return $this->transition($actorId, $tournamentId, [TournamentStatus::REGISTRATION], TournamentStatus::CLOSED);
-    }
+	public function closeRegistration(int $actor_id, int $tournament_id): Tournament {
+		return $this->transition($actor_id, $tournament_id, [TournamentStatus::REGISTRATION], TournamentStatus::CLOSED);
+	}
 
-    public function start(int $actorId, int $tournamentId): Tournament
-    {
-        return $this->transition($actorId, $tournamentId, [TournamentStatus::REGISTRATION, TournamentStatus::CLOSED], TournamentStatus::RUNNING);
-    }
+	public function start(int $actor_id, int $tournament_id): Tournament {
+		return $this->transition(
+			$actor_id,
+			$tournament_id,
+			[TournamentStatus::REGISTRATION, TournamentStatus::CLOSED],
+			TournamentStatus::RUNNING,
+		);
+	}
 
-    public function finish(int $actorId, int $tournamentId): Tournament
-    {
-        return $this->transition($actorId, $tournamentId, [TournamentStatus::RUNNING], TournamentStatus::FINISHED);
-    }
+	public function finish(int $actor_id, int $tournament_id): Tournament {
+		return $this->transition($actor_id, $tournament_id, [TournamentStatus::RUNNING], TournamentStatus::FINISHED);
+	}
 
-    public function cancel(int $actorId, int $tournamentId): Tournament
-    {
-        return $this->transition(
-            $actorId,
-            $tournamentId,
-            [TournamentStatus::DRAFT, TournamentStatus::REGISTRATION, TournamentStatus::CLOSED, TournamentStatus::RUNNING],
-            TournamentStatus::CANCELLED,
-        );
-    }
+	public function cancel(int $actor_id, int $tournament_id): Tournament {
+		return $this->transition(
+			$actor_id,
+			$tournament_id,
+			[
+				TournamentStatus::DRAFT,
+				TournamentStatus::REGISTRATION,
+				TournamentStatus::CLOSED,
+				TournamentStatus::RUNNING,
+			],
+			TournamentStatus::CANCELLED,
+		);
+	}
 
-    /**
-     * Automatic status changes made by cron (no actor, no permission check).
-     *
-     * @return list<Tournament> tournaments whose status changed
-     */
-    public function autoAdvance(int $finishAfterHours): array
-    {
-        $now = $this->clock->now();
-        $changed = [];
-        $past = new DateTimeImmutable('2000-01-01 00:00:00', new \DateTimeZone('UTC'));
-        foreach ($this->tournaments->listStartingBetween([TournamentStatus::REGISTRATION, TournamentStatus::CLOSED], $past, $now) as $t) {
-            $this->tournaments->update($t->id, ['status' => TournamentStatus::RUNNING]);
-            $changed[] = $this->get($t->id);
-        }
-        $finishBefore = $now->modify("-{$finishAfterHours} hours");
-        foreach ($this->tournaments->listStartingBetween([TournamentStatus::RUNNING], $past, $finishBefore) as $t) {
-            $this->tournaments->update($t->id, ['status' => TournamentStatus::FINISHED]);
-            $changed[] = $this->get($t->id);
-        }
-        return $changed;
-    }
+	/**
+		Automatic status changes made by cron (no actor, no permission check).
 
-    /**
-     * Upcoming tournaments that are due for a reminder: for the smallest offset whose moment
-     * has passed and that was not reminded at or after that moment. Returns [tournament, minutes].
-     *
-     * @param list<int> $offsetsMinutes e.g. [60, 15]
-     * @return list<array{0: Tournament, 1: int}>
-     */
-    public function dueReminders(array $offsetsMinutes): array
-    {
-        if ($offsetsMinutes === []) {
-            return [];
-        }
-        rsort($offsetsMinutes);
-        $now = $this->clock->now();
-        $result = [];
-        $upcoming = $this->tournaments->listStartingBetween(
-            [TournamentStatus::REGISTRATION, TournamentStatus::CLOSED],
-            $now,
-            $now->modify('+' . $offsetsMinutes[0] . ' minutes'),
-        );
-        foreach ($upcoming as $t) {
-            $due = null;
-            foreach ($offsetsMinutes as $minutes) {
-                $moment = $t->startsAt->modify("-{$minutes} minutes");
-                if ($now >= $moment && ($t->remindedAt === null || $t->remindedAt < $moment)) {
-                    $due = $minutes;
-                }
-            }
-            if ($due !== null) {
-                $result[] = [$t, $due];
-            }
-        }
-        return $result;
-    }
+		@return list<Tournament> tournaments whose status changed
+	*/
+	public function autoAdvance(int $finish_after_hours): array {
+		$now = $this->clock->now();
+		$changed = [];
+		$past = new DateTimeImmutable('2000-01-01 00:00:00', new \DateTimeZone('UTC'));
+		foreach ($this->tournaments->listStartingBetween(
+			[TournamentStatus::REGISTRATION, TournamentStatus::CLOSED],
+			$past,
+			$now,
+		) as $t) {
+			$this->tournaments->update($t->id, ['status' => TournamentStatus::RUNNING]);
+			$changed[] = $this->get($t->id);
+		}
+		$finish_before = $now->modify("-{$finish_after_hours} hours");
+		foreach ($this->tournaments->listStartingBetween([TournamentStatus::RUNNING], $past, $finish_before) as $t) {
+			$this->tournaments->update($t->id, ['status' => TournamentStatus::FINISHED]);
+			$changed[] = $this->get($t->id);
+		}
+		return $changed;
+	}
 
-    /** Remembers the confirmation card shown for the current version of a draft. */
-    public function assertCanManage(int $actorId, int $tournamentId): void
-    {
-        $this->access->assertCanManageTournament($this->get($tournamentId), $actorId);
-    }
+	/**
+		Upcoming tournaments that are due for a reminder: for the smallest offset whose moment
+		has passed and that was not reminded at or after that moment. Returns [tournament, minutes].
 
-    /** Remembers the shown draft card and who it was shown to (they may confirm it). */
-    public function setCardMessage(int $tournamentId, ?int $messageId, ?int $shownTo = null): void
-    {
-        $this->tournaments->update($tournamentId, ['card_msg_id' => $messageId, 'card_shown_to' => $messageId !== null ? $shownTo : null]);
-    }
+		@param list<int> $offsets_minutes e.g. [60, 15]
+		@return list<array{0: Tournament, 1: int}>
+	*/
+	public function dueReminders(array $offsets_minutes): array {
+		if ($offsets_minutes === []) {
+			return [];
+		}
+		rsort($offsets_minutes);
+		$now = $this->clock->now();
+		$result = [];
+		$upcoming = $this->tournaments->listStartingBetween(
+			[TournamentStatus::REGISTRATION, TournamentStatus::CLOSED],
+			$now,
+			$now->modify('+' . $offsets_minutes[0] . ' minutes'),
+		);
+		foreach ($upcoming as $t) {
+			$due = null;
+			foreach ($offsets_minutes as $minutes) {
+				$moment = $t->starts_at->modify("-{$minutes} minutes");
+				if ($now >= $moment && ($t->reminded_at === null || $t->reminded_at < $moment)) {
+					$due = $minutes;
+				}
+			}
+			if ($due !== null) {
+				$result[] = [$t, $due];
+			}
+		}
+		return $result;
+	}
 
-    public function findByCardMessage(int $chatId, int $messageId): ?Tournament
-    {
-        return $this->tournaments->findByCardMessage($chatId, $messageId);
-    }
+	/**
+		Remembers the confirmation card shown for the current version of a draft.
+	*/
+	public function assertCanManage(int $actor_id, int $tournament_id): void {
+		$this->access->assertCanManageTournament($this->get($tournament_id), $actor_id);
+	}
 
-    public function setAnnounceMessage(int $tournamentId, int $messageId): void
-    {
-        $this->tournaments->update($tournamentId, ['announce_msg_id' => $messageId]);
-    }
+	/**
+		Remembers the shown draft card and who it was shown to (they may confirm it).
+	*/
+	public function setCardMessage(int $tournament_id, ?int $message_id, ?int $shown_to = null): void {
+		$this->tournaments->update(
+			$tournament_id,
+			['card_msg_id' => $message_id, 'card_shown_to' => $message_id !== null ? $shown_to : null],
+		);
+	}
 
-    public function markReminded(int $tournamentId): void
-    {
-        $this->tournaments->update($tournamentId, ['reminded_at' => $this->clock->now()]);
-    }
+	public function findByCardMessage(int $chat_id, int $message_id): ?Tournament {
+		return $this->tournaments->findByCardMessage($chat_id, $message_id);
+	}
 
-    /** @return list<Tournament> registration / closed / running, soonest first */
-    public function listActive(int $chatId): array
-    {
-        return $this->tournaments->listByChat($chatId, TournamentStatus::active());
-    }
+	public function setAnnounceMessage(int $tournament_id, int $message_id): void {
+		$this->tournaments->update($tournament_id, ['announce_msg_id' => $message_id]);
+	}
 
-    /**
-     * @param list<string> $statuses
-     * @return list<Tournament>
-     */
-    public function listByStatus(int $chatId, array $statuses): array
-    {
-        return $this->tournaments->listByChat($chatId, $statuses);
-    }
+	public function markReminded(int $tournament_id): void {
+		$this->tournaments->update($tournament_id, ['reminded_at' => $this->clock->now()]);
+	}
 
-    public function lineup(int $tournamentId): Lineup
-    {
-        $t = $this->get($tournamentId);
-        $registered = array_map(
-            fn ($team): TeamEntry => new TeamEntry($team, $this->teams->members($team->id)),
-            $this->teams->listRegistered($t->id),
-        );
-        $forming = [];
-        foreach ($this->teams->listByTournament($t->id) as $team) {
-            if (!$team->isRegistered()) {
-                $forming[] = new TeamEntry($team, $this->teams->members($team->id));
-            }
-        }
-        return Lineup::compute($t->maxPlayers, $registered, $this->solos->listByTournament($t->id), $forming);
-    }
+	/**
+		@return list<Tournament> registration / closed / running, soonest first
+	*/
+	public function listActive(int $chat_id): array {
+		return $this->tournaments->listByChat($chat_id, TournamentStatus::active());
+	}
 
-    /**
-     * @param list<string> $from
-     */
-    private function transition(int $actorId, int $tournamentId, array $from, string $to): Tournament
-    {
-        $t = $this->get($tournamentId);
-        $this->access->assertCanManageTournament($t, $actorId);
-        if (!in_array($t->status, $from, true)) {
-            throw new ValidationError(sprintf('Турнир «%s» сейчас в статусе «%s», это действие недоступно.', $t->title, TournamentStatus::label($t->status)));
-        }
-        $this->tournaments->update($t->id, ['status' => $to]);
-        return $this->get($t->id);
-    }
+	/**
+		@param list<string> $statuses
+		@return list<Tournament>
+	*/
+	public function listByStatus(int $chat_id, array $statuses): array {
+		return $this->tournaments->listByChat($chat_id, $statuses);
+	}
 
-    private function assertEditable(Tournament $t): void
-    {
-        if (in_array($t->status, [TournamentStatus::FINISHED, TournamentStatus::CANCELLED], true)) {
-            throw new ValidationError(sprintf('Турнир «%s» %s, менять его нельзя.', $t->title, TournamentStatus::label($t->status)));
-        }
-    }
+	public function lineup(int $tournament_id): Lineup {
+		$t = $this->get($tournament_id);
+		$registered = array_map(
+			fn ($team): TeamEntry => new TeamEntry($team, $this->teams->members($team->id)),
+			$this->teams->listRegistered($t->id),
+		);
+		$forming = [];
+		foreach ($this->teams->listByTournament($t->id) as $team) {
+			if (!$team->isRegistered()) {
+				$forming[] = new TeamEntry($team, $this->teams->members($team->id));
+			}
+		}
+		return Lineup::compute($t->max_players, $registered, $this->solos->listByTournament($t->id), $forming);
+	}
 
-    private function hasEntries(int $tournamentId): bool
-    {
-        return $this->teams->listByTournament($tournamentId) !== [] || $this->solos->listByTournament($tournamentId) !== [];
-    }
+	/**
+		@param list<string> $from
+	*/
+	protected function transition(int $actor_id, int $tournament_id, array $from, string $to): Tournament {
+		$t = $this->get($tournament_id);
+		$this->access->assertCanManageTournament($t, $actor_id);
+		if (!in_array($t->status, $from, true)) {
+			throw new ValidationError(sprintf(
+				'Турнир «%s» сейчас в статусе «%s», это действие недоступно.',
+				$t->title,
+				TournamentStatus::label($t->status),
+			));
+		}
+		$this->tournaments->update($t->id, ['status' => $to]);
+		return $this->get($t->id);
+	}
 
-    private function validTitle(string $title): string
-    {
-        $title = trim($title);
-        if ($title === '' || mb_strlen($title) > 255) {
-            throw new ValidationError('Название турнира должно быть от 1 до 255 символов.');
-        }
-        return $title;
-    }
+	protected function assertEditable(Tournament $t): void {
+		if (in_array($t->status, [TournamentStatus::FINISHED, TournamentStatus::CANCELLED], true)) {
+			throw new ValidationError(sprintf(
+				'Турнир «%s» %s, менять его нельзя.',
+				$t->title,
+				TournamentStatus::label($t->status),
+			));
+		}
+	}
 
-    private function validStart(string $startsAtMsk): DateTimeImmutable
-    {
-        $startsAt = MoscowTime::parse($startsAtMsk);
-        if ($startsAt <= $this->clock->now()) {
-            throw new ValidationError('Время турнира уже прошло. Укажи будущее время по МСК.');
-        }
-        return $startsAt;
-    }
+	protected function hasEntries(int $tournament_id): bool {
+		return $this->teams->listByTournament($tournament_id) !== [] || $this->solos->listByTournament($tournament_id) !== [];
+	}
 
-    private function validTeamSize(int $teamSize): int
-    {
-        if ($teamSize < self::MIN_TEAM_SIZE || $teamSize > self::MAX_TEAM_SIZE) {
-            throw new ValidationError(sprintf('В команде может быть от %d до %d игроков.', self::MIN_TEAM_SIZE, self::MAX_TEAM_SIZE));
-        }
-        return $teamSize;
-    }
+	protected function validTitle(string $title): string {
+		$title = trim($title);
+		if ($title === '' || mb_strlen($title) > 255) {
+			throw new ValidationError('Название турнира должно быть от 1 до 255 символов.');
+		}
+		return $title;
+	}
 
-    private function validMaxPlayers(int $maxPlayers, int $teamSize): int
-    {
-        if ($maxPlayers < $teamSize || $maxPlayers > 1000) {
-            throw new ValidationError(sprintf('Лимит участников должен быть от %d до 1000.', $teamSize));
-        }
-        return $maxPlayers;
-    }
+	protected function validStart(string $starts_at_msk): DateTimeImmutable {
+		$starts_at = MoscowTime::parse($starts_at_msk);
+		if ($starts_at <= $this->clock->now()) {
+			throw new ValidationError('Время турнира уже прошло. Укажи будущее время по МСК.');
+		}
+		return $starts_at;
+	}
 
-    /**
-     * Tournament level => [balance_id, canonical levels list or null for a plain total, max_points].
-     * The level is required: tournaments without it can no longer be created (old rows may have NULL).
-     * Without an explicit scale the default scale is used.
-     *
-     * @return array{0: ?int, 1: ?string, 2: ?int}
-     */
-    private function levelLimit(?string $level, ?int $balanceId, int $teamSize): array
-    {
-        if ($level === null || trim($level) === '') {
-            throw new InvalidLevel(self::REFERENCE_REQUIRED);
-        }
-        [$levels, $maxPoints] = Levels::parseTournamentLevel($level, $teamSize);
-        $balance = $balanceId !== null ? $this->balances->find($balanceId) : $this->balances->findDefault();
-        if ($balance === null) {
-            throw new NotFound($balanceId !== null ? 'Такой шкалы баланса нет.' : 'Шкала баланса по умолчанию ещё не создана.');
-        }
-        return [$balance->id, $levels !== null ? Levels::formatReferenceTeam($levels) : null, $maxPoints];
-    }
+	protected function validTeamSize(int $team_size): int {
+		if ($team_size < self::MIN_TEAM_SIZE || $team_size > self::MAX_TEAM_SIZE) {
+			throw new ValidationError(sprintf(
+				'В команде может быть от %d до %d игроков.',
+				self::MIN_TEAM_SIZE,
+				self::MAX_TEAM_SIZE,
+			));
+		}
+		return $team_size;
+	}
+
+	protected function validMaxPlayers(int $max_players, int $team_size): int {
+		if ($max_players < $team_size || $max_players > 1000) {
+			throw new ValidationError(sprintf('Лимит участников должен быть от %d до 1000.', $team_size));
+		}
+		return $max_players;
+	}
+
+	/**
+		Tournament level => [balance_id, canonical levels list or null for a plain total, max_points].
+		The level is required: tournaments without it can no longer be created (old rows may have NULL).
+		Without an explicit scale the default scale is used.
+
+		@return array{0: ?int, 1: ?string, 2: ?int}
+	*/
+	protected function levelLimit(?string $level, ?int $balance_id, int $team_size): array {
+		if ($level === null || trim($level) === '') {
+			throw new InvalidLevel(self::REFERENCE_REQUIRED);
+		}
+		[$levels, $max_points] = Levels::parseTournamentLevel($level, $team_size);
+		$balance = $balance_id !== null ? $this->balances->find($balance_id) : $this->balances->findDefault();
+		if ($balance === null) {
+			throw new NotFound($balance_id !== null ? 'Такой шкалы баланса нет.' : 'Шкала баланса по умолчанию ещё не создана.');
+		}
+		return [$balance->id, $levels !== null ? Levels::formatReferenceTeam($levels) : null, $max_points];
+	}
 }

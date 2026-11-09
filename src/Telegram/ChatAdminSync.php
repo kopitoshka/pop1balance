@@ -12,55 +12,58 @@ use P1Bot\Support\Logger;
 use Throwable;
 
 /**
- * Keeps the admins table in sync with Telegram chat administrators.
- * The list is cached and refreshed at most every $ttlMinutes.
- */
-final class ChatAdminSync
-{
-    public function __construct(
-        private TelegramApi $api,
-        private ChatRepository $chats,
-        private AdminRepository $admins,
-        private PlayerRepository $players,
-        private Clock $clock,
-        private BotIdentity $bot,
-        private Logger $logger,
-        private int $ttlMinutes = 10,
-    ) {
-    }
+	Keeps the admins table in sync with Telegram chat administrators.
+	The list is cached and refreshed at most every $ttl_minutes.
+*/
+class ChatAdminSync {
 
-    public function syncIfStale(int $chatId): void
-    {
-        $synced = $this->chats->adminsSyncedAt($chatId);
-        if ($synced !== null && $synced > $this->clock->now()->modify("-{$this->ttlMinutes} minutes")) {
-            return;
-        }
-        $this->sync($chatId);
-    }
+	public function __construct(
+		protected TelegramApi $api,
+		protected ChatRepository $chats,
+		protected AdminRepository $admins,
+		protected PlayerRepository $players,
+		protected Clock $clock,
+		protected BotIdentity $bot,
+		protected Logger $logger,
+		protected int $ttl_minutes = 10,
+	) {
+	}
 
-    public function sync(int $chatId): void
-    {
-        try {
-            $members = $this->api->getChatAdministrators($chatId);
-        } catch (Throwable $e) {
-            // Keep the old cache; try again on the next message.
-            $this->logger->exception($e, 'getChatAdministrators');
-            return;
-        }
+	public function syncIfStale(int $chat_id): void {
+		$synced = $this->chats->adminsSyncedAt($chat_id);
+		if ($synced !== null && $synced > $this->clock->now()->modify("-{$this->ttl_minutes} minutes")) {
+			return;
+		}
+		$this->sync($chat_id);
+	}
 
-        $admins = [];
-        foreach ($members as $member) {
-            if (!isset($member['user']) || !is_array($member['user'])) {
-                continue;
-            }
-            $user = TgUser::fromArray($member['user']);
-            if ($user->isBot || $user->id === 0) {
-                continue;
-            }
-            $player = $this->players->ensureByTelegram($user->id, $user->username, $user->displayName(), $this->clock->now());
-            $admins[$player->id] = $user->id === $this->bot->ownerTgId;
-        }
-        $this->admins->replaceForChat($chatId, $admins);
-        $this->chats->markAdminsSynced($chatId, $this->clock->now());
-    }
+	public function sync(int $chat_id): void {
+		try {
+			$members = $this->api->getChatAdministrators($chat_id);
+		} catch (Throwable $e) {
+			// Keep the old cache; try again on the next message.
+			$this->logger->exception($e, 'getChatAdministrators');
+			return;
+		}
+
+		$admins = [];
+		foreach ($members as $member) {
+			if (!isset($member['user']) || !is_array($member['user'])) {
+				continue;
+			}
+			$user = TgUser::fromArray($member['user']);
+			if ($user->is_bot || $user->id === 0) {
+				continue;
+			}
+			$player = $this->players->ensureByTelegram(
+				$user->id,
+				$user->username,
+				$user->displayName(),
+				$this->clock->now(),
+			);
+			$admins[$player->id] = $user->id === $this->bot->owner_tg_id;
+		}
+		$this->admins->replaceForChat($chat_id, $admins);
+		$this->chats->markAdminsSynced($chat_id, $this->clock->now());
+	}
 }

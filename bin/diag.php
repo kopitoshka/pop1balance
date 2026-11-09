@@ -15,11 +15,12 @@ $config = require dirname(__DIR__) . '/config/config.php';
 
 $token = (string) ($config['telegram']['token'] ?? '');
 $diag = new Diagnostics(
-    $config,
-    $token !== '' ? new BotApi(new CurlHttpClient(), $token) : null,
-    static function () use ($config): Database {
-        return Database::fromConfig($config['db']);
-    },
-    dirname(__DIR__) . '/migrations',
+	$config,
+	$token !== '' ? new BotApi(new CurlHttpClient(), $token) : null,
+
+	static function () use ($config): Database {
+		return Database::fromConfig($config['db']);
+	},
+	dirname(__DIR__) . '/migrations',
 );
 fwrite(STDOUT, implode("\n", $diag->lines()) . "\n");

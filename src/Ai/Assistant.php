@@ -12,149 +12,161 @@ use P1Bot\Support\Logger;
 use P1Bot\Telegram\BotIdentity;
 
 /**
- * Turns a free-text message into a human reply: model + function calls executed in PHP.
- * Dialog memory: a reply to the bot's answer continues the same conversation (TTL).
- */
-final class Assistant
-{
-    private const MAX_ROUNDS = 5;
-    private const MAX_HISTORY = 12;
+	Turns a free-text message into a human reply: model + function calls executed in PHP.
+	Dialog memory: a reply to the bot's answer continues the same conversation (TTL).
+*/
+class Assistant {
+	protected const MAX_ROUNDS = 5;
+	protected const MAX_HISTORY = 12;
 
-    public function __construct(
-        private AiClient $ai,
-        private Dispatcher $dispatcher,
-        private ConversationRepository $conversations,
-        private BotIdentity $bot,
-        private Clock $clock,
-        private Logger $logger,
-        private string $systemPrompt,
-        private int $ttlMinutes = 30,
-    ) {
-    }
+	public function __construct(
+		protected AiClient $ai,
+		protected Dispatcher $dispatcher,
+		protected ConversationRepository $conversations,
+		protected BotIdentity $bot,
+		protected Clock $clock,
+		protected Logger $logger,
+		protected string $system_prompt,
+		protected int $ttl_minutes = 30,
+	) {
+	}
 
-    /**
-     * Produces the reply text and a callback to remember the dialog once the reply is sent.
-     *
-     * 'card' is a draft id when the turn ended with a created/edited draft: the caller shows
-     * the card «Публикуем или что-то поправить?» instead of the model's text.
-     *
-     * 'list' = the model asked for the tournament list: the caller sends the pretty list before the text.
-     *
-     * @return array{text: string, remember: callable(int): void, card: ?int, history: list<array<string, mixed>>, list: bool, levels: bool}
-     */
-    public function reply(Context $ctx): array
-    {
-        $message = $ctx->message;
-        $conversation = null;
-        if ($message->replyToMessageId !== null && $message->isReplyToUser($this->bot->botId)) {
-            $found = $this->conversations->findByBotMessage($ctx->chatId(), $message->replyToMessageId, $this->clock->now());
-            if ($found !== null && $found['player_id'] === $ctx->actor->id) {
-                $conversation = $found;
-            }
-        }
-        $history = $conversation['history'] ?? [];
-        $userText = $message->textWithoutMention($this->bot->username);
-        if ($userText === '') {
-            $userText = '(пустое сообщение, просто упомянули бота)';
-        }
+	/**
+		Produces the reply text and a callback to remember the dialog once the reply is sent.
 
-        $input = array_merge(
-            [['role' => 'developer', 'content' => $this->contextBlock($ctx)]],
-            $history,
-            [['role' => 'user', 'content' => $userText]],
-        );
-        $tools = Tools::definitions($ctx->isAdmin);
-        $allowed = Tools::names($ctx->isAdmin);
+		'card' is a draft id when the turn ended with a created/edited draft: the caller shows
+		the card «Публикуем или что-то поправить?» instead of the model's text.
 
-        $card = null;
-        $list = false;
-        $levels = false;
-        $response = $this->ai->createResponse($this->systemPrompt, $input, $tools);
-        for ($round = 0; $response->toolCalls !== [] && $round < self::MAX_ROUNDS; $round++) {
-            $outputs = [];
-            $card = null;
-            foreach ($response->toolCalls as $call) {
-                $result = in_array($call['name'], $allowed, true)
-                    ? $this->dispatcher->dispatch($call['name'], $call['arguments'], $ctx)
-                    : ['ok' => false, 'error' => 'Это действие недоступно.'];
-                $this->logger->info('tool ' . $call['name'], ['args' => $call['arguments'], 'ok' => $result['ok'] ?? false]);
-                if (!empty($result['show_list'])) {
-                    $list = true;
-                }
-                if (!empty($result['show_levels'])) {
-                    $levels = true;
-                }
-                if (isset($result['show_card'])) {
-                    $card = (int) $result['show_card'];
-                } elseif (!empty($result['published'])) {
-                    $card = null;
-                }
-                $outputs[] = [
-                    'type' => 'function_call_output',
-                    'call_id' => $call['call_id'],
-                    'output' => (string) json_encode($result, JSON_UNESCAPED_UNICODE),
-                ];
-            }
-            if ($card !== null) {
-                break; // the card is the answer; no need for another model round
-            }
-            $response = $this->ai->createResponse($this->systemPrompt, $outputs, $tools, $response->id);
-        }
+		'list' = the model asked for the tournament list: the caller sends the pretty list before the text.
 
-        if ($card === null && $response->text !== '') {
-            $text = $response->text;
-        } else {
-            $text = ($list || $levels) && $card === null ? '' : 'Готово!'; // the list / help speaks for itself
-        }
-        $newHistory = array_slice(array_merge($history, [
-            ['role' => 'user', 'content' => $userText],
-            ['role' => 'assistant', 'content' => $text],
-        ]), -self::MAX_HISTORY);
-        $conversationId = $conversation['id'] ?? null;
+		@return array{text: string, remember: callable(int): void, card: ?int, history: list<array<string, mixed>>, list: bool, levels: bool}
+	*/
+	public function reply(Context $ctx): array {
+		$message = $ctx->message;
+		$conversation = null;
+		if ($message->reply_to_message_id !== null && $message->isReplyToUser($this->bot->bot_id)) {
+			$found = $this->conversations->findByBotMessage(
+				$ctx->chatId(),
+				$message->reply_to_message_id,
+				$this->clock->now(),
+			);
+			if ($found !== null && $found['player_id'] === $ctx->actor->id) {
+				$conversation = $found;
+			}
+		}
+		$history = $conversation['history'] ?? [];
+		$user_text = $message->textWithoutMention($this->bot->username);
+		if ($user_text === '') {
+			$user_text = '(пустое сообщение, просто упомянули бота)';
+		}
 
-        $remember = function (int $botMessageId) use ($ctx, $newHistory, $conversationId): void {
-            $this->conversations->save(
-                $conversationId,
-                $ctx->chatId(),
-                $ctx->actor->id,
-                $botMessageId,
-                $newHistory,
-                $this->clock->now()->modify("+{$this->ttlMinutes} minutes"),
-            );
-        };
+		$input = array_merge(
+			[['role' => 'developer', 'content' => $this->contextBlock($ctx)]],
+			$history,
+			[['role' => 'user', 'content' => $user_text]],
+		);
+		$tools = Tools::definitions($ctx->is_admin);
+		$allowed = Tools::names($ctx->is_admin);
 
-        return [
-            'text' => $text,
-            'remember' => $remember,
-            'card' => $card,
-            'list' => $list,
-            'levels' => $levels,
-            'history' => array_slice(array_merge($history, [['role' => 'user', 'content' => $userText]]), -self::MAX_HISTORY),
-        ];
-    }
+		$card = null;
+		$list = false;
+		$levels = false;
+		$response = $this->ai->createResponse($this->system_prompt, $input, $tools);
+		for ($round = 0; $response->tool_calls !== [] && $round < self::MAX_ROUNDS; $round++) {
+			$outputs = [];
+			$card = null;
+			foreach ($response->tool_calls as $call) {
+				$result = in_array($call['name'], $allowed, true)
+					? $this->dispatcher->dispatch($call['name'], $call['arguments'], $ctx)
+					: ['ok' => false, 'error' => 'Это действие недоступно.'];
+				$this->logger->info(
+					'tool ' . $call['name'],
+					['args' => $call['arguments'], 'ok' => $result['ok'] ?? false],
+				);
+				if (!empty($result['show_list'])) {
+					$list = true;
+				}
+				if (!empty($result['show_levels'])) {
+					$levels = true;
+				}
+				if (isset($result['show_card'])) {
+					$card = (int) $result['show_card'];
+				} elseif (!empty($result['published'])) {
+					$card = null;
+				}
+				$outputs[] = [
+					'type' => 'function_call_output',
+					'call_id' => $call['call_id'],
+					'output' => (string) json_encode($result, JSON_UNESCAPED_UNICODE),
+				];
+			}
+			if ($card !== null) {
+				break; // the card is the answer; no need for another model round
+			}
+			$response = $this->ai->createResponse($this->system_prompt, $outputs, $tools, $response->id);
+		}
 
-    /** Facts the model needs; it is rebuilt for every message. */
-    private function contextBlock(Context $ctx): string
-    {
-        $author = $ctx->actor;
-        $tournaments = $this->dispatcher->dispatch('list_tournaments', [], $ctx)['tournaments'] ?? [];
-        $status = $this->dispatcher->statusLines($ctx);
-        $drafts = $this->dispatcher->draftLines($ctx);
+		if ($card === null && $response->text !== '') {
+			$text = $response->text;
+		} else {
+			$text = ($list || $levels) && $card === null ? '' : 'Готово!'; // the list / help speaks for itself
+		}
+		$new_history = array_slice(array_merge($history, [
+			['role' => 'user', 'content' => $user_text],
+			['role' => 'assistant', 'content' => $text],
+		]), -self::MAX_HISTORY);
+		$conversation_id = $conversation['id'] ?? null;
 
-        return implode("\n", [
-            'Контекст (для тебя, не пересказывай его целиком):',
-            'Сейчас: ' . MoscowTime::format($this->clock->now()) . ', ' . self::weekday($this->clock->now()),
-            sprintf('Автор сообщения: %s%s.', $author->displayName !== '' ? $author->displayName : 'игрок', $author->username !== null ? ' (@' . $author->username . ')' : ''),
-            'Автор — ' . ($ctx->isAdmin ? 'админ чата: ему доступны действия админа.' : 'обычный игрок: действия админа ему недоступны.'),
-            'Активные турниры: ' . ($tournaments === [] ? 'нет.' : "\n- " . implode("\n- ", $tournaments)),
-            'Заявки автора: ' . implode('; ', $status),
-            'Неопубликованные черновики автора: ' . ($drafts === [] ? 'нет.' : "\n- " . implode("\n- ", $drafts)),
-        ]);
-    }
+		$remember = function (int $bot_message_id) use ($ctx, $new_history, $conversation_id): void {
+			$this->conversations->save(
+				$conversation_id,
+				$ctx->chatId(),
+				$ctx->actor->id,
+				$bot_message_id,
+				$new_history,
+				$this->clock->now()->modify("+{$this->ttl_minutes} minutes"),
+			);
+		};
 
-    private static function weekday(\DateTimeImmutable $utc): string
-    {
-        $days = ['воскресенье', 'понедельник', 'вторник', 'среда', 'четверг', 'пятница', 'суббота'];
-        return $days[(int) $utc->setTimezone(MoscowTime::zone())->format('w')];
-    }
+		return [
+			'text' => $text,
+			'remember' => $remember,
+			'card' => $card,
+			'list' => $list,
+			'levels' => $levels,
+			'history' => array_slice(
+				array_merge($history, [['role' => 'user', 'content' => $user_text]]),
+				-self::MAX_HISTORY,
+			),
+		];
+	}
+
+	/**
+		Facts the model needs; it is rebuilt for every message.
+	*/
+	protected function contextBlock(Context $ctx): string {
+		$author = $ctx->actor;
+		$tournaments = $this->dispatcher->dispatch('list_tournaments', [], $ctx)['tournaments'] ?? [];
+		$status = $this->dispatcher->statusLines($ctx);
+		$drafts = $this->dispatcher->draftLines($ctx);
+
+		return implode("\n", [
+			'Контекст (для тебя, не пересказывай его целиком):',
+			'Сейчас: ' . MoscowTime::format($this->clock->now()) . ', ' . self::weekday($this->clock->now()),
+			sprintf(
+				'Автор сообщения: %s%s.',
+				$author->display_name !== '' ? $author->display_name : 'игрок',
+				$author->username !== null ? ' (@' . $author->username . ')' : '',
+			),
+			'Автор — ' . ($ctx->is_admin ? 'админ чата: ему доступны действия админа.' : 'обычный игрок: действия админа ему недоступны.'),
+			'Активные турниры: ' . ($tournaments === [] ? 'нет.' : "\n- " . implode("\n- ", $tournaments)),
+			'Заявки автора: ' . implode('; ', $status),
+			'Неопубликованные черновики автора: ' . ($drafts === [] ? 'нет.' : "\n- " . implode("\n- ", $drafts)),
+		]);
+	}
+
+	protected static function weekday(\DateTimeImmutable $utc): string {
+		$days = ['воскресенье', 'понедельник', 'вторник', 'среда', 'четверг', 'пятница', 'суббота'];
+		return $days[(int) $utc->setTimezone(MoscowTime::zone())->format('w')];
+	}
 }

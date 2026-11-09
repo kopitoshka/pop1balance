@@ -1,39 +1,39 @@
 {
-    "name": "andrey/p1-tournament-bot",
-    "description": "Telegram bot for Population: One tournaments (prototype)",
-    "type": "project",
-    "license": "proprietary",
-    "require": {
-        "php": ">=8.0",
-        "ext-pdo": "*",
-        "ext-json": "*",
-        "ext-mbstring": "*"
-    },
-    "require-dev": {
-        "phpunit/phpunit": "^9.6"
-    },
-    "suggest": {
-        "ext-pdo_mysql": "Production database driver",
-        "ext-pdo_sqlite": "Required to run the test suite",
-        "ext-curl": "Telegram / OpenAI HTTP calls"
-    },
-    "autoload": {
-        "psr-4": {
-            "P1Bot\\": "src/"
-        }
-    },
-    "autoload-dev": {
-        "psr-4": {
-            "P1Bot\\Tests\\": "tests/"
-        }
-    },
-    "scripts": {
-        "test": "phpunit"
-    },
-    "config": {
-        "sort-packages": true,
-        "platform": {
-            "php": "8.0.30"
-        }
-    }
+	"name": "andrey/p1-tournament-bot",
+	"description": "Telegram bot for Population: One tournaments (prototype)",
+	"type": "project",
+	"license": "proprietary",
+	"require": {
+		"php": ">=8.0",
+		"ext-pdo": "*",
+		"ext-json": "*",
+		"ext-mbstring": "*"
+	},
+	"require-dev": {
+		"phpunit/phpunit": "^9.6"
+	},
+	"suggest": {
+		"ext-pdo_mysql": "Production database driver",
+		"ext-pdo_sqlite": "Required to run the test suite",
+		"ext-curl": "Telegram / OpenAI HTTP calls"
+	},
+	"autoload": {
+		"psr-4": {
+			"P1Bot\\": "src/"
+		}
+	},
+	"autoload-dev": {
+		"psr-4": {
+			"P1Bot\\Tests\\": "tests/"
+		}
+	},
+	"scripts": {
+		"test": "phpunit"
+	},
+	"config": {
+		"sort-packages": true,
+		"platform": {
+			"php": "8.0.30"
+		}
+	}
 }

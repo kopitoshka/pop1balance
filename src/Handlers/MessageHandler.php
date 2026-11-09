@@ -18,104 +18,113 @@ use P1Bot\View\Html;
 use P1Bot\View\Texts;
 use Throwable;
 
-/** Free-text messages addressed to the bot: AI when configured, otherwise a short help. */
-final class MessageHandler
-{
-    public function __construct(
-        private TelegramApi $api,
-        private BotIdentity $bot,
-        private ?Assistant $assistant,
-        private Logger $logger,
-        private ?TournamentService $tournaments = null,
-        private ?DraftCards $drafts = null,
-        private ?TournamentListing $listing = null,
-    ) {
-    }
+/**
+	Free-text messages addressed to the bot: AI when configured, otherwise a short help.
+*/
+class MessageHandler {
 
-    public function handle(Context $ctx): void
-    {
-        $chatId = $ctx->chatId();
-        $replyTo = $ctx->message->messageId;
+	public function __construct(
+		protected TelegramApi $api,
+		protected BotIdentity $bot,
+		protected ?Assistant $assistant,
+		protected Logger $logger,
+		protected ?TournamentService $tournaments = null,
+		protected ?DraftCards $drafts = null,
+		protected ?TournamentListing $listing = null,
+	) {
+	}
 
-        if ($this->handleCardReply($ctx)) {
-            return;
-        }
+	public function handle(Context $ctx): void {
+		$chat_id = $ctx->chatId();
+		$reply_to = $ctx->message->message_id;
 
-        if ($this->assistant === null) {
-            $this->api->sendMessage($chatId, Texts::fallback($this->bot->username), $replyTo);
-            return;
-        }
+		if ($this->handleCardReply($ctx)) {
+			return;
+		}
 
-        try {
-            $reply = $this->assistant->reply($ctx);
-        } catch (Throwable $e) {
-            $this->logger->exception($e, 'assistant');
-            $this->api->sendMessage($chatId, Texts::somethingWentWrong(), $replyTo);
-            return;
-        }
+		if ($this->assistant === null) {
+			$this->api->sendMessage($chat_id, Texts::fallback($this->bot->username), $reply_to);
+			return;
+		}
 
-        if ($reply['card'] !== null && $this->drafts !== null) {
-            try {
-                // The card itself ends the turn: «Публикуем или что-то поправить?» with buttons.
-                $this->drafts->show($reply['card'], $replyTo, $ctx->actor->id, $reply['history']);
-                return;
-            } catch (DomainError $e) {
-                // The draft was published or cancelled meanwhile: fall back to the model's text.
-            }
-        }
-        $messageId = null;
-        if (!empty($reply['list']) && $this->listing !== null) {
-            // The pretty list goes as is; the model only adds a short phrase.
-            foreach ($this->listing->messages($chatId, $ctx->isAdmin) as $list) {
-                $messageId = $this->api->sendMessage($chatId, $list, $replyTo);
-            }
-        }
-        if (!empty($reply['levels'])) {
-            $messageId = $this->api->sendMessage($chatId, Texts::levels(), $replyTo);
-        }
-        if ($reply['text'] !== '' || $messageId === null) {
-            $messageId = $this->api->sendMessage($chatId, Html::e($reply['text'] !== '' ? $reply['text'] : 'Готово!'), $replyTo);
-        }
-        ($reply['remember'])($messageId);
-    }
+		try {
+			$reply = $this->assistant->reply($ctx);
+		} catch (Throwable $e) {
+			$this->logger->exception($e, 'assistant');
+			$this->api->sendMessage($chat_id, Texts::somethingWentWrong(), $reply_to);
+			return;
+		}
 
-    /**
-     * A clear "да / публикуем" in reply to the current draft card publishes it right away,
-     * without the AI. Anything else goes on to the AI (or a hint when AI is off).
-     */
-    /** For the update log: what will answer a mention. */
-    public function mode(): string
-    {
-        return $this->assistant !== null ? 'ai' : 'fallback text (AI off: OPENAI_API_KEY is empty)';
-    }
+		if ($reply['card'] !== null && $this->drafts !== null) {
+			try {
+				// The card itself ends the turn: «Публикуем или что-то поправить?» with buttons.
+				$this->drafts->show($reply['card'], $reply_to, $ctx->actor->id, $reply['history']);
+				return;
+			} catch (DomainError $e) {
+				// The draft was published or cancelled meanwhile: fall back to the model's text.
+			}
+		}
+		$message_id = null;
+		if (!empty($reply['list']) && $this->listing !== null) {
+			// The pretty list goes as is; the model only adds a short phrase.
+			foreach ($this->listing->messages($chat_id, $ctx->is_admin) as $list) {
+				$message_id = $this->api->sendMessage($chat_id, $list, $reply_to);
+			}
+		}
+		if (!empty($reply['levels'])) {
+			$message_id = $this->api->sendMessage($chat_id, Texts::levels(), $reply_to);
+		}
+		if ($reply['text'] !== '' || $message_id === null) {
+			$message_id = $this->api->sendMessage(
+				$chat_id,
+				Html::e($reply['text'] !== '' ? $reply['text'] : 'Готово!'),
+				$reply_to,
+			);
+		}
+		($reply['remember'])($message_id);
+	}
 
-    private function handleCardReply(Context $ctx): bool
-    {
-        $replyTo = $ctx->message->replyToMessageId;
-        if ($replyTo === null || $this->tournaments === null || $this->drafts === null || !$ctx->message->isReplyToUser($this->bot->botId)) {
-            return false;
-        }
-        $t = $this->tournaments->findByCardMessage($ctx->chatId(), $replyTo);
-        if ($t === null || $t->status !== TournamentStatus::DRAFT || !$this->drafts->canConfirm($t, $ctx->actor->id)) {
-            return false;
-        }
-        if (Confirmation::isClearYes($ctx->message->textWithoutMention($this->bot->username))) {
-            try {
-                $this->drafts->publish($ctx->actor->id, $t->id, $replyTo);
-                $this->api->sendMessage($ctx->chatId(), 'Опубликовал! Анонс уже в чате, регистрация открыта 🎉', $ctx->message->messageId);
-            } catch (DomainError $e) {
-                $this->api->sendMessage($ctx->chatId(), Html::e($e->getMessage()), $ctx->message->messageId);
-            }
-            return true;
-        }
-        if ($this->assistant === null) {
-            $this->api->sendMessage(
-                $ctx->chatId(),
-                'Не публикую, пока ты явно не подтвердишь. Поправить можно командой, например: /edit ' . (int) $this->drafts->numberOf($t) . ' время 23.11 21:00. Если всё верно — ответь «да» или нажми «Публикуем».',
-                $ctx->message->messageId,
-            );
-            return true;
-        }
-        return false;
-    }
+	/**
+		A clear "да / публикуем" in reply to the current draft card publishes it right away,
+		without the AI. Anything else goes on to the AI (or a hint when AI is off).
+	*/
+	/**
+		For the update log: what will answer a mention.
+	*/
+	public function mode(): string {
+		return $this->assistant !== null ? 'ai' : 'fallback text (AI off: OPENAI_API_KEY is empty)';
+	}
+
+	protected function handleCardReply(Context $ctx): bool {
+		$reply_to = $ctx->message->reply_to_message_id;
+		if ($reply_to === null || $this->tournaments === null || $this->drafts === null || !$ctx->message->isReplyToUser($this->bot->bot_id)) {
+			return false;
+		}
+		$t = $this->tournaments->findByCardMessage($ctx->chatId(), $reply_to);
+		if ($t === null || $t->status !== TournamentStatus::DRAFT || !$this->drafts->canConfirm($t, $ctx->actor->id)) {
+			return false;
+		}
+		if (Confirmation::isClearYes($ctx->message->textWithoutMention($this->bot->username))) {
+			try {
+				$this->drafts->publish($ctx->actor->id, $t->id, $reply_to);
+				$this->api->sendMessage(
+					$ctx->chatId(),
+					'Опубликовал! Анонс уже в чате, регистрация открыта 🎉',
+					$ctx->message->message_id,
+				);
+			} catch (DomainError $e) {
+				$this->api->sendMessage($ctx->chatId(), Html::e($e->getMessage()), $ctx->message->message_id);
+			}
+			return true;
+		}
+		if ($this->assistant === null) {
+			$this->api->sendMessage(
+				$ctx->chatId(),
+				'Не публикую, пока ты явно не подтвердишь. Поправить можно командой, например: /edit ' . (int) $this->drafts->numberOf($t) . ' время 23.11 21:00. Если всё верно — ответь «да» или нажми «Публикуем».',
+				$ctx->message->message_id,
+			);
+			return true;
+		}
+		return false;
+	}
 }
