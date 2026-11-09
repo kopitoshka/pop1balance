@@ -2,9 +2,9 @@
 
 declare(strict_types=1);
 
-// Health check: php bin/diag.php
-// Player dig:  php bin/diag.php --player @nick   (or IGN / numeric player id)
-// Prints webhook/DB health, or for --player: all matching player rows, ratings per scale, duplicates.
+// Health check:     php bin/diag.php
+// Player dig:       php bin/diag.php --player @nick   (or IGN / numeric player id)
+// Placeholders dig: php bin/diag.php --placeholders
 
 use P1Bot\App\Diagnostics;
 use P1Bot\Http\CurlHttpClient;
@@ -15,6 +15,7 @@ require dirname(__DIR__) . '/autoload.php';
 $config = require dirname(__DIR__) . '/config/config.php';
 
 $player_arg = null;
+$placeholders_mode = in_array('--placeholders', $argv, true);
 foreach ($argv as $i => $arg) {
 	if ($arg === '--player' && isset($argv[$i + 1])) {
 		$player_arg = (string) $argv[$i + 1];
@@ -27,6 +28,62 @@ foreach ($argv as $i => $arg) {
 }
 
 $db = Database::fromConfig($config['db']);
+
+if ($placeholders_mode) {
+	fwrite(STDOUT, "== Placeholder players (tg_user_id IS NULL)
+");
+	$rows = $db->fetchAll('SELECT * FROM players WHERE tg_user_id IS NULL ORDER BY id');
+	if ($rows === []) {
+		fwrite(STDOUT, "None.
+");
+		exit(0);
+	}
+	foreach ($rows as $row) {
+		$id = (int) $row['id'];
+		$refs = [];
+		foreach ([
+			['team_members', 'player_id'],
+			['solo_players', 'player_id'],
+			['teams', 'captain_id'],
+			['balance_ratings', 'player_id'],
+		] as [$table, $col]) {
+			$n = (int) $db->fetchValue(
+				"SELECT COUNT(*) FROM {$table} WHERE {$col} = :p",
+				['p' => $id],
+			);
+			if ($n > 0) {
+				$refs[] = "{$table}×{$n}";
+			}
+		}
+		$status = $refs === [] ? 'UNREFERENCED (cleaned by 011 if applied)' : 'REFERENCED: ' . implode(', ', $refs);
+		fwrite(STDOUT, sprintf(
+			"#%d @%s ign=%s — %s
+",
+			$id,
+			$row['username'] ?? 'NULL',
+			$row['ign'] ?? 'NULL',
+			$status,
+		));
+		if ($refs !== []) {
+			$teams = $db->fetchAll(
+				'SELECT tm.tournament_id, tm.team_id, t.name AS team_name
+					FROM team_members tm JOIN teams t ON t.id = tm.team_id
+					WHERE tm.player_id = :p',
+				['p' => $id],
+			);
+			foreach ($teams as $tm) {
+				fwrite(STDOUT, sprintf(
+					"    in tournament #%d team #%d «%s»
+",
+					(int) $tm['tournament_id'],
+					(int) $tm['team_id'],
+					$tm['team_name'],
+				));
+			}
+		}
+	}
+	exit(0);
+}
 
 if ($player_arg !== null) {
 	$ref = ltrim(trim($player_arg), '@');
@@ -99,7 +156,7 @@ if ($player_arg !== null) {
 			}
 		}
 		$teams = $db->fetchAll(
-			'SELECT tm.tournament_id, tm.team_id, tm.level_snapshot, t.name AS team_name
+			'SELECT tm.tournament_id, tm.team_id, t.name AS team_name
 				FROM team_members tm
 				JOIN teams t ON t.id = tm.team_id
 				WHERE tm.player_id = :p
@@ -109,11 +166,10 @@ if ($player_arg !== null) {
 		);
 		foreach ($teams as $tm) {
 			fwrite(STDOUT, sprintf(
-				"  team_member: tournament #%d team #%d «%s» snapshot=%d\n",
+				"  team_member: tournament #%d team #%d «%s»\n",
 				(int) $tm['tournament_id'],
 				(int) $tm['team_id'],
 				$tm['team_name'],
-				(int) $tm['level_snapshot'],
 			));
 		}
 		fwrite(STDOUT, "\n");

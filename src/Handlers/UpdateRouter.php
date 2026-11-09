@@ -158,6 +158,11 @@ class UpdateRouter {
 			return;
 		}
 
+		// Remember every human the bot can see in groups (tg id + username), even if we ignore the text.
+		$this->chats->ensure($message->chat_id, $message->chat_title);
+		$actor = $this->upsertPlayer($message->from);
+		$this->registerMentionedPlayers($message);
+
 		$command = $message->command();
 		$is_our_command = $command !== null
 			&& ($command['bot'] === null || mb_strtolower($command['bot']) === mb_strtolower($this->bot->username))
@@ -174,9 +179,6 @@ class UpdateRouter {
 			return;
 		}
 
-		$this->chats->ensure($message->chat_id, $message->chat_title);
-		$actor = $this->upsertPlayer($message->from);
-		$this->registerMentionedPlayers($message);
 		$this->beginDialog($message);
 
 		$ctx = new Context(

@@ -176,7 +176,7 @@ class Bootstrap {
 			(int) ($config['admins_cache_minutes'] ?? 10),
 		);
 
-		$this->player_resolver = new PlayerResolver($this->players, $clock);
+		$this->player_resolver = new PlayerResolver($this->players, $clock, $this->bot->username);
 		$this->tournament_resolver = new TournamentResolver($this->tournament_repo);
 		$this->announcements = new TournamentAnnouncementRepository($db);
 		$this->announcer = new Announcer(

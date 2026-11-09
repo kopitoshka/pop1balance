@@ -245,6 +245,22 @@ abstract class IntegrationTestCase extends TestCase {
 	}
 
 	/**
+		Legacy row without tg_user_id (for claim/merge tests only — production no longer creates these).
+	*/
+	protected function insertPlaceholder(string $username): Player {
+		$username = \P1Bot\Repository\PlayerRepository::normalizeUsername($username);
+		$id = $this->db->insert(
+			'INSERT INTO players (tg_user_id, username, display_name, created_at) VALUES (NULL, :u, :d, :c)',
+			[
+				'u' => $username,
+				'd' => $username,
+				'c' => \P1Bot\Support\DateFormat::toDb($this->clock->now()),
+			],
+		);
+		return $this->app->players->find($id) ?? throw new \LogicException('placeholder insert failed');
+	}
+
+	/**
 		Owner sets a level in the default scale.
 	*/
 	protected function rate(Player $player, int $level): void {

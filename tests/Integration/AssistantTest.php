@@ -20,6 +20,7 @@ class AssistantTest extends IntegrationTestCase {
 		$cap = $this->player('cap');
 		$this->ownerAbsentFromGroups();
 		$this->player('vasya');
+		$this->player('petya');
 		$this->http->queueOpenAi($this->functionCall('resp_1', 'call_1', 'register_team', [
 			'tournament_id' => $t->id,
 			'team_name' => 'Wolves',

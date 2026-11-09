@@ -52,7 +52,7 @@ class UpdateRouterTest extends IntegrationTestCase {
 	}
 
 	public function testUsernamePlaceholderIsAttachedWhenUserWrites(): void {
-		$placeholder = $this->app->players->ensureByUsername('newbie', $this->clock->now());
+		$placeholder = $this->insertPlaceholder('newbie');
 		$this->dispatch(['update_id' => 900, 'message' => [
 			'message_id' => 1,
 			'chat' => ['id' => self::CHAT_ID, 'type' => 'supergroup', 'title' => 'P1 турниры'],

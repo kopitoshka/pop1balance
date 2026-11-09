@@ -4,13 +4,14 @@ declare(strict_types=1);
 
 namespace P1Bot\Tests\Integration;
 
+use P1Bot\Domain\Exception\ValidationError;
 use P1Bot\Repository\ConversationRepository;
 use P1Bot\Tests\Support\IntegrationTestCase;
 
 class PlayerRepositoryTest extends IntegrationTestCase {
 
 	public function testUsernamePlaceholderIsClaimedByRealAccount(): void {
-		$placeholder = $this->app->players->ensureByUsername('@Vasya', $this->clock->now());
+		$placeholder = $this->insertPlaceholder('@Vasya');
 		self::assertNull($placeholder->tg_user_id);
 		self::assertSame('vasya', $placeholder->username);
 
@@ -22,7 +23,7 @@ class PlayerRepositoryTest extends IntegrationTestCase {
 
 	public function testRatingsMergeWhenUsernameClaimedByExistingTgUser(): void {
 		$real = $this->app->players->ensureTelegramId(9001, 'NoNick', $this->clock->now());
-		$placeholder = $this->app->players->ensureByUsername('zoloto', $this->clock->now());
+		$placeholder = $this->insertPlaceholder('zoloto');
 		self::assertNotSame($real->id, $placeholder->id);
 		$this->rate($placeholder, 4);
 
@@ -34,6 +35,18 @@ class PlayerRepositoryTest extends IntegrationTestCase {
 			[],
 			$this->db->fetchAll('SELECT * FROM balance_ratings WHERE player_id = :p', ['p' => $placeholder->id]),
 		);
+	}
+
+	public function testUnknownUsernameIsNotCreated(): void {
+		self::assertNull($this->app->players->findKnownByUsername('ghost'));
+		try {
+			$this->app->player_resolver->fromReference('@ghost', $this->owner);
+			self::fail('expected ValidationError');
+		} catch (ValidationError $e) {
+			self::assertStringContainsString('@ghost ещё не знаком со мной', $e->getMessage());
+			self::assertStringContainsString('/start', $e->getMessage());
+		}
+		self::assertNull($this->app->players->findByUsername('ghost'));
 	}
 
 	public function testUsernameChangeUpdatesRow(): void {

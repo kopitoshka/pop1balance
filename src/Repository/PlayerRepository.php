@@ -189,19 +189,25 @@ class PlayerRepository {
 	}
 
 	/**
-		Player referenced by @username who may not have written to the chat yet.
+		Existing player with this @username and a real Telegram id (already seen by the bot).
+		Does not create placeholders.
 	*/
-	public function ensureByUsername(string $username, DateTimeImmutable $now): Player {
-		$username = self::normalizeUsername($username);
-		$existing = $this->findByUsername($username);
-		if ($existing !== null) {
-			return $existing;
+	public function findKnownByUsername(string $username): ?Player {
+		$player = $this->findByUsername($username);
+		if ($player === null || $player->tg_user_id === null) {
+			return null;
 		}
-		$id = $this->db->insert(
-			'INSERT INTO players (tg_user_id, username, display_name, created_at) VALUES (NULL, :u, :d, :c)',
-			['u' => $username, 'd' => $username, 'c' => DateFormat::toDb($now)],
+		return $player;
+	}
+
+	/**
+		@return list<Player> rows without tg_user_id (legacy placeholders)
+	*/
+	public function listPlaceholders(): array {
+		$rows = $this->db->fetchAll(
+			'SELECT * FROM players WHERE tg_user_id IS NULL ORDER BY id',
 		);
-		return $this->find($id) ?? throw new \LogicException('Player insert failed');
+		return array_map([Player::class, 'fromRow'], $rows);
 	}
 
 	/**

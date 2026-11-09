@@ -298,8 +298,12 @@ class AdminCommandsTest extends IntegrationTestCase {
 		self::assertStringContainsString('@vasya — средний+ (4)', $this->http->lastText());
 
 		$this->dispatch($this->privateMessage($this->owner, '/level @petya высокий +'));
-		$petya = $this->app->players->findByUsername('petya');
-		self::assertNotNull($petya, 'placeholder created for unknown @username');
+		self::assertStringContainsString('@petya ещё не знаком со мной', $this->http->lastText());
+		self::assertNull($this->app->players->findByUsername('petya'));
+
+		$petya = $this->player('petya');
+		$this->dispatch($this->privateMessage($this->owner, '/level @petya высокий +'));
+		self::assertStringContainsString('@petya — высокий+ (6)', $this->http->lastText());
 		self::assertSame(6, $this->app->balances->levelOf($this->app->balances->findDefault()->id, $petya->id));
 
 		$this->dispatch($this->privateMessage($this->owner, '/level @vasya 9'));
