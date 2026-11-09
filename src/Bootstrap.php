@@ -32,6 +32,7 @@ use P1Bot\Repository\AdminRepository;
 use P1Bot\Repository\BalanceRepository;
 use P1Bot\Repository\ChatRepository;
 use P1Bot\Repository\EditedReplyRepository;
+use P1Bot\Repository\GroupNoticeRepository;
 use P1Bot\Repository\ConversationRepository;
 use P1Bot\Repository\PlayerRepository;
 use P1Bot\Repository\SoloPlayerRepository;
@@ -309,6 +310,10 @@ class Bootstrap {
 			$this->logger,
 			array_map('intval', (array) ($cron['reminder_minutes'] ?? [60, 15])),
 			(int) ($cron['finish_after_hours'] ?? 4),
+			$this->chats,
+			new GroupNoticeRepository($this->db),
+			(bool) ($cron['remind_all_groups'] ?? true),
+			$this->bot->username,
 		);
 	}
 

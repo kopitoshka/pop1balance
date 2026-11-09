@@ -68,8 +68,11 @@ class Update {
 			'chat_id' => (int) ($this->my_chat_member['chat']['id'] ?? 0),
 			'title' => (string) ($this->my_chat_member['chat']['title'] ?? ''),
 			'type' => (string) ($this->my_chat_member['chat']['type'] ?? ''),
-			'is_member' => in_array($status, $member, true),
-			'was_member' => in_array($old, $member, true),
+			// «restricted» is still in the chat while is_member is true.
+			'is_member' => in_array($status, $member, true)
+				|| ($status === 'restricted' && !empty($this->my_chat_member['new_chat_member']['is_member'])),
+			'was_member' => in_array($old, $member, true)
+				|| ($old === 'restricted' && !empty($this->my_chat_member['old_chat_member']['is_member'])),
 		];
 	}
 }

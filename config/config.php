@@ -60,6 +60,8 @@ return [
 	'cron' => [
 		'reminder_minutes'   => $reminders === [] ? [60, 15] : $reminders,
 		'finish_after_hours' => Env::int('FINISH_AFTER_HOURS', 4),
+		// At the first reminder (60 min) also post the tournament to every other group the bot is in
+		'remind_all_groups'  => Env::bool('REMIND_ALL_GROUPS', true),
 	],
 	// debug | info | error (debug also logs every raw update)
 	'log_level' => Env::get('LOG_LEVEL', 'info'),

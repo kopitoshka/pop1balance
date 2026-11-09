@@ -112,3 +112,11 @@ CREATE TABLE edited_replies (
 	created_at  TEXT NOT NULL,
 	PRIMARY KEY (chat_id, message_id)
 );
+
+CREATE TABLE group_notices (
+	tournament_id  INTEGER NOT NULL REFERENCES tournaments (id) ON DELETE CASCADE,
+	chat_id        INTEGER NOT NULL,
+	created_at     TEXT NOT NULL,
+	result         TEXT NULL,
+	PRIMARY KEY (tournament_id, chat_id)
+);

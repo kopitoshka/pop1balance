@@ -51,7 +51,8 @@ cp .env.example .env && chmod 640 .env     # then fill it in, see below
 sudo chown -R apache:apache storage        # or nginx:nginx — the php-fpm user must write logs
 ```
 
-Updating later: `git pull && php bin/migrate.php && php bin/diag.php` (e.g. `003_tournament_card.sql` / `004_tournament_card_shown_to.sql` add `tournaments.card_msg_id` / `card_shown_to`; `006_players_dm.sql` adds `players.dm_ok`, `dm_started_at`, `dm_group_id` for the private chat).
+Updating later: `git pull && php bin/migrate.php && php bin/diag.php` (e.g. `003_tournament_card.sql` / `004_tournament_card_shown_to.sql` add `tournaments.card_msg_id` / `card_shown_to`; `006_players_dm.sql` adds `players.dm_ok`, `dm_started_at`, `dm_group_id` for the private chat;
+`007_group_notices.sql` adds `group_notices` for `REMIND_ALL_GROUPS`).
 
 ### 3. Database
 
@@ -126,7 +127,7 @@ and `sudo setsebool -P httpd_can_network_connect 1` (the bot calls Telegram and 
 Optional: `DEFAULT_MAX_PLAYERS` (24), `ANYONE_CAN_CREATE_TOURNAMENT` (0), `ADMINS_CACHE_MINUTES` (10),
 `CONVERSATION_TTL_MINUTES` (30), `REMINDER_MINUTES` (`60,15`), `FINISH_AFTER_HOURS` (4), `OPENAI_TIMEOUT` (30),
 `LOG_LEVEL` (`info`; `debug` | `info` | `error`, see Logs), `DIALOG_LOG` (1, see Dialog logs),
-`BOT_PERSONA_NAME` (empty; see below).
+`BOT_PERSONA_NAME` (empty; see below), `REMIND_ALL_GROUPS` (1; see Usage → Group).
 
 **Voice.** The bot speaks about herself in the feminine gender («записала», «поняла», «рада») — both the AI
 (`config/prompts/system.md`) and all fixed texts. `BOT_PERSONA_NAME` (e.g. `Фемида`) is optional: when set, the
@@ -234,6 +235,17 @@ for the webhook too, e.g. `sudo -u apache php bin/diag.php`.
 
 - The bot posts announcements (one URL button «💬 Записаться / вопросы в личке» → `start=t_<id>`), edits them when
   someone joins or leaves (no join messages in the group), and posts reminders.
+- Reminders (`REMINDER_MINUTES`, default `60,15`) for published tournaments (registration open or closed; not drafts
+  or cancelled ones) go to the tournament's own group as a reply to its announcement. At the first mark (the largest
+  value, 60 by default) with `REMIND_ALL_GROUPS=1` (default) every **other** active group the bot is in also gets a
+  short «⏰ Через час стартует турнир …» (date and time MSK, team size, level, places taken/limit) with the same
+  button. The own group gets only its usual reminder, the 15-minute one stays there. Each group gets at most one such
+  message per tournament (`group_notices`, claimed before sending, so overlapping or repeated cron runs do not
+  duplicate it). If a group fails, the error goes to the main log and the others still get it; a 403 (bot kicked /
+  not a member), «chat not found» or «upgraded to a supergroup» marks the group inactive. Groups come from the
+  `chats` table: added when the bot joins or sees a message there, marked inactive by `my_chat_member` when the bot
+  leaves or is removed. If cron was down past the first mark, only the latest due reminder goes out and other groups
+  get nothing. `REMIND_ALL_GROUPS=0` turns it off.
 - Answered in the group: `/tournaments` (published only, no drafts), `/info N`, `/levels`, `/help` (short: everything
   else is in private), `/start` (= `/help`).
 - Anything else addressed to the bot → one «Давай в личке 👉» with a button. The link opens the tournament
