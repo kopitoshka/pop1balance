@@ -64,13 +64,25 @@ class BotApi implements TelegramApi {
 		]);
 	}
 
-	public function answerCallbackQuery(string $callback_query_id, string $text = '', bool $show_alert = false): void {
+	public function answerCallbackQuery(
+		string $callback_query_id,
+		string $text = '',
+		bool $show_alert = false,
+		?string $url = null,
+	): void {
 		$params = ['callback_query_id' => $callback_query_id];
 		if ($text !== '') {
 			$params['text'] = $text;
 			$params['show_alert'] = $show_alert;
 		}
+		if ($url !== null) {
+			$params['url'] = $url;
+		}
 		$this->call('answerCallbackQuery', $params);
+	}
+
+	public function getChatMember(int $chat_id, int $user_id): array {
+		return $this->call('getChatMember', ['chat_id' => $chat_id, 'user_id' => $user_id]);
 	}
 
 	public function getChatAdministrators(int $chat_id): array {

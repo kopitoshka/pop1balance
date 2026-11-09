@@ -28,7 +28,20 @@ interface TelegramApi {
 	*/
 	public function editMessageText(int $chat_id, int $message_id, string $text, array $options = []): void;
 
-	public function answerCallbackQuery(string $callback_query_id, string $text = '', bool $show_alert = false): void;
+	/**
+		$url may be a t.me/<bot>?start=... link: the client opens the private chat with the bot.
+	*/
+	public function answerCallbackQuery(
+		string $callback_query_id,
+		string $text = '',
+		bool $show_alert = false,
+		?string $url = null,
+	): void;
+
+	/**
+		@return array<string, mixed> ChatMember object (status: creator, administrator, member, restricted, left, kicked)
+	*/
+	public function getChatMember(int $chat_id, int $user_id): array;
 
 	/**
 		@return list<array<string, mixed>> ChatMember objects

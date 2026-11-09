@@ -6,6 +6,8 @@ namespace P1Bot\Handlers;
 
 use P1Bot\App\Announcer;
 use P1Bot\App\DraftCards;
+use P1Bot\App\NeedGroupChoice;
+use P1Bot\App\PrivateGroups;
 use P1Bot\App\PlayerResolver;
 use P1Bot\App\TournamentListing;
 use P1Bot\App\TournamentResolver;
@@ -35,7 +37,7 @@ use P1Bot\View\Texts;
 	Slash commands: the fallback that works without AI.
 */
 class AdminCommands {
-	protected const PUBLIC = ['help', 'start', 'tournaments', 'info', 'levels'];
+	protected const PUBLIC = ['help', 'start', 'tournaments', 'info', 'levels', 'group'];
 
 	/**
 		«уровень», «уровень турнира», «максимальный уровень», «макс. уровень» — one field (old «эталон» still works).
@@ -71,8 +73,16 @@ class AdminCommands {
 		protected Clock $clock,
 		protected DraftCards $drafts,
 		protected TournamentListing $listing,
+		protected ?PrivateGroups $groups = null,
 	) {
 	}
+
+	/**
+		Extra sendMessage options for the reply of the current command (e.g. «open» buttons).
+
+		@var array<string, mixed>
+	*/
+	protected array $reply_extra = [];
 
 	public function supports(string $command): bool {
 		return in_array($command, self::PUBLIC, true) || in_array($command, self::ADMIN, true);
@@ -87,12 +97,21 @@ class AdminCommands {
 				throw new PermissionDenied('Эта команда только для админов чата. Посмотреть турниры: /tournaments');
 			}
 			$reply = $this->run($ctx, $command, $args);
+		} catch (NeedGroupChoice $e) {
+			$this->api->sendMessage(
+				$ctx->chatId(),
+				Html::e($e->getMessage()),
+				$ctx->message->message_id,
+				PrivateGroups::buttons($e->groups),
+			);
+			return;
 		} catch (DomainError $e) {
 			$reply = Html::e($e->getMessage());
 		}
 		if ($reply !== '') {
-			$this->api->sendMessage($ctx->chatId(), $reply, $ctx->message->message_id);
+			$this->api->sendMessage($ctx->chatId(), $reply, $ctx->message->message_id, $this->reply_extra);
 		}
+		$this->reply_extra = [];
 	}
 
 	/**
@@ -102,14 +121,18 @@ class AdminCommands {
 		switch ($command) {
 			case 'help':
 			case 'start':
-				return Texts::help($this->bot->username, $ctx->is_admin, $ctx->is_owner);
+				return $ctx->isPrivate()
+					? Texts::help($this->bot->username, $ctx->is_admin, $ctx->is_owner)
+					: Texts::groupHelp($this->bot->username);
+			case 'group':
+				return $this->chooseGroup($ctx);
 			case 'tournaments':
 				return $this->listTournaments($ctx);
 			case 'levels':
 				return Texts::levels();
 			case 'info':
 				[$id] = self::splitId($args);
-				$t = $this->resolver->resolve($ctx->chatId(), $id, TournamentStatus::active());
+				$t = $this->resolver->resolve($ctx->groupId(), $id, TournamentStatus::active());
 				return $this->sendAllButLast($ctx, $this->announcer->infoMessages($t));
 			case 'new':
 				return $this->create($ctx, $args);
@@ -138,11 +161,42 @@ class AdminCommands {
 	}
 
 	protected function listTournaments(Context $ctx): string {
-		$messages = $this->listing->messages($ctx->chatId(), $ctx->is_admin);
+		if ($ctx->isPrivate() && $this->groups !== null) {
+			$groups = $this->groups->all();
+			$messages = $this->listing->privateMessages($groups, $ctx->actor->id, $ctx->is_owner);
+			if ($messages === []) {
+				return 'Сейчас активных турниров нет.' . ($ctx->is_admin ? ' Создать: /new 23.11 20:00 | Название | 3 | средний, средний, средний+ | 24 или просто напиши, какой турнир нужен.' : '');
+			}
+			$this->reply_extra = TournamentListing::openButtons(
+				$this->listing->privateTournaments($groups, $ctx->actor->id, $ctx->is_owner),
+				$groups,
+			);
+			return $this->sendAllButLast($ctx, $messages);
+		}
+		// The group list never shows drafts: drafts live in the organizer's private chat.
+		$messages = $this->listing->messages($ctx->groupId(), false);
 		if ($messages === []) {
 			return 'Сейчас активных турниров нет.' . ($ctx->is_admin ? ' Создать: /new 23.11 20:00 | Название | 3 | средний, средний, средний+ | 24' : '');
 		}
 		return $this->sendAllButLast($ctx, $messages);
+	}
+
+	/**
+		/group in private: pick the group tournament numbers and admin commands refer to.
+	*/
+	protected function chooseGroup(Context $ctx): string {
+		if (!$ctx->isPrivate() || $this->groups === null) {
+			return '';
+		}
+		$groups = $this->groups->all();
+		if ($groups === []) {
+			return 'Я пока не состою ни в одной группе.';
+		}
+		$current = $this->groups->current($ctx->actor->id);
+		$this->reply_extra = PrivateGroups::buttons($groups);
+		return $current !== null
+			? 'Сейчас работаем с группой ' . Html::b($this->groups->title($current)) . '. Переключиться:'
+			: 'Выбери группу:';
 	}
 
 	/**
@@ -181,9 +235,12 @@ class AdminCommands {
 		$reference = $parts[3];
 		$max_players = isset($parts[4]) && $parts[4] !== '' ? self::intArg($parts[4], 'лимит участников') : null;
 
+		$chat_id = $ctx->isPrivate() && $this->groups !== null
+			? $this->groups->forCreate($ctx->actor->id)
+			: $ctx->groupId();
 		try {
 			$t = $this->tournaments->create(new CreateTournament(
-				$ctx->chatId(),
+				$chat_id,
 				$ctx->actor->id,
 				$parts[1],
 				MoscowTime::toInput($starts_at),
@@ -197,7 +254,7 @@ class AdminCommands {
 		}
 
 		$this->announcer->renumber($t->chat_id, $t->id);
-		$this->drafts->show($t->id, $ctx->message->message_id, $ctx->actor->id, [
+		$this->drafts->show($t->id, $ctx->chatId(), $ctx->message->message_id, $ctx->actor->id, [
 			['role' => 'user', 'content' => '/new ' . $args],
 		]);
 		return '';
@@ -217,7 +274,7 @@ class AdminCommands {
 			$field = 'уровень';
 			$value = trim(mb_substr($rest, mb_strlen($rest) - mb_strlen($lm[1])));
 		}
-		$t = $this->resolver->resolve($ctx->chatId(), $id, self::MANAGEABLE);
+		$t = $this->resolver->resolve($ctx->groupId(), $id, self::MANAGEABLE);
 
 		switch ($field) {
 			case 'название':
@@ -282,7 +339,7 @@ class AdminCommands {
 		}
 		$this->announcer->renumber($t->chat_id, $t->id); // a new start time may change the order
 		if ($t->status === TournamentStatus::DRAFT) {
-			$this->drafts->show($t->id, $ctx->message->message_id, $ctx->actor->id, [
+			$this->drafts->show($t->id, $ctx->chatId(), $ctx->message->message_id, $ctx->actor->id, [
 				['role' => 'user', 'content' => '/edit ' . $args],
 			]);
 			return '';
@@ -296,7 +353,7 @@ class AdminCommands {
 		if ($target->status === TournamentStatus::DRAFT) {
 			// Same confirmation as creation: card «Публикуем или что-то поправить?», publish only after a clear yes.
 			$this->tournaments->assertCanManage($ctx->actor->id, $target->id);
-			$this->drafts->show($target->id, $ctx->message->message_id, $ctx->actor->id, [
+			$this->drafts->show($target->id, $ctx->chatId(), $ctx->message->message_id, $ctx->actor->id, [
 				['role' => 'user', 'content' => '/open ' . $args],
 			]);
 			return '';
@@ -331,7 +388,7 @@ class AdminCommands {
 			throw new ValidationError('Уровень от 1 до 6 или название: ' . self::levelsHint());
 		}
 
-		$this->balances->setLevel($ctx->chatId(), $ctx->actor->id, $player->id, $level, $balance_id);
+		$this->balances->setLevel($ctx->groupId(), $ctx->actor->id, $player->id, $level, $balance_id);
 		return sprintf(
 			'Записал: %s — %s (%d).',
 			Html::e($player->mention()),
@@ -385,7 +442,7 @@ class AdminCommands {
 	*/
 	protected function target(Context $ctx, string $args, ?array $statuses = null): Tournament {
 		[$id] = self::splitId($args);
-		return $this->resolver->resolve($ctx->chatId(), $id, $statuses ?? self::MANAGEABLE);
+		return $this->resolver->resolve($ctx->groupId(), $id, $statuses ?? self::MANAGEABLE);
 	}
 
 	/**

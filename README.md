@@ -9,12 +9,15 @@ PHP 8.0+ (tested on 8.0 and 8.3), MySQL 8 / MariaDB 10.5+, no framework.
 
 ## How it works
 
-- Webhook: `public/webhook.php`. In groups the bot reacts only to slash commands, @mentions of the bot
-  and replies to its messages (privacy mode ON). In a private chat it answers any text, read-only (see «Private chat»).
-- Free text goes to the AI (`src/Ai`): the model calls functions, PHP executes them through the
-  domain services (`src/Domain`) and checks all permissions itself. Replies to the bot continue
-  the dialog for `CONVERSATION_TTL_MINUTES`.
-- Without `OPENAI_API_KEY` mentions get a short help; slash commands always work.
+- Webhook: `public/webhook.php`. **Everything happens in the private chat with the bot.** The group gets only
+  announcements (cards), reminders and the info commands `/tournaments`, `/info N`, `/levels`, `/help`.
+  Any other command, @mention or reply to the bot in the group (joining, creating, editing, questions — admins
+  included) gets one reply «Давай в личке 👉» with a URL button `https://t.me/<bot>?start=…` (see «Group»).
+  No AI in the group.
+- In private any text is answered (no mention needed): deep links, buttons, all commands and the AI with all
+  tools (`src/Ai`): the model calls functions, PHP executes them through the domain services (`src/Domain`)
+  and checks all permissions itself. Any next message within `CONVERSATION_TTL_MINUTES` continues the dialog.
+- Without `OPENAI_API_KEY` free text in private gets a short hint; slash commands and buttons always work.
 - Cron (`bin/cron.php`, every minute): reminders, `registration → running → finished`, cleanup.
 
 ## Deployment: AlmaLinux 8 + PHP-FPM 8.0 (Remi)
@@ -48,7 +51,7 @@ cp .env.example .env && chmod 640 .env     # then fill it in, see below
 sudo chown -R apache:apache storage        # or nginx:nginx — the php-fpm user must write logs
 ```
 
-Updating later: `git pull && php bin/migrate.php && php bin/diag.php` (e.g. `003_tournament_card.sql` / `004_tournament_card_shown_to.sql` add `tournaments.card_msg_id` / `card_shown_to`).
+Updating later: `git pull && php bin/migrate.php && php bin/diag.php` (e.g. `003_tournament_card.sql` / `004_tournament_card_shown_to.sql` add `tournaments.card_msg_id` / `card_shown_to`; `006_players_dm.sql` adds `players.dm_ok`, `dm_started_at`, `dm_group_id` for the private chat).
 
 ### 3. Database
 
@@ -178,10 +181,12 @@ Example:
 ```
 
 Decisions: `ignored: no mention/reply`, `ignored: wrong bot username in mention`,
-`private: help`, `private: levels`, `private: tournaments`, `private: ai`, `private: redirect to group (/x)`,
-`private: owner command (/level)`, `private: fallback text (AI off…)`,
-`ignored: command /x@other_bot is for another bot`, `handled: command /x`, `handled: ai`,
-`handled: fallback text (AI off…)`, `handled: callback …`, `edited: replied once`, `ignored: edited, …`.
+`ignored: command /x@other_bot is for another bot`, `ignored: unknown command /x`,
+`group: info /tournaments` (info commands answered in the group), `group: redirect (/new|mention|reply) start=t_5|g_-100…`,
+`group: old button solo:5 -> private`, `private: start t_5`, `private: start g_-100…`, `private: start`,
+`private: command /edit`, `private: unknown command /x`, `private: ask group (/info)`, `private: card reply`,
+`private: ai`, `private: help` / `levels` / `tournaments` / `fallback text (AI off…)` (keywords, AI off),
+`private: button psolo:5`, `private: edited: replied once`, `edited: replied once`, `ignored: edited, …`.
 
 ### Diagnostics
 
@@ -196,29 +201,52 @@ for the webhook too, e.g. `sudo -u apache php bin/diag.php`.
 
 ## Usage
 
-Players (in the group, mention the bot or reply to it):
-- «@bot какие турниры скоро?», «@bot запиши команду Wolves: я, @vasya, @petya»,
-  «@bot хочу участвовать соло», «@bot замени @vasya на @kolya», «@bot где я записан?»
-- Buttons under the announcement: «Хочу участвовать» (solo), «Передумал».
+### Group
 
-Admins:
+- The bot posts announcements (one URL button «💬 Записаться / вопросы в личке» → `start=t_<id>`), edits them when
+  someone joins or leaves (no join messages in the group), and posts reminders.
+- Answered in the group: `/tournaments` (published only, no drafts), `/info N`, `/levels`, `/help` (short: everything
+  else is in private), `/start` (= `/help`).
+- Anything else addressed to the bot → one «Давай в личке 👉» with a button. The link opens the tournament
+  (`start=t_<id>`) when it is clear: a reply to its announcement/card, or its number (`/edit 2 …`, «№2», «турнир 2»);
+  otherwise `start=g_<group chat id>`. Nothing is auto-deleted.
+- Buttons of old group messages (`solo`, `unsolo`, `howto`, `pub`, `fix`) answer «Теперь это в личке…» and open
+  the private chat via `answerCallbackQuery(url=t.me/<bot>?start=t_<id>)`.
+
+### Private chat
+
+- `/start t_<id>` (from the announcement button): greeting, the full tournament view and buttons for the player's
+  state: «🙋 Записаться соло» + «👥 Собрать команду»; «❌ Отписаться» (solo); «🚪 Выйти из команды» (member);
+  «🚫 Распустить команду» (captain). Drafts open as the draft card for their organizer.
+- `/start`, `/start g_<chat>`: greeting + active tournaments of all groups, each with an «open» button.
+- «Собрать команду» asks for the name and players; the answer goes to the AI (the question is saved as dialog
+  memory), e.g. «Wolves: @vasya, @petya». Adding/removing/replacing players, renaming, captain transfer — in plain text.
+- Plain text: «какие турниры скоро?», «запиши команду Wolves: я, @vasya, @petya», «хочу участвовать соло»,
+  «замени @vasya на @kolya», «где я записан?». Commands: `/tournaments`, `/info N`, `/levels`, `/help`, `/group`.
+- Joining checks that the user is in the tournament's group (`getChatMember`: `left`/`kicked` → refused). If Telegram
+  can't tell (error), joining is allowed. Unseen users can join via the deep link.
+- Every private message marks the player as having started the bot (`players.dm_ok`, `dm_started_at`, migration 006).
+  No private reminders yet; reminders stay in the group.
+- Edited messages in private get «Исправленные сообщения я не вижу…» once.
+
+**Groups in private.** Tournament numbers and admin rights belong to a group. The player's current group is
+`players.dm_group_id`: set by a deep link / «open» button / group button, or automatically when the bot is in one
+group only. With several groups and none chosen, group-specific commands and free text first ask «С какой
+работаем?» with buttons (`grp:<chat id>`); `/group` switches. Lists in private show all groups with headers.
+
+Admins (rights are still per group, synced from Telegram chat admins):
 - `/new 23.11 20:00 | Кубок | 3 | 10 | 24` — date/time MSK | title | team size |
   tournament level (required, see «Tournament level» below) | player limit (default 24).
-  Creates a **draft** and shows its card ending with «Публикуем или что-то поправить?» and the buttons
-  «✅ Публикуем» / «✏️ Поправить».
+  Creates a **draft** in the group where the admin may create (the current one; the only one; or the bot asks with
+  buttons) and shows its card **in private** ending with «Публикуем или что-то поправить?» and the buttons
+  «✅ Публикуем» / «✏️ Поправить». On a clear confirmation the announcement goes **to the group**.
+  `ANYONE_CAN_CREATE_TOURNAMENT=1` allows any player in any group the bot is in.
 - `/edit [N] время 23.11 21:00` (fields: название, время, размер, уровень, лимит; `баланс N` — owner only). Editing a draft shows a fresh card.
   `/edit 1 уровень 10`, `/edit 1 уровень средний, средний, высокий`, `/edit 1 размер 2 уровень 7`.
 - `/levels` — the six levels with points and synonyms and how the tournament level works (for everyone).
 - `/open [id]` — for a draft: shows the same card and publishes only after a clear confirmation (see below);
   for a closed tournament: reopens registration right away. `/close [id]`; `/cancel [id]`
-
-Private chat (no mention needed, read-only):
-- «помощь» / «справка» / `/help` / `/start` — help; «уровни» / `/levels` — levels; «турниры» / `/tournaments` — published
-  active tournaments of all groups the bot is in (drafts only to their organizer or the owner). With several groups each
-  group gets a header with its name, and numbers are that group's own short numbers.
-- Free text goes to the AI with read-only tools only (show the list / the levels help), prompt `config/prompts/private.md`.
-- Anything that changes data (commands `/new`, `/edit`, `/open`, `/close`, `/cancel`, …, joining, teams) gets
-  «Это делается в группе турнира — напиши там, упомянув меня.» The owner may use `/level` and `/balance` here too.
+- All of this in plain text too («создай турнир на субботу в 20:00, тройки, уровень 10»).
 
 Owner only (`BOT_OWNER_TG_ID`, shown in `/help` to the owner only):
 - `/level @user 4 [balance]`, `/balance [id]`, `/edit N баланс M`; in plain text: set a player's level, create/show scales,
@@ -230,19 +258,19 @@ tournament's scale; everyone else gets «Уровни игроков меняе�
 админу.», and tournaments created by others always use the owner's default scale. The scale tables and columns stay
 (see `AccessPolicy::LEVELS_OWNER_ONLY`), so this can be switched back on later.
 - `/tournaments` — pretty list of active tournaments with teams (👑 captain), solo players, reserve and forming teams
-  (admins also see drafts); `/info [N]` — full lineup of one tournament; `/help` — for everyone
+  (in private also your own drafts; all drafts for the owner); `/info [N]` — full lineup of one tournament; `/help` — for everyone
 
-The number can be omitted when only one tournament fits. Admins can do all of this in plain text too.
+The number can be omitted when only one tournament fits.
 
-Edited messages are never processed (no commands, no AI). If an edit mentions the bot or replies to it, the bot
-answers once per message: «Исправленные сообщения я не вижу 🙈 Напиши, пожалуйста, заново новым сообщением»
+Edited messages are never processed (no commands, no AI). If an edit is in private, or mentions the bot or replies
+to it in a group, the bot answers once per message: «Исправленные сообщения я не вижу 🙈 Напиши, пожалуйста, заново новым сообщением»
 (dedupe table `edited_replies`, migration 005; rows older than 30 days are pruned). `edited_message` is in the
 webhook's `allowed_updates`, so after updating rerun `php bin/set_webhook.php`.
 
 ### Tournament numbers
 
 Users never see database ids. `№N` everywhere (lists, cards, announcements, `/info N`, `/edit N`, `/open N`,
-`/close N`, `/cancel N`, the AI's `tournament_id`) is a short per-chat number: the position among the chat's
+`/close N`, `/cancel N`, the AI's `tournament_id`) is a short per-group number: the position among the group's
 tournaments that are not finished or cancelled (drafts included), ordered by start time, then id: 1, 2, 3...
 It is computed on the fly (`App\TournamentResolver::numbers()`), nothing is stored.
 
@@ -266,11 +294,11 @@ When the AI calls `list_tournaments`, the bot sends this block itself and the mo
 Every tournament has a level (see below). There is no "no level" option any more
 (old tournaments without a limit keep working).
 
-1. In plain text («@bot создай турнир на субботу в 20:00, тройки, уровень 10») the bot
+1. In plain text in private («создай турнир на субботу в 20:00, тройки, уровень 10») the bot
    collects title, MSK date/time, team size and the tournament level and asks for whatever is missing or invalid.
    Player limit defaults to 24, the level scale to the default one.
-2. It creates a draft and shows the card with «Публикуем или что-то поправить?».
-3. Publishing (registration opens, announcement is posted) happens only on a clear confirmation from the
+2. It creates a draft and shows the card with «Публикуем или что-то поправить?» in private.
+3. Publishing (registration opens, the announcement is posted to the group) happens only on a clear confirmation from the
    organizer, the admin the current card was shown to (who ran `/new`, `/edit` or `/open`) or the bot owner: the «Публикуем» button, or a reply to the card like «да», «публикуем», «ок», «всё верно».
    The check is done in PHP (`App\Confirmation`), not by the model: anything with a correction, a question,
    a negation or numbers («да, но время 21:00») is not a confirmation — the edits are applied and the card is shown again.

@@ -116,6 +116,32 @@ class PlayerRepository {
 		return $this->find($id) ?? throw new \LogicException('Player insert failed');
 	}
 
+	/**
+		The player wrote to the bot in private: personal messages are possible from now on.
+	*/
+	public function markDmStarted(int $player_id, DateTimeImmutable $now): void {
+		$this->db->run(
+			'UPDATE players SET dm_ok = 1, dm_started_at = COALESCE(dm_started_at, :t) WHERE id = :id',
+			['t' => DateFormat::toDb($now), 'id' => $player_id],
+		);
+	}
+
+	public function dmOk(int $player_id): bool {
+		return (int) $this->db->fetchValue('SELECT dm_ok FROM players WHERE id = :id', ['id' => $player_id]) === 1;
+	}
+
+	/**
+		Group the player currently works with in private (null = not chosen yet).
+	*/
+	public function dmGroup(int $player_id): ?int {
+		$value = $this->db->fetchValue('SELECT dm_group_id FROM players WHERE id = :id', ['id' => $player_id]);
+		return $value === null ? null : (int) $value;
+	}
+
+	public function setDmGroup(int $player_id, ?int $chat_id): void {
+		$this->db->run('UPDATE players SET dm_group_id = :g WHERE id = :id', ['g' => $chat_id, 'id' => $player_id]);
+	}
+
 	public static function normalizeUsername(string $username): string {
 		return mb_strtolower(ltrim(trim($username), '@'));
 	}

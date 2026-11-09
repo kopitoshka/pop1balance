@@ -275,6 +275,14 @@ class TournamentService {
 		return $this->tournaments->findByCardMessage($chat_id, $message_id);
 	}
 
+	public function findByPrivateCard(int $message_id, int $player_id): ?Tournament {
+		return $this->tournaments->findByPrivateCard($message_id, $player_id);
+	}
+
+	public function findByAnnounceMessage(int $chat_id, int $message_id): ?Tournament {
+		return $this->tournaments->findByAnnounceMessage($chat_id, $message_id);
+	}
+
 	public function setAnnounceMessage(int $tournament_id, int $message_id): void {
 		$this->tournaments->update($tournament_id, ['announce_msg_id' => $message_id]);
 	}

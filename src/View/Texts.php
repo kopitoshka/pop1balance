@@ -12,40 +12,75 @@ class Texts {
 	public static function greeting(string $bot_username): string {
 		return "Всем привет! Я помогаю с турнирами по Population: One: собираю заявки команд и соло-игроков, "
 			. "слежу за лимитами и напоминаю о старте.\n\n"
-			. 'Просто напишите мне через @' . Html::e($bot_username) . ' или ответьте на моё сообщение. '
-			. 'Список команд: /help';
+			. "Записаться, собрать команду или задать вопрос — в личке: кнопка под анонсом турнира или "
+			. Html::e('@' . $bot_username) . ".\n"
+			. 'Здесь, в группе, — анонсы и /tournaments.';
 	}
 
+	/**
+		/help in a group: the group is for announcements only, everything else is in private.
+	*/
+	public static function groupHelp(string $bot_username): string {
+		return "Здесь, в группе, я публикую анонсы турниров и напоминаю о старте.\n\n"
+			. "/tournaments — активные турниры\n"
+			. "/info 2 — состав турнира (номер — из /tournaments)\n"
+			. "/levels — уровни игроков\n\n"
+			. 'Записаться, собрать команду, задать вопрос или создать турнир — в личке у '
+			. Html::e('@' . $bot_username) . ' 👉 кнопка под анонсом или просто /start.';
+	}
+
+	/**
+		/help in private: everything works here.
+	*/
 	public static function help(string $bot_username, bool $is_admin, bool $is_owner = false): string {
-		$bot = '@' . Html::e($bot_username);
-		$text = "Я помогаю записываться на турниры по Population: One.\n\n"
-			. "Можно писать обычным языком, упомянув меня или ответив на моё сообщение. Например:\n"
-			. "• <i>{$bot} какие турниры скоро?</i>\n"
-			. "• <i>{$bot} запиши команду Wolves на субботу: я, @vasya и @petya</i>\n"
-			. "• <i>{$bot} хочу участвовать, но без команды</i>\n" . ($is_admin ? "• <i>{$bot} создай турнир на субботу в 20:00, тройки, уровень средний, средний, средний+</i>\n" : '')
+		$text = "Я помогаю записываться на турниры по Population: One. Пиши мне обычным языком, например:\n"
+			. "• <i>какие турниры скоро?</i>\n"
+			. "• <i>запиши команду Wolves на субботу: я, @vasya и @petya</i>\n"
+			. "• <i>хочу участвовать, но без команды</i>\n"
+			. ($is_admin ? "• <i>создай турнир на субботу в 20:00, тройки, уровень средний, средний, средний+</i>\n" : '')
 			. "\n"
-			. "Команды для всех:\n"
+			. "Команды:\n"
+			. "/start — турниры с кнопками записи\n"
 			. "/tournaments — активные турниры\n"
 			. "/info 2 — состав турнира: команды, соло и резерв (номер — из списка /tournaments)\n"
 			. "/levels — уровни игроков и как задаётся уровень турнира\n"
-			. "/help — эта подсказка";
+			. "/group — выбрать группу, если я состою в нескольких\n"
+			. '/help — эта подсказка';
 		if ($is_admin) {
 			$text .= "\n\nДля админов:\n"
-				. "/new 23.11 20:00 | Название | 3 | 10 | 24 — создать турнир (дата и время по МСК | название | игроков в команде | уровень турнира | лимит участников). Я покажу карточку и спрошу, публикуем ли\n"
+				. "/new 23.11 20:00 | Название | 3 | 10 | 24 — создать турнир (дата и время по МСК | название | игроков в команде | уровень турнира | лимит участников). Я покажу карточку здесь, а после твоего «да» опубликую её в группе\n"
 				. "/edit 1 время 23.11 21:00 — изменить турнир (поля: название, время, размер, уровень, лимит)\n"
 				. "/edit 1 уровень 10 или /edit 1 уровень средний, средний, высокий — уровень турнира (подробнее: /levels)\n"
 				. "/open 5 — опубликовать черновик (покажу карточку и спрошу подтверждение) или снова открыть закрытую регистрацию\n"
 				. "/close 5 — закрыть регистрацию\n"
-				. "/cancel 5 — отменить турнир";
+				. '/cancel 5 — отменить турнир';
 		}
 		if ($is_owner) {
 			// Owner only for now (see AccessPolicy::LEVELS_OWNER_ONLY); not shown to anyone else.
 			$text .= "\n\nТолько для главного админа:\n"
 				. "/level @user 4 — поставить уровень игроку (1–6 или название: начальный, начальный+, средний, средний+, высокий, высокий+; «слабый» = начальный, «танк» = высокий)\n"
 				. "/balance — уровни, которые поставлены игрокам\n"
-				. "/edit 1 баланс 2 — выбрать для турнира другой набор уровней игроков";
+				. '/edit 1 баланс 2 — выбрать для турнира другой набор уровней игроков';
 		}
 		return $text;
+	}
+
+	/**
+		Plain /start in private.
+	*/
+	public static function welcome(string $first_name): string {
+		$name = trim($first_name) !== '' ? ', ' . Html::e(trim($first_name)) : '';
+		return "Привет{$name}! 👋 Я помогаю с турнирами по Population: One. "
+			. "Здесь можно записаться соло, собрать команду, задать вопрос — просто пиши обычным языком.\n"
+			. 'Подсказка: /help';
+	}
+
+	/**
+		/start t_N in private: greeting before the tournament view.
+	*/
+	public static function welcomeTournament(string $first_name): string {
+		$name = trim($first_name) !== '' ? ', ' . Html::e(trim($first_name)) : '';
+		return "Привет{$name}! 👋 Вот этот турнир. Кнопки ниже — или просто напиши, что нужно.";
 	}
 
 	/**
@@ -99,39 +134,10 @@ class Texts {
 	}
 
 	/**
-		Reply to a mention when the AI is not configured.
+		Reply to a message when the AI is not configured.
 	*/
-	/**
-		Help in a private chat: what works here and what is done in the group.
-	*/
-	public static function privateHelp(string $bot_username, bool $is_owner): string {
-		$bot = '@' . Html::e($bot_username);
-		$text = "Привет! Здесь можно спокойно посмотреть, что происходит с турнирами по Population: One.\n\n"
-			. "Что работает в личке:\n"
-			. "турниры или /tournaments — активные турниры и составы\n"
-			. "уровни или /levels — уровни игроков и как задаётся уровень турнира\n"
-			. "помощь или /help — эта подсказка\n"
-			. "А ещё можно просто спросить обычным языком, например: <i>когда ближайший турнир?</i>\n\n"
-			. "Записаться, собрать команду или создать турнир можно только в группе турнира: напиши там, упомянув {$bot}.";
-		if ($is_owner) {
-			// Owner only for now (see AccessPolicy::LEVELS_OWNER_ONLY).
-			$text .= "\n\nТолько для главного админа, работает и здесь:\n"
-				. "/level @user 4 — поставить уровень игроку\n"
-				. "/balance — уровни, которые поставлены игрокам";
-		}
-		return $text;
-	}
-
-	/**
-		Free text in a private chat while the AI is off.
-	*/
-	public static function privateFallback(): string {
-		return "Здесь я пока понимаю только простые запросы: турниры, уровни, помощь.\n"
-			. 'Записаться или создать турнир можно в группе турнира — напиши там, упомянув меня.';
-	}
-
 	public static function fallback(string $bot_username): string {
-		return "Я пока понимаю только команды. Посмотреть турниры: /tournaments, подсказка: /help.";
+		return 'Я сейчас понимаю только команды и кнопки. Турниры: /start, подсказка: /help.';
 	}
 
 	public static function somethingWentWrong(): string {

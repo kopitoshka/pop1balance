@@ -6,7 +6,10 @@ CREATE TABLE players (
 	tg_user_id    INTEGER NULL UNIQUE,
 	username      TEXT NULL UNIQUE,
 	display_name  TEXT NOT NULL DEFAULT '',
-	created_at    TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+	created_at    TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+	dm_ok         INTEGER NOT NULL DEFAULT 0,
+	dm_started_at TEXT NULL,
+	dm_group_id   INTEGER NULL
 );
 
 CREATE TABLE chats (

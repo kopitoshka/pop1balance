@@ -75,16 +75,16 @@ class UpdateLogTest extends IntegrationTestCase {
 	public function testCommandAndAi(): void {
 		$vasya = $this->player('vasya');
 		$this->dispatch($this->groupMessage($vasya, '/tournaments'));
-		self::assertStringContainsString('handled: command /tournaments', $this->lastUpdateLine());
+		self::assertStringContainsString('group: info /tournaments', $this->lastUpdateLine());
 
 		$this->http->queueOpenAi(['id' => 'r1', 'output' => [[
 			'type' => 'message',
 			'role' => 'assistant',
 			'content' => [['type' => 'output_text', 'text' => 'Привет!']],
 		]]]);
-		$this->dispatch($this->groupMessage($vasya, '@pop1_bot привет'));
+		$this->dispatch($this->privateMessage($vasya, 'привет'));
 		$text = $this->log->text();
-		self::assertStringContainsString('handled: ai', $text);
+		self::assertStringContainsString('private: ai', $text);
 		self::assertStringContainsString('INFO ai request start: model=', $text);
 		self::assertStringContainsString('INFO ai response HTTP 200', $text);
 		self::assertStringNotContainsString('0123456789abcdef', $text);

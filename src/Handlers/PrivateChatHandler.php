@@ -4,187 +4,255 @@ declare(strict_types=1);
 
 namespace P1Bot\Handlers;
 
-use P1Bot\Ai\PrivateAssistant;
-use P1Bot\App\TournamentListing;
+use P1Bot\App\DraftCards;
+use P1Bot\App\PrivateGroups;
+use P1Bot\App\PrivateViews;
+use P1Bot\Domain\AccessPolicy;
+use P1Bot\Domain\Exception\DomainError;
 use P1Bot\Domain\Model\Player;
-use P1Bot\Domain\MoscowTime;
-use P1Bot\Repository\ChatRepository;
+use P1Bot\Domain\TournamentService;
+use P1Bot\Domain\TournamentStatus;
+use P1Bot\Repository\PlayerRepository;
 use P1Bot\Support\Clock;
-use P1Bot\Support\Logger;
 use P1Bot\Telegram\BotIdentity;
+use P1Bot\Telegram\ChatAdminSync;
 use P1Bot\Telegram\Message;
 use P1Bot\Telegram\TelegramApi;
+use P1Bot\View\DeepLink;
 use P1Bot\View\Html;
-use P1Bot\View\Messages;
 use P1Bot\View\Texts;
-use Throwable;
 
 /**
-	Private chat with the bot: any text is answered, no mention needed. Read-only:
-	help, levels, the tournament list and free questions (AI without write tools).
-	Everything that changes data is redirected to the group. The owner may also use
-	his owner-only commands (/level, /balance) here.
+	Private chat with the bot: everything happens here. Deep links from the group (/start t_<id>,
+	/start g_<chat id>), all commands, buttons and the AI with all tools. Tournament numbers and
+	admin rights belong to a group: the player's current group (PrivateGroups).
 */
 class PrivateChatHandler {
+	public const START = 'start';
+	public const START_TOURNAMENT = 'start tournament';
+	public const START_GROUP = 'start group';
+	public const COMMAND = 'command';
+	public const UNKNOWN_COMMAND = 'unknown command';
+	public const ASK_GROUP = 'ask group';
+	public const CARD_REPLY = 'card reply';
 	public const HELP = 'help';
 	public const LEVELS = 'levels';
 	public const TOURNAMENTS = 'tournaments';
-	public const OWNER_COMMAND = 'owner_command';
-	public const REDIRECT = 'redirect';
 	public const AI = 'ai';
 	public const FALLBACK = 'fallback';
 
 	/**
-		Plain words and commands understood without the AI.
+		Plain words understood without the AI (only when the AI is off; with AI the model answers).
 	*/
 	protected const KEYWORDS = [
-		'help' => self::HELP,
-		'start' => self::HELP,
 		'помощь' => self::HELP,
 		'справка' => self::HELP,
 		'помоги' => self::HELP,
-		'levels' => self::LEVELS,
 		'уровни' => self::LEVELS,
-		'tournaments' => self::TOURNAMENTS,
 		'турниры' => self::TOURNAMENTS,
 		'список' => self::TOURNAMENTS,
 		'список турниров' => self::TOURNAMENTS,
-		'info' => self::TOURNAMENTS,
 	];
 
 	/**
-		Owner-only commands that also work in private (see AccessPolicy::LEVELS_OWNER_ONLY).
+		Commands that refer to tournaments by the group's numbers: they need the current group.
 	*/
-	protected const OWNER_COMMANDS = ['level', 'balance'];
+	protected const GROUP_COMMANDS = ['info', 'edit', 'open', 'close', 'cancel', 'level', 'balance'];
 
 	public function __construct(
 		protected TelegramApi $api,
 		protected BotIdentity $bot,
-		protected ChatRepository $chats,
-		protected TournamentListing $listing,
+		protected AccessPolicy $access,
+		protected ChatAdminSync $admin_sync,
+		protected PlayerRepository $players,
+		protected TournamentService $tournaments,
+		protected PrivateGroups $groups,
+		protected PrivateViews $views,
+		protected DraftCards $drafts,
 		protected AdminCommands $commands,
+		protected MessageHandler $messages,
 		protected Clock $clock,
-		protected Logger $logger,
-		protected ?PrivateAssistant $assistant = null,
 	) {
 	}
 
 	/**
 		What to do with the message; also used for the update log.
 
-		@return array{kind: string, command: ?string}
+		@return array{kind: string, command: ?string, args: string, tournament: ?int, group: ?int}
 	*/
-	public function decide(Message $message, bool $is_owner): array {
+	public function decide(Message $message, Player $actor): array {
+		$decision = ['kind' => self::AI, 'command' => null, 'args' => '', 'tournament' => null, 'group' => null];
 		$command = $message->command();
-		if ($command !== null) {
+		if ($command !== null && ($command['bot'] === null || mb_strtolower($command['bot']) === mb_strtolower($this->bot->username))) {
 			$name = mb_strtolower($command['name']);
-			if (isset(self::KEYWORDS[$name])) {
-				return ['kind' => self::KEYWORDS[$name], 'command' => $name];
+			$decision['command'] = $name;
+			$decision['args'] = $command['args'];
+			if ($name === 'start') {
+				$payload = DeepLink::parse(trim($command['args']));
+				if ($payload['tournament'] !== null) {
+					return ['kind' => self::START_TOURNAMENT, 'tournament' => $payload['tournament']] + $decision;
+				}
+				if ($payload['group'] !== null) {
+					return ['kind' => self::START_GROUP, 'group' => $payload['group']] + $decision;
+				}
+				return ['kind' => self::START] + $decision;
 			}
-			if ($is_owner && in_array($name, self::OWNER_COMMANDS, true)) {
-				return ['kind' => self::OWNER_COMMAND, 'command' => $name];
+			if (!$this->commands->supports($name)) {
+				return ['kind' => self::UNKNOWN_COMMAND] + $decision;
 			}
-			return ['kind' => self::REDIRECT, 'command' => $name];
+			if (in_array($name, self::GROUP_COMMANDS, true) && $this->needsGroupChoice($actor)) {
+				return ['kind' => self::ASK_GROUP] + $decision;
+			}
+			return ['kind' => self::COMMAND] + $decision;
 		}
-		$words = mb_strtolower(trim((string) preg_replace('/[\s.,!?…]+/u', ' ', $message->text)));
-		if (isset(self::KEYWORDS[$words])) {
-			return ['kind' => self::KEYWORDS[$words], 'command' => null];
+		if ($this->isCardReply($message, $actor)) {
+			return ['kind' => self::CARD_REPLY] + $decision;
 		}
-		return ['kind' => $this->assistant !== null ? self::AI : self::FALLBACK, 'command' => null];
+		if (!$this->messages->hasAi()) {
+			$words = mb_strtolower(trim((string) preg_replace('/[\s.,!?…]+/u', ' ', $message->text)));
+			return ['kind' => self::KEYWORDS[$words] ?? self::FALLBACK] + $decision;
+		}
+		if ($this->needsGroupChoice($actor)) {
+			return ['kind' => self::ASK_GROUP] + $decision;
+		}
+		return $decision;
 	}
 
 	/**
-		@param array{kind: string, command: ?string} $decision
+		@param array{kind: string, command: ?string, args: string, tournament: ?int, group: ?int} $decision
 	*/
-	public function handle(Message $message, Player $actor, bool $is_owner, array $decision): void {
+	public function handle(Message $message, Player $actor, array $decision): void {
+		$this->players->markDmStarted($actor->id, $this->clock->now());
 		$chat_id = $message->chat_id;
+		$is_owner = $this->access->isOwner($actor->id);
+		$first_name = $message->from !== null ? $message->from->first_name : '';
 		switch ($decision['kind']) {
+			case self::START_TOURNAMENT:
+				$this->startTournament($message, $actor, (int) $decision['tournament']);
+				return;
+			case self::START_GROUP:
+				$this->groups->choose($actor->id, (int) $decision['group']);
+				$this->views->list($chat_id, $actor, $is_owner, Texts::welcome($first_name));
+				return;
+			case self::START:
+				$this->views->list($chat_id, $actor, $is_owner, Texts::welcome($first_name));
+				return;
+			case self::UNKNOWN_COMMAND:
+				$this->api->sendMessage($chat_id, 'Такой команды я не знаю 🤔 Подсказка: /help', $message->message_id);
+				return;
+			case self::ASK_GROUP:
+				$this->askGroup($chat_id, $message->message_id);
+				return;
 			case self::HELP:
-				$this->api->sendMessage($chat_id, Texts::privateHelp($this->bot->username, $is_owner));
+				$this->api->sendMessage(
+					$chat_id,
+					Texts::help($this->bot->username, $this->context($message, $actor)->is_admin, $is_owner),
+				);
 				return;
 			case self::LEVELS:
 				$this->api->sendMessage($chat_id, Texts::levels());
 				return;
 			case self::TOURNAMENTS:
-				$this->sendList($chat_id, $actor, $is_owner);
+				$this->views->list($chat_id, $actor, $is_owner);
 				return;
-			case self::OWNER_COMMAND:
-				$command = $message->command();
+			case self::COMMAND:
 				$this->commands->handle(
-					new Context($message, $actor, true, true),
+					$this->context($message, $actor),
 					(string) $decision['command'],
-					$command['args'] ?? '',
+					$decision['args'],
 				);
 				return;
-			case self::REDIRECT:
-				$this->api->sendMessage($chat_id, Html::e(Messages::PRIVATE_REDIRECT));
-				return;
-			case self::FALLBACK:
-				$this->api->sendMessage($chat_id, Texts::privateFallback());
-				return;
 		}
-		$this->answerWithAi($message, $actor, $is_owner);
-	}
-
-	protected function sendList(int $chat_id, Player $actor, bool $is_owner): void {
-		$messages = $this->listing->privateMessages($this->chats->listActiveGroups(), $actor->id, $is_owner);
-		if ($messages === []) {
-			$this->api->sendMessage(
-				$chat_id,
-				'Сейчас активных турниров нет. Как только появятся — покажу здесь: /tournaments',
-			);
-			return;
-		}
-		foreach ($messages as $text) {
-			$this->api->sendMessage($chat_id, $text);
-		}
-	}
-
-	protected function answerWithAi(Message $message, Player $actor, bool $is_owner): void {
-		$chat_id = $message->chat_id;
-		if ($this->assistant === null) {
-			$this->api->sendMessage($chat_id, Texts::privateFallback());
-			return;
-		}
-		try {
-			$reply = $this->assistant->reply($message->text, $this->context($actor, $is_owner));
-		} catch (Throwable $e) {
-			$this->logger->exception($e, 'private assistant');
-			$this->api->sendMessage($chat_id, Texts::somethingWentWrong());
-			return;
-		}
-		if ($reply['list']) {
-			$this->sendList($chat_id, $actor, $is_owner);
-		}
-		if ($reply['levels']) {
-			$this->api->sendMessage($chat_id, Texts::levels());
-		}
-		if ($reply['text'] !== '') {
-			$this->api->sendMessage($chat_id, Html::e($reply['text']));
-		} elseif (!$reply['list'] && !$reply['levels']) {
-			$this->api->sendMessage($chat_id, Texts::privateFallback());
-		}
+		$this->messages->handle($this->context($message, $actor));
 	}
 
 	/**
-		Facts for the model: who writes and what is going on in the groups (plain text).
+		Author, rights and the current group. Admin tools are offered to an admin of any group;
+		every action still checks the rights for its tournament's group.
 	*/
-	protected function context(Player $actor, bool $is_owner): string {
-		$groups = $this->chats->listActiveGroups();
-		$list = $this->listing->privateMessages($groups, $actor->id, $is_owner, 20000);
-		$plain = trim(html_entity_decode(strip_tags(implode("\n\n", $list)), ENT_QUOTES | ENT_HTML5, 'UTF-8'));
-		return implode("\n", [
-			'Контекст (для тебя, не пересказывай его целиком):',
-			'Сейчас: ' . MoscowTime::format($this->clock->now()),
-			sprintf(
-				'Пишет: %s%s%s.',
-				$actor->display_name !== '' ? $actor->display_name : 'игрок',
-				$actor->username !== null ? ' (@' . $actor->username . ')' : '',
-				$is_owner ? ', главный админ' : '',
-			),
-			'Групп с ботом: ' . count($groups) . '.',
-			'Турниры:',
-			$plain !== '' ? $plain : 'активных турниров нет.',
-		]);
+	public function context(Message $message, Player $actor): Context {
+		$is_owner = $this->access->isOwner($actor->id);
+		$group_id = $this->groups->current($actor->id);
+		if ($group_id !== null) {
+			$this->admin_sync->syncIfStale($group_id);
+		}
+		return new Context(
+			$message,
+			$actor,
+			$is_owner || $this->groups->isAdminSomewhere($actor->id),
+			$is_owner,
+			$group_id,
+			$group_id !== null ? $this->groups->title($group_id) : '',
+		);
+	}
+
+	/**
+		@param array{kind: string, command: ?string, args: string, tournament: ?int, group: ?int} $decision
+	*/
+	public static function describe(array $decision): string {
+		switch ($decision['kind']) {
+			case self::START_TOURNAMENT:
+				return 'start t_' . (int) $decision['tournament'];
+			case self::START_GROUP:
+				return 'start g_' . (int) $decision['group'];
+			case self::COMMAND:
+			case self::UNKNOWN_COMMAND:
+				return $decision['kind'] . ' /' . $decision['command'];
+			case self::ASK_GROUP:
+				return 'ask group' . ($decision['command'] !== null ? ' (/' . $decision['command'] . ')' : '');
+			case self::FALLBACK:
+				return 'fallback text (AI off: OPENAI_API_KEY is empty)';
+		}
+		return $decision['kind'];
+	}
+
+	protected function startTournament(Message $message, Player $actor, int $tournament_id): void {
+		$chat_id = $message->chat_id;
+		$first_name = $message->from !== null ? $message->from->first_name : '';
+		$is_owner = $this->access->isOwner($actor->id);
+		try {
+			$t = $this->tournaments->get($tournament_id);
+		} catch (DomainError $e) {
+			$t = null;
+		}
+		$visible = $t !== null && (
+			in_array($t->status, TournamentStatus::active(), true)
+			|| ($t->status === TournamentStatus::DRAFT && $this->access->canManageTournament($t, $actor->id))
+		);
+		if ($t === null || !$visible) {
+			$this->views->list(
+				$chat_id,
+				$actor,
+				$is_owner,
+				Texts::welcome($first_name) . "\n\nЭтот турнир уже не активен. Вот что есть сейчас:",
+			);
+			return;
+		}
+		$this->groups->choose($actor->id, $t->chat_id);
+		if ($t->status === TournamentStatus::DRAFT) {
+			$this->drafts->show($t->id, $chat_id, null, $actor->id);
+			return;
+		}
+		$this->api->sendMessage($chat_id, Texts::welcomeTournament($first_name));
+		$this->views->tournament($chat_id, $t, $actor);
+	}
+
+	protected function askGroup(int $chat_id, ?int $reply_to): void {
+		$this->api->sendMessage(
+			$chat_id,
+			Html::e('Я состою в нескольких группах. С какой работаем? Выбери кнопкой и повтори запрос.'),
+			$reply_to,
+			PrivateGroups::buttons($this->groups->all()),
+		);
+	}
+
+	protected function needsGroupChoice(Player $actor): bool {
+		return $this->groups->current($actor->id) === null && count($this->groups->all()) > 1;
+	}
+
+	protected function isCardReply(Message $message, Player $actor): bool {
+		return $message->reply_to_message_id !== null
+			&& $message->isReplyToUser($this->bot->bot_id)
+			&& $this->tournaments->findByPrivateCard($message->reply_to_message_id, $actor->id) !== null;
 	}
 }

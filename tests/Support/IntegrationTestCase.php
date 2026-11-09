@@ -49,11 +49,26 @@ abstract class IntegrationTestCase extends TestCase {
 		$this->app->balances->ensureDefault($this->owner->id);
 		$this->admin = $this->player('admin2');
 		(new AdminRepository($this->db))->add(self::CHAT_ID, $this->admin->id);
+		// Chat admins as Telegram reports them: admin2 (tests may override).
+		$admin_tg_id = $this->tgIdOf($this->admin);
+		$this->http->onTelegram('getChatAdministrators', static function () use ($admin_tg_id): array {
+			return [
+				'ok' => true,
+				'result' => [
+					[
+						'status' => 'administrator',
+						'user' => [
+							'id' => $admin_tg_id,
+							'is_bot' => false,
+							'first_name' => 'Admin2',
+							'username' => 'admin2',
+						],
+					],
+				],
+			];
+		});
 	}
 
-	/**
-		@return array<string, mixed>
-	*/
 	/**
 		Override to capture log lines (null = logging off).
 	*/
@@ -61,6 +76,9 @@ abstract class IntegrationTestCase extends TestCase {
 		return null;
 	}
 
+	/**
+		@return array<string, mixed>
+	*/
 	protected function config(): array {
 		return [
 			'owner_tg_id' => self::OWNER_TG_ID,
@@ -110,6 +128,35 @@ abstract class IntegrationTestCase extends TestCase {
 		@return array<string, mixed>
 	*/
 	protected function groupMessage(Player $from, string $text, array $extra = []): array {
+		return $this->message(
+			$from,
+			$text,
+			$extra,
+			['id' => self::CHAT_ID, 'type' => 'supergroup', 'title' => 'P1 турниры'],
+		);
+	}
+
+	/**
+		Raw Telegram update with a message in the private chat with the bot (chat id = user id).
+
+		@param array<string, mixed> $extra merged into the message
+		@return array<string, mixed>
+	*/
+	protected function privateMessage(Player $from, string $text, array $extra = []): array {
+		return $this->message(
+			$from,
+			$text,
+			$extra,
+			['id' => $this->tgIdOf($from), 'type' => 'private', 'first_name' => $from->display_name],
+		);
+	}
+
+	/**
+		@param array<string, mixed> $extra
+		@param array<string, mixed> $chat
+		@return array<string, mixed>
+	*/
+	protected function message(Player $from, string $text, array $extra, array $chat): array {
 		static $update_id = 1;
 		static $message_id = 1;
 		$entities = [];
@@ -132,7 +179,7 @@ abstract class IntegrationTestCase extends TestCase {
 			'update_id' => $update_id++,
 			'message' => $extra + [
 				'message_id' => $message_id++,
-				'chat' => ['id' => self::CHAT_ID, 'type' => 'supergroup', 'title' => 'P1 турниры'],
+				'chat' => $chat,
 				'from' => [
 					'id' => $this->tgIdOf($from),
 					'is_bot' => false,
@@ -151,6 +198,35 @@ abstract class IntegrationTestCase extends TestCase {
 	*/
 	protected function dispatch(array $raw): void {
 		$this->app->router->handle(\P1Bot\Telegram\Update::fromArray($raw));
+	}
+
+	/**
+		Raw callback_query update: a button pressed in the private chat (or in $chat_id).
+
+		@return array<string, mixed>
+	*/
+	protected function press(Player $from, string $data, int $message_id = 1, ?int $chat_id = null): array {
+		static $callback_id = 1;
+		$chat_id = $chat_id ?? $this->tgIdOf($from);
+		return [
+			'update_id' => 900000 + $callback_id,
+			'callback_query' => [
+				'id' => 'cb' . $callback_id++,
+				'from' => [
+					'id' => $this->tgIdOf($from),
+					'is_bot' => false,
+					'first_name' => $from->display_name,
+					'username' => $from->username,
+				],
+				'data' => $data,
+				'message' => [
+					'message_id' => $message_id,
+					'chat' => $chat_id < 0
+						? ['id' => $chat_id, 'type' => 'supergroup', 'title' => 'P1 турниры']
+						: ['id' => $chat_id, 'type' => 'private'],
+				],
+			],
+		];
 	}
 
 	protected function player(string $username): Player {

@@ -8,11 +8,13 @@ use P1Bot\Ai\AiClient;
 use P1Bot\Ai\Assistant;
 use P1Bot\Ai\Dispatcher;
 use P1Bot\Ai\OpenAiClient;
-use P1Bot\Ai\PrivateAssistant;
 use P1Bot\App\Announcer;
 use P1Bot\App\CronRunner;
 use P1Bot\App\DraftCards;
+use P1Bot\App\GroupRedirect;
 use P1Bot\App\PlayerResolver;
+use P1Bot\App\PrivateGroups;
+use P1Bot\App\PrivateViews;
 use P1Bot\App\TournamentListing;
 use P1Bot\App\TournamentResolver;
 use P1Bot\Domain\AccessPolicy;
@@ -74,6 +76,7 @@ class Bootstrap {
 	public TournamentResolver $tournament_resolver;
 	public Dispatcher $dispatcher;
 	public ?Assistant $assistant = null;
+	public PrivateGroups $private_groups;
 
 	/**
 		@var array<string, mixed>
@@ -173,6 +176,15 @@ class Bootstrap {
 			$this->logger,
 			(int) ($config['conversation_ttl_minutes'] ?? 30),
 		);
+		$this->private_groups = new PrivateGroups(
+			$this->chats,
+			$this->players,
+			$this->access,
+			$this->admin_sync,
+			$this->telegram,
+			$this->logger,
+			(bool) ($config['tournament']['anyone_can_create'] ?? false),
+		);
 		$commands = new AdminCommands(
 			$this->telegram,
 			$this->bot,
@@ -186,6 +198,7 @@ class Bootstrap {
 			$clock,
 			$this->drafts,
 			$this->listing,
+			$this->private_groups,
 		);
 
 		$this->dispatcher = new Dispatcher(
@@ -201,6 +214,7 @@ class Bootstrap {
 			$this->logger,
 			$this->drafts,
 			$this->bot->username,
+			$this->private_groups,
 		);
 		$ai = $this->makeAiClient();
 		if ($ai !== null) {
@@ -216,6 +230,24 @@ class Bootstrap {
 			);
 		}
 
+		$messages = new MessageHandler(
+			$this->telegram,
+			$this->bot,
+			$this->assistant,
+			$this->logger,
+			$this->tournaments,
+			$this->drafts,
+			$this->listing,
+			$this->private_groups,
+		);
+		$views = new PrivateViews(
+			$this->telegram,
+			$this->tournaments,
+			$this->teams,
+			$this->announcer,
+			$this->listing,
+			$this->private_groups,
+		);
 		$this->router = new UpdateRouter(
 			$this->telegram,
 			$this->bot,
@@ -225,15 +257,7 @@ class Bootstrap {
 			$this->access,
 			$clock,
 			$commands,
-			new MessageHandler(
-				$this->telegram,
-				$this->bot,
-				$this->assistant,
-				$this->logger,
-				$this->tournaments,
-				$this->drafts,
-				$this->listing,
-			),
+			$messages,
 			new CallbackHandler(
 				$this->telegram,
 				$this->bot,
@@ -241,19 +265,29 @@ class Bootstrap {
 				$this->teams,
 				$this->announcer,
 				$this->drafts,
+				$this->private_groups,
+				$views,
+				$this->conversations,
+				$clock,
+				(int) ($config['conversation_ttl_minutes'] ?? 30),
 			),
 			new EditedReplyRepository($db),
 			$this->logger,
 			new PrivateChatHandler(
 				$this->telegram,
 				$this->bot,
-				$this->chats,
-				$this->listing,
+				$this->access,
+				$this->admin_sync,
+				$this->players,
+				$this->tournaments,
+				$this->private_groups,
+				$views,
+				$this->drafts,
 				$commands,
+				$messages,
 				$clock,
-				$this->logger,
-				$ai !== null ? new PrivateAssistant($ai, $this->logger, $this->privatePrompt()) : null,
 			),
+			new GroupRedirect($this->bot, $this->tournaments, $this->tournament_resolver),
 		);
 	}
 
@@ -290,19 +324,6 @@ class Bootstrap {
 			(int) ($openai['timeout'] ?? 30),
 			$this->logger,
 		);
-	}
-
-	/**
-		config/prompts/private.md next to the main prompt.
-	*/
-	protected function privatePrompt(): string {
-		$main = (string) ($this->config['paths']['prompt'] ?? dirname(__DIR__) . '/config/prompts/system.md');
-		$path = dirname($main) . '/private.md';
-		if (!is_file($path)) {
-			$path = dirname(__DIR__) . '/config/prompts/private.md';
-		}
-		$prompt = is_file($path) ? (string) file_get_contents($path) : '';
-		return str_replace('{bot_username}', $this->bot->username, $prompt);
 	}
 
 	protected function systemPrompt(): string {

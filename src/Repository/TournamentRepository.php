@@ -87,6 +87,28 @@ class TournamentRepository {
 	}
 
 	/**
+		Draft whose confirmation card was shown to $player_id in private as the given message.
+	*/
+	public function findByPrivateCard(int $message_id, int $player_id): ?Tournament {
+		$row = $this->db->fetchOne(
+			'SELECT * FROM tournaments WHERE card_msg_id = :m AND card_shown_to = :p ORDER BY id DESC LIMIT 1',
+			['m' => $message_id, 'p' => $player_id],
+		);
+		return $row === null ? null : Tournament::fromRow($row);
+	}
+
+	/**
+		Tournament whose group announcement is the given message.
+	*/
+	public function findByAnnounceMessage(int $chat_id, int $message_id): ?Tournament {
+		$row = $this->db->fetchOne(
+			'SELECT * FROM tournaments WHERE chat_id = :c AND announce_msg_id = :m',
+			['c' => $chat_id, 'm' => $message_id],
+		);
+		return $row === null ? null : Tournament::fromRow($row);
+	}
+
+	/**
 		@param list<string> $statuses
 		@return list<Tournament>
 	*/

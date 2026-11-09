@@ -29,7 +29,7 @@ class AssistantTest extends IntegrationTestCase {
 			'Записал Wolves: ты, @vasya и @petya. Вы в основном составе <3',
 		));
 
-		$update = $this->groupMessage($cap, '@' . self::BOT_USERNAME . ' запиши нас Wolves с @vasya и @petya');
+		$update = $this->privateMessage($cap, '@' . self::BOT_USERNAME . ' запиши нас Wolves с @vasya и @petya');
 		$this->dispatch($update);
 
 		$entry = $this->app->teams->findByName($t->id, 'Wolves');
@@ -76,11 +76,11 @@ class AssistantTest extends IntegrationTestCase {
 		$this->openTournament();
 		$vasya = $this->player('vasya');
 		$this->http->queueOpenAi($this->text('r1', 'На какой турнир тебя записать?'));
-		$this->dispatch($this->groupMessage($vasya, '@' . self::BOT_USERNAME . ' хочу играть'));
+		$this->dispatch($this->privateMessage($vasya, '@' . self::BOT_USERNAME . ' хочу играть'));
 		$bot_message_id = $this->lastSentMessageId();
 
 		$this->http->queueOpenAi($this->text('r2', 'Записал!'));
-		$this->dispatch($this->groupMessage($vasya, 'на субботний', ['reply_to_message' => [
+		$this->dispatch($this->privateMessage($vasya, 'на субботний', ['reply_to_message' => [
 			'message_id' => $bot_message_id,
 			'from' => ['id' => self::BOT_ID, 'is_bot' => true, 'first_name' => 'Bot'],
 		]]));
@@ -92,7 +92,7 @@ class AssistantTest extends IntegrationTestCase {
 		// Another player replying to the same bot message starts fresh.
 		$bot_message_id = $this->lastSentMessageId();
 		$this->http->queueOpenAi($this->text('r3', 'Привет!'));
-		$this->dispatch($this->groupMessage($this->player('petya'), 'а я?', ['reply_to_message' => [
+		$this->dispatch($this->privateMessage($this->player('petya'), 'а я?', ['reply_to_message' => [
 			'message_id' => $bot_message_id,
 			'from' => ['id' => self::BOT_ID, 'is_bot' => true, 'first_name' => 'Bot'],
 		]]));
@@ -101,7 +101,7 @@ class AssistantTest extends IntegrationTestCase {
 		// After the TTL the dialog is forgotten ($bot_message_id is still vasya's last bot reply).
 		$this->clock->advance('+31 minutes');
 		$this->http->queueOpenAi($this->text('r4', 'Ок'));
-		$this->dispatch($this->groupMessage($vasya, 'и ещё', ['reply_to_message' => [
+		$this->dispatch($this->privateMessage($vasya, 'и ещё', ['reply_to_message' => [
 			'message_id' => $bot_message_id,
 			'from' => ['id' => self::BOT_ID, 'is_bot' => true, 'first_name' => 'Bot'],
 		]]));
@@ -116,7 +116,7 @@ class AssistantTest extends IntegrationTestCase {
 			'team_size' => 2,
 		]));
 		$this->http->queueOpenAi($this->text('r2', 'Создавать турниры могут только админы.'));
-		$this->dispatch($this->groupMessage($vasya, '@' . self::BOT_USERNAME . ' создай турнир'));
+		$this->dispatch($this->privateMessage($vasya, '@' . self::BOT_USERNAME . ' создай турнир'));
 
 		self::assertNull($this->app->tournament_repo->find(1));
 		$output = json_decode($this->lastOpenAiRequest()['input'][0]['output'], true);
@@ -131,7 +131,7 @@ class AssistantTest extends IntegrationTestCase {
 			'level' => 'танк, средний+',
 			'open_registration' => true, // old parameter is ignored
 		]));
-		$this->dispatch($this->groupMessage(
+		$this->dispatch($this->privateMessage(
 			$this->owner,
 			'@' . self::BOT_USERNAME . ' создай ночной кубок на 23 ноября в 22, пары, уровень танк и средний+, и сразу публикуй',
 		));
@@ -169,7 +169,7 @@ class AssistantTest extends IntegrationTestCase {
 			'team_size' => 3,
 			'reference_team' => 'средний, средний, средний+',
 		]));
-		$this->dispatch($this->groupMessage(
+		$this->dispatch($this->privateMessage(
 			$this->owner,
 			'@' . self::BOT_USERNAME . ' создай кубок 23.11 в 20, тройки, средний средний средний+',
 		));
@@ -182,7 +182,7 @@ class AssistantTest extends IntegrationTestCase {
 			'edit_tournament',
 			['tournament_id' => 1, 'starts_at_msk' => '23.11 21:00'],
 		));
-		$this->dispatch($this->groupMessage($this->owner, 'ок, но время 21:00', $this->replyTo($first_card)));
+		$this->dispatch($this->privateMessage($this->owner, 'ок, но время 21:00', $this->replyTo($first_card)));
 		$t = $this->app->tournament_repo->find(1);
 		self::assertSame('draft', $t->status);
 		self::assertSame('2026-11-23 18:00:00', \P1Bot\Support\DateFormat::toDb($t->starts_at));
@@ -196,7 +196,7 @@ class AssistantTest extends IntegrationTestCase {
 
 		// A clear yes to the fresh card publishes without asking the model.
 		$before = count($this->openAiRequests());
-		$this->dispatch($this->groupMessage($this->owner, 'Публикуем!', $this->replyTo($t->card_msg_id)));
+		$this->dispatch($this->privateMessage($this->owner, 'Публикуем!', $this->replyTo($t->card_msg_id)));
 		self::assertSame('registration', $this->app->tournament_repo->find(1)->status);
 		self::assertCount($before, $this->openAiRequests());
 	}
@@ -208,7 +208,7 @@ class AssistantTest extends IntegrationTestCase {
 			'team_size' => 2,
 			'reference_team' => '3,4',
 		]));
-		$this->dispatch($this->groupMessage(
+		$this->dispatch($this->privateMessage(
 			$this->owner,
 			'@' . self::BOT_USERNAME . ' создай кубок 23.11 в 20, пары, 3 и 4',
 		));
@@ -217,7 +217,7 @@ class AssistantTest extends IntegrationTestCase {
 		// The model wrongly tries to publish and to open registration on an unclear answer.
 		$this->http->queueOpenAi($this->functionCall('r2', 'c2', 'open_registration', ['tournament_id' => 1]));
 		$this->http->queueOpenAi($this->functionCall('r3', 'c3', 'publish_tournament', ['tournament_id' => 1]));
-		$this->dispatch($this->groupMessage($this->owner, 'ну наверное можно', $this->replyTo($card)));
+		$this->dispatch($this->privateMessage($this->owner, 'ну наверное можно', $this->replyTo($card)));
 
 		$t = $this->app->tournament_repo->find(1);
 		self::assertSame('draft', $t->status);
@@ -242,14 +242,14 @@ class AssistantTest extends IntegrationTestCase {
 			'team_size' => 2,
 			'reference_team' => '3,4',
 		]));
-		$this->dispatch($this->groupMessage(
+		$this->dispatch($this->privateMessage(
 			$this->owner,
 			'@' . self::BOT_USERNAME . ' создай кубок 23.11 в 20, пары, 3 и 4',
 		));
 
 		$this->http->queueOpenAi($this->functionCall('r2', 'c2', 'publish_tournament', ['tournament_id' => 1]));
 		$this->http->queueOpenAi($this->text('r3', 'Опубликовал, анонс в чате!'));
-		$this->dispatch($this->groupMessage($this->owner, '@' . self::BOT_USERNAME . ' да, публикуем'));
+		$this->dispatch($this->privateMessage($this->owner, '@' . self::BOT_USERNAME . ' да, публикуем'));
 
 		$t = $this->app->tournament_repo->find(1);
 		self::assertSame('registration', $t->status);
@@ -263,7 +263,7 @@ class AssistantTest extends IntegrationTestCase {
 		$vasya = $this->player('vasya');
 		$this->http->queueOpenAi($this->functionCall('r1', 'c1', 'list_tournaments', []));
 		$this->http->queueOpenAi($this->text('r2', 'Вот что есть 👇'));
-		$this->dispatch($this->groupMessage($vasya, '@' . self::BOT_USERNAME . ' какие турниры?'));
+		$this->dispatch($this->privateMessage($vasya, '@' . self::BOT_USERNAME . ' какие турниры?'));
 
 		$sent = $this->http->sent('sendMessage');
 		self::assertCount(2, $sent);
@@ -278,7 +278,7 @@ class AssistantTest extends IntegrationTestCase {
 		$this->http->reset();
 		$this->http->queueOpenAi($this->functionCall('r3', 'c3', 'list_tournaments', []));
 		$this->http->queueOpenAi($this->text('r4', ''));
-		$this->dispatch($this->groupMessage($vasya, '@' . self::BOT_USERNAME . ' турниры'));
+		$this->dispatch($this->privateMessage($vasya, '@' . self::BOT_USERNAME . ' турниры'));
 		$sent = $this->http->sent('sendMessage');
 		self::assertCount(1, $sent);
 		self::assertStringStartsWith('📋 <b>Турниры</b>', $sent[0]['text']);
@@ -299,7 +299,7 @@ class AssistantTest extends IntegrationTestCase {
 
 		$this->http->queueOpenAi($this->functionCall('r1', 'c1', 'join_solo', ['tournament_id' => 2]));
 		$this->http->queueOpenAi($this->text('r2', 'Записал!'));
-		$this->dispatch($this->groupMessage($vasya, '@' . self::BOT_USERNAME . ' запиши меня соло на №2'));
+		$this->dispatch($this->privateMessage($vasya, '@' . self::BOT_USERNAME . ' запиши меня соло на №2'));
 
 		self::assertSame(
 			'main',
@@ -347,7 +347,7 @@ class AssistantTest extends IntegrationTestCase {
 			['team_name' => 'Pros', 'players' => ['@pro']],
 		));
 		$this->http->queueOpenAi($this->text('r2', 'Не выйдет: перебор на 4 балла.'));
-		$this->dispatch($this->groupMessage($cap, '@' . self::BOT_USERNAME . ' запиши Pros со @pro'));
+		$this->dispatch($this->privateMessage($cap, '@' . self::BOT_USERNAME . ' запиши Pros со @pro'));
 
 		$output = json_decode($this->lastOpenAiRequest()['input'][0]['output'], true);
 		self::assertFalse($output['ok']);
@@ -358,7 +358,7 @@ class AssistantTest extends IntegrationTestCase {
 	public function testApiFailureGivesFriendlyReply(): void {
 		$vasya = $this->player('vasya');
 		// nothing queued => fake returns HTTP 500
-		$this->dispatch($this->groupMessage($vasya, '@' . self::BOT_USERNAME . ' привет'));
+		$this->dispatch($this->privateMessage($vasya, '@' . self::BOT_USERNAME . ' привет'));
 		self::assertSame('Что-то пошло не так, попробуй ещё раз чуть позже.', $this->http->lastText());
 	}
 
@@ -424,7 +424,7 @@ class AssistantTest extends IntegrationTestCase {
 			'level' => 'средний',
 		]));
 		$this->http->queueOpenAi($this->text('r2', 'Уточни уровень: сумма баллов или уровни всех трёх игроков?'));
-		$this->dispatch($this->groupMessage(
+		$this->dispatch($this->privateMessage(
 			$this->owner,
 			'@' . self::BOT_USERNAME . ' создай кубок 23.11 в 20, тройки, уровень средний',
 		));
@@ -440,7 +440,7 @@ class AssistantTest extends IntegrationTestCase {
 			'team_size' => 3,
 			'level' => 10,
 		]));
-		$this->dispatch($this->groupMessage($this->owner, '@' . self::BOT_USERNAME . ' макс. уровень 10'));
+		$this->dispatch($this->privateMessage($this->owner, '@' . self::BOT_USERNAME . ' макс. уровень 10'));
 		$t = $this->app->tournament_repo->find(1);
 		self::assertSame(10, $t->max_points);
 		self::assertStringContainsString('Уровень турнира: средний (10 баллов на троих)', $this->http->lastText());
@@ -449,7 +449,10 @@ class AssistantTest extends IntegrationTestCase {
 	public function testLevelsHelpIsSentByTheBot(): void {
 		$this->http->queueOpenAi($this->functionCall('r1', 'c1', 'levels_help', []));
 		$this->http->queueOpenAi($this->text('r2', ''));
-		$this->dispatch($this->groupMessage($this->player('vasya'), '@' . self::BOT_USERNAME . ' какие есть уровни?'));
+		$this->dispatch($this->privateMessage(
+			$this->player('vasya'),
+			'@' . self::BOT_USERNAME . ' какие есть уровни?',
+		));
 		$sent = $this->http->sent('sendMessage');
 		self::assertCount(1, $sent);
 		self::assertStringStartsWith('📊 <b>Уровни игроков</b>', $sent[0]['text']);

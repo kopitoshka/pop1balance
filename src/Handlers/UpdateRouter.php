@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace P1Bot\Handlers;
 
+use P1Bot\App\GroupRedirect;
 use P1Bot\Domain\AccessPolicy;
 use P1Bot\Domain\Model\Player;
 use P1Bot\Repository\ChatRepository;
@@ -17,16 +18,22 @@ use P1Bot\Telegram\Message;
 use P1Bot\Telegram\TelegramApi;
 use P1Bot\Telegram\TgUser;
 use P1Bot\Telegram\Update;
+use P1Bot\View\DeepLink;
 use P1Bot\View\Html;
 use P1Bot\View\Messages;
 use P1Bot\View\Texts;
 
 /**
-	Entry point for every update. In groups the bot reacts only to slash commands,
-	@mentions of the bot and replies to its messages. In a private chat it answers any text,
-	read-only (see PrivateChatHandler).
+	Entry point for every update. The group only gets announcements, reminders and the info commands
+	(/tournaments, /info N, /levels, /help); anything else addressed to the bot there (commands,
+	@mentions, replies) gets one «Давай в личке 👉» with a deep link. Everything else happens in the
+	private chat (see PrivateChatHandler).
 */
 class UpdateRouter {
+	/**
+		Commands answered in the group itself.
+	*/
+	protected const GROUP_COMMANDS = ['help', 'start', 'tournaments', 'info', 'levels'];
 
 	public function __construct(
 		protected TelegramApi $api,
@@ -42,6 +49,7 @@ class UpdateRouter {
 		protected ?EditedReplyRepository $edited_replies = null,
 		protected ?Logger $logger = null,
 		protected ?PrivateChatHandler $private_chat = null,
+		protected ?GroupRedirect $redirect = null,
 	) {
 	}
 
@@ -59,12 +67,16 @@ class UpdateRouter {
 				$this->log($update, null, 'ignored: callback without chat or from a bot');
 				return;
 			}
-			$this->log($update, null, 'handled: callback ' . $query->data, [
+			$this->log($update, null, $this->callbacks->describe($query), [
 				'chat' => $query->chat_id,
 				'from' => $query->from->id,
 				'username' => $query->from->username,
 			]);
-			$this->chats->ensure($query->chat_id, $query->chat_title);
+			// Private chats get a chats row too (dialog memory refers to it); groups are id < 0.
+			$this->chats->ensure(
+				$query->chat_id,
+				$query->chat_id < 0 ? $query->chat_title : $query->from->displayName(),
+			);
 			$player = $this->upsertPlayer($query->from);
 			$this->callbacks->handle($query, $player);
 			return;
@@ -81,11 +93,12 @@ class UpdateRouter {
 	}
 
 	/**
-		Edits are never processed (no commands, no AI). If the edit mentions the bot or replies to it,
-		say once per message that a new message is needed.
+		Edits are never processed (no commands, no AI). If the edit is in private, or mentions the bot
+		or replies to it in a group, say once per message that a new message is needed.
 	*/
 	protected function onEditedMessage(Update $update, Message $message): void {
-		if (!$message->isGroup()) {
+		$is_private = $message->chat_type === 'private';
+		if (!$is_private && !$message->isGroup()) {
 			$this->log($update, $message, 'ignored: edited, not a group (' . $message->chat_type . ')');
 			return;
 		}
@@ -93,7 +106,7 @@ class UpdateRouter {
 			$this->log($update, $message, 'ignored: edited, from a bot or no sender');
 			return;
 		}
-		if (!$message->isAddressedTo($this->bot->username, $this->bot->bot_id)) {
+		if (!$is_private && !$message->isAddressedTo($this->bot->username, $this->bot->bot_id)) {
 			$this->log($update, $message, 'ignored: edited, ' . $this->whyNotAddressed($message));
 			return;
 		}
@@ -105,7 +118,7 @@ class UpdateRouter {
 			$this->log($update, $message, 'ignored: edited, already replied to this message');
 			return;
 		}
-		$this->log($update, $message, 'edited: replied once');
+		$this->log($update, $message, ($is_private ? 'private: ' : '') . 'edited: replied once');
 		$this->api->sendMessage($message->chat_id, Html::e(Messages::EDITED_MESSAGE), $message->message_id);
 	}
 
@@ -139,26 +152,42 @@ class UpdateRouter {
 			return;
 		}
 
-		$this->log($update, $message, $is_our_command && $command !== null
-			? 'handled: command /' . $command['name']
-			: 'handled: ' . $this->messages->mode());
-
 		$this->chats->ensure($message->chat_id, $message->chat_title);
 		$actor = $this->upsertPlayer($message->from);
 		$this->registerMentionedPlayers($message);
-		$this->admin_sync->syncIfStale($message->chat_id);
-		$context = new Context(
-			$message,
-			$actor,
-			$this->access->isChatAdmin($message->chat_id, $actor->id),
-			$this->access->isOwner($actor->id),
-		);
 
-		if ($is_our_command && $command !== null) {
-			$this->commands->handle($context, $command['name'], $command['args']);
+		if ($is_our_command && $command !== null && in_array(
+			mb_strtolower($command['name']),
+			self::GROUP_COMMANDS,
+			true,
+		)) {
+			$this->log($update, $message, 'group: info /' . $command['name']);
+			$this->commands->handle(
+				new Context(
+					$message,
+					$actor,
+					$this->access->isChatAdmin($message->chat_id, $actor->id),
+					$this->access->isOwner($actor->id),
+				),
+				mb_strtolower($command['name']),
+				$command['args'],
+			);
 			return;
 		}
-		$this->messages->handle($context);
+
+		// No actions and no AI in the group: one short reply with a link to the private chat.
+		$payload = $this->redirect !== null ? $this->redirect->payload($message) : 'g_' . $message->chat_id;
+		$this->log($update, $message, sprintf(
+			'group: redirect (%s) start=%s',
+			$command !== null ? '/' . $command['name'] : ($message->mentions($this->bot->username) ? 'mention' : 'reply'),
+			$payload,
+		));
+		$this->api->sendMessage(
+			$message->chat_id,
+			Html::e(Messages::GROUP_REDIRECT),
+			$message->message_id,
+			DeepLink::button(Messages::GROUP_REDIRECT_BUTTON, DeepLink::url($this->bot->username, $payload)),
+		);
 	}
 
 	/**
@@ -173,27 +202,13 @@ class UpdateRouter {
 			$this->log($update, $message, 'ignored: private chat (handler not configured)');
 			return;
 		}
+		// A chats row for the private chat too (dialog memory refers to it); groups are id < 0.
+		$this->chats->ensure($message->chat_id, $message->from->displayName());
 		$actor = $this->upsertPlayer($message->from);
-		$is_owner = $this->access->isOwner($actor->id);
-		$decision = $this->private_chat->decide($message, $is_owner);
-		$this->log($update, $message, 'private: ' . self::describePrivate($decision));
-		$this->private_chat->handle($message, $actor, $is_owner, $decision);
-	}
-
-	/**
-		@param array{kind: string, command: ?string} $decision
-	*/
-	protected static function describePrivate(array $decision): string {
-		$command = $decision['command'] !== null ? ' (/' . $decision['command'] . ')' : '';
-		switch ($decision['kind']) {
-			case PrivateChatHandler::REDIRECT:
-				return 'redirect to group' . $command;
-			case PrivateChatHandler::OWNER_COMMAND:
-				return 'owner command' . $command;
-			case PrivateChatHandler::FALLBACK:
-				return 'fallback text (AI off: OPENAI_API_KEY is empty)';
-		}
-		return $decision['kind'] . $command;
+		$this->registerMentionedPlayers($message);
+		$decision = $this->private_chat->decide($message, $actor);
+		$this->log($update, $message, 'private: ' . PrivateChatHandler::describe($decision));
+		$this->private_chat->handle($message, $actor, $decision);
 	}
 
 	/**

@@ -7,6 +7,8 @@ namespace P1Bot\Ai;
 use P1Bot\App\Announcer;
 use P1Bot\App\Confirmation;
 use P1Bot\App\DraftCards;
+use P1Bot\App\NeedGroupChoice;
+use P1Bot\App\PrivateGroups;
 use P1Bot\App\PlayerResolver;
 use P1Bot\App\TournamentResolver;
 use P1Bot\Domain\AccessPolicy;
@@ -53,6 +55,7 @@ class Dispatcher {
 		protected Logger $logger,
 		protected ?DraftCards $drafts = null,
 		protected string $bot_username = '',
+		protected ?PrivateGroups $groups = null,
 	) {
 	}
 
@@ -71,7 +74,11 @@ class Dispatcher {
 			$result = $this->run($tool, $args, $ctx);
 			if (in_array($tool, Tools::MUTATING, true) && isset($result['tournament_id'])) {
 				// tournament_id in results is the short number the user sees; map it back.
-				$real_id = array_search((int) $result['tournament_id'], $this->resolver->numbers($ctx->chatId()), true);
+				$real_id = array_search(
+					(int) $result['tournament_id'],
+					$this->resolver->numbers($ctx->groupId()),
+					true,
+				);
 				if ($real_id !== false) {
 					$this->announcer->refresh((int) $real_id);
 				}
@@ -83,6 +90,14 @@ class Dispatcher {
 				'error' => $e->getMessage(),
 				'what_to_do' => 'Переспроси уровень турнира и покажи примеры: одно число — сумма баллов на команду (например «10» для троек), '
 					. 'или уровни всех игроков через запятую по числу игроков («средний, средний, высокий»). Все уровни: /levels.',
+			];
+		} catch (NeedGroupChoice $e) {
+			return [
+				'ok' => false,
+				'error' => $e->getMessage(),
+				'groups' => array_values($e->groups),
+				'choose_group_ids' => $e->groups,
+				'note' => 'Кнопки выбора группы покажутся автоматически. Попроси выбрать группу и повторить запрос.',
 			];
 		} catch (DomainError $e) {
 			return ['ok' => false, 'error' => $e->getMessage()];
@@ -100,7 +115,7 @@ class Dispatcher {
 		$actor = $ctx->actor;
 		switch ($tool) {
 			case 'list_tournaments':
-				$active = $this->tournaments->listActive($ctx->chatId());
+				$active = $this->tournaments->listActive($ctx->groupId());
 				if ($active === []) {
 					return ['tournaments' => []];
 				}
@@ -129,6 +144,7 @@ class Dispatcher {
 
 			case 'register_team':
 				$t = $this->tournament($ctx, $a);
+				$this->assertMember($ctx, $t);
 				$ids = [];
 				foreach ((array) ($a['players'] ?? []) as $ref) {
 					$ids[] = $this->player_resolver->fromReference((string) $ref, $actor)->id;
@@ -201,6 +217,7 @@ class Dispatcher {
 
 			case 'join_solo':
 				$t = $this->tournament($ctx, $a);
+				$this->assertMember($ctx, $t);
 				$this->teams->joinSolo($t->id, $actor->id);
 				return [
 					'tournament_id' => $this->no($t),
@@ -227,7 +244,7 @@ class Dispatcher {
 				$reference = self::levelArg($a);
 				// Always a draft: publishing needs the organizer's explicit confirmation of the card.
 				$t = $this->tournaments->create(new CreateTournament(
-					$ctx->chatId(),
+					$ctx->isPrivate() && $this->groups !== null ? $this->groups->forCreate($actor->id) : $ctx->groupId(),
 					$actor->id,
 					(string) ($a['title'] ?? ''),
 					MoscowTime::toInput($starts_at),
@@ -289,7 +306,7 @@ class Dispatcher {
 				return [
 					'tournament_id' => $this->no($t),
 					'published' => true,
-					'message' => 'Опубликовано: регистрация открыта, анонс в чате.',
+					'message' => 'Опубликовано: регистрация открыта, анонс в группе «' . $this->groupTitle($t) . '».',
 				];
 
 			case 'cancel_tournament':
@@ -322,7 +339,7 @@ class Dispatcher {
 				$this->announcer->publish($t->id);
 				return [
 					'tournament_id' => $this->no($t),
-					'message' => 'Регистрация снова открыта, анонс опубликован в чате.',
+					'message' => 'Регистрация снова открыта, анонс опубликован в группе «' . $this->groupTitle($t) . '».',
 				];
 
 			case 'close_registration':
@@ -344,7 +361,7 @@ class Dispatcher {
 				$player = $this->player_resolver->fromReference((string) ($a['player'] ?? ''), $actor);
 				$level = Levels::parse((string) ($a['level'] ?? '')) ?? throw new ValidationError('Уровень должен быть от 1 до 6 или названием уровня.');
 				$this->balances->setLevel(
-					$ctx->chatId(),
+					$ctx->groupId(),
 					$actor->id,
 					$player->id,
 					$level,
@@ -359,7 +376,7 @@ class Dispatcher {
 
 			case 'create_balance':
 				$balance = $this->balances->create(
-					$ctx->chatId(),
+					$ctx->groupId(),
 					$actor->id,
 					(string) ($a['name'] ?? ''),
 					isset($a['based_on_balance_id']) ? (int) $a['based_on_balance_id'] : null,
@@ -405,7 +422,7 @@ class Dispatcher {
 	protected function tournament(Context $ctx, array $a, ?array $statuses = null): Tournament {
 		$id = isset($a['tournament_id']) && $a['tournament_id'] !== '' ? (int) $a['tournament_id'] : null;
 		return $this->resolver->resolve(
-			$ctx->chatId(),
+			$ctx->groupId(),
 			$id,
 			$statuses ?? [TournamentStatus::REGISTRATION, TournamentStatus::CLOSED],
 		);
@@ -492,7 +509,20 @@ class Dispatcher {
 	}
 
 	/**
-		Short per-chat number the user sees (null once finished/cancelled).
+		In private anyone can open the bot: joining checks that the user is in the tournament's group.
+	*/
+	protected function assertMember(Context $ctx, Tournament $t): void {
+		if ($ctx->isPrivate() && $this->groups !== null) {
+			$this->groups->assertMember($t->chat_id, $ctx->actor->tg_user_id);
+		}
+	}
+
+	protected function groupTitle(Tournament $t): string {
+		return $this->groups !== null ? $this->groups->title($t->chat_id) : 'турнира';
+	}
+
+	/**
+		Short per-group number the user sees (null once finished/cancelled).
 	*/
 	protected function no(Tournament $t): ?int {
 		return $this->resolver->number($t)->number;
@@ -514,7 +544,7 @@ class Dispatcher {
 	*/
 	public function draftLines(Context $ctx): array {
 		$lines = [];
-		foreach ($this->tournaments->listByStatus($ctx->chatId(), [TournamentStatus::DRAFT]) as $t) {
+		foreach ($this->tournaments->listByStatus($ctx->groupId(), [TournamentStatus::DRAFT]) as $t) {
 			if ($t->organizer_id !== $ctx->actor->id && $t->card_shown_to !== $ctx->actor->id) {
 				continue;
 			}
@@ -529,7 +559,7 @@ class Dispatcher {
 	*/
 	public function statusLines(Context $ctx): array {
 		$lines = [];
-		foreach ($this->tournaments->listActive($ctx->chatId()) as $t) {
+		foreach ($this->tournaments->listActive($ctx->groupId()) as $t) {
 			$entry = $this->teams->teamOf($t->id, $ctx->actor->id);
 			$placement = $this->tournaments->lineup($t->id)->placementOf($ctx->actor->id);
 			if ($placement === null) {

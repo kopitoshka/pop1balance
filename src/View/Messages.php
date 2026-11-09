@@ -13,10 +13,23 @@ use P1Bot\Domain\MoscowTime;
 */
 class Messages {
 	/**
+		One reply in a group to anything but the info commands: everything happens in private.
+	*/
+	public const GROUP_REDIRECT = 'Давай в личке 👉';
+
+	/**
+		Text of the URL button under GROUP_REDIRECT.
+	*/
+	public const GROUP_REDIRECT_BUTTON = '💬 Написать в личку';
+
+	/**
+		Answer to buttons of old group cards (solo/howto/pub/fix): everything moved to private.
+	*/
+	public const LEGACY_BUTTON = 'Теперь это в личке — открываю чат со мной 👉';
+
+	/**
 		Reply to an edited message addressed to the bot: edits are not processed.
 	*/
-	public const PRIVATE_REDIRECT = 'Это делается в группе турнира — напиши там, упомянув меня.';
-
 	public const EDITED_MESSAGE = 'Исправленные сообщения я не вижу 🙈 Напиши, пожалуйста, заново новым сообщением';
 
 	/**

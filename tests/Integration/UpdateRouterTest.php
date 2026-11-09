@@ -40,13 +40,15 @@ class UpdateRouterTest extends IntegrationTestCase {
 
 	public function testPrivateHelpIsAnswered(): void {
 		$vasya = $this->player('vasya');
-		$raw = $this->groupMessage($vasya, '/help');
-		$raw['message']['chat'] = ['id' => $this->tgIdOf($vasya), 'type' => 'private'];
-		$this->dispatch($raw);
+		$this->dispatch($this->privateMessage($vasya, '/help'));
 		self::assertCount(1, $this->http->sent('sendMessage'));
 		self::assertSame($this->tgIdOf($vasya), $this->http->sent('sendMessage')[0]['chat_id']);
-		self::assertStringContainsString('Что работает в личке', $this->http->lastText());
-		self::assertFalse($this->app->chats->exists($this->tgIdOf($vasya)), 'private chats are not stored as groups');
+		self::assertStringContainsString('Пиши мне обычным языком', $this->http->lastText());
+		self::assertSame(
+			[self::CHAT_ID],
+			array_keys($this->app->chats->listActiveGroups()),
+			'a private chat is not a group',
+		);
 	}
 
 	public function testUsernamePlaceholderIsAttachedWhenUserWrites(): void {
@@ -80,8 +82,9 @@ class UpdateRouterTest extends IntegrationTestCase {
 		});
 		$vasya = $this->player('vasya');
 
-		$this->dispatch($this->groupMessage($vasya, '/help'));
-		$this->dispatch($this->groupMessage($vasya, '/help'));
+		// Admin rights are synced per group when someone writes in private.
+		$this->dispatch($this->privateMessage($vasya, '/help'));
+		$this->dispatch($this->privateMessage($vasya, '/help'));
 		self::assertSame(1, $calls, 'cached');
 
 		$moder = $this->app->players->findByTelegramId(7001);
@@ -98,7 +101,7 @@ class UpdateRouterTest extends IntegrationTestCase {
 		);
 
 		$this->clock->advance('+11 minutes');
-		$this->dispatch($this->groupMessage($vasya, '/help'));
+		$this->dispatch($this->privateMessage($vasya, '/help'));
 		self::assertSame(2, $calls, 'refreshed after TTL');
 	}
 

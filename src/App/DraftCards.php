@@ -56,24 +56,25 @@ class DraftCards {
 	}
 
 	/**
-		Sends the card as a reply and remembers it as the version to confirm.
+		Sends the card to $chat_id (the private chat with the organizer) and remembers it as the
+		version to confirm. The published announcement goes to the tournament's group.
 
 		@param list<array<string, mixed>> $history dialog to continue when the organizer replies to the card
 		@return int message id of the card
 	*/
-	public function show(int $tournament_id, int $reply_to, int $actor_id, array $history = []): int {
+	public function show(int $tournament_id, int $chat_id, ?int $reply_to, int $actor_id, array $history = []): int {
 		$t = $this->tournaments->get($tournament_id);
 		if ($t->status !== TournamentStatus::DRAFT) {
 			throw new ValidationError('Этот турнир уже не черновик.');
 		}
 		$text = $this->cardText($t);
-		$message_id = $this->api->sendMessage($t->chat_id, $text, $reply_to, TournamentCard::buttons($t->id));
+		$message_id = $this->api->sendMessage($chat_id, $text, $reply_to, TournamentCard::buttons($t->id));
 		$this->tournaments->setCardMessage($t->id, $message_id, $actor_id);
 
 		$history[] = ['role' => 'assistant', 'content' => self::plain($text)];
 		$this->conversations->save(
 			null,
-			$t->chat_id,
+			$chat_id,
 			$actor_id,
 			$message_id,
 			array_slice($history, -12),
@@ -112,7 +113,7 @@ class DraftCards {
 		$this->announcer->renumber($t->chat_id, $t->id);
 		try {
 			$this->api->editMessageText(
-				$t->chat_id,
+				$this->cardChatId($t),
 				(int) $t->card_msg_id,
 				TournamentCard::published($card),
 				['reply_markup' => ['inline_keyboard' => []]],
@@ -131,6 +132,14 @@ class DraftCards {
 		return $t->organizer_id === $actor_id
 			|| ($t->card_shown_to !== null && $t->card_shown_to === $actor_id)
 			|| $this->access->isOwner($actor_id);
+	}
+
+	/**
+		The card lives in the private chat of the person it was shown to (chat id = Telegram user id).
+	*/
+	protected function cardChatId(Tournament $t): int {
+		$shown_to = $t->card_shown_to !== null ? $this->players->find($t->card_shown_to) : null;
+		return $shown_to !== null && $shown_to->tg_user_id !== null ? $shown_to->tg_user_id : $t->chat_id;
 	}
 
 	protected static function plain(string $html): string {

@@ -13,7 +13,8 @@ use P1Bot\Telegram\BotIdentity;
 
 /**
 	Turns a free-text message into a human reply: model + function calls executed in PHP.
-	Dialog memory: a reply to the bot's answer continues the same conversation (TTL).
+	Dialog memory: a reply to the bot's answer continues the same conversation (TTL); in private
+	any message within the TTL does.
 */
 class Assistant {
 	protected const MAX_ROUNDS = 5;
@@ -39,7 +40,9 @@ class Assistant {
 
 		'list' = the model asked for the tournament list: the caller sends the pretty list before the text.
 
-		@return array{text: string, remember: callable(int): void, card: ?int, history: list<array<string, mixed>>, list: bool, levels: bool}
+		'groups' = the action needs a group choice (chat_id => title): the caller adds group buttons.
+
+		@return array{text: string, remember: callable(int): void, card: ?int, history: list<array<string, mixed>>, list: bool, levels: bool, groups: array<int, string>}
 	*/
 	public function reply(Context $ctx): array {
 		$message = $ctx->message;
@@ -53,6 +56,9 @@ class Assistant {
 			if ($found !== null && $found['player_id'] === $ctx->actor->id) {
 				$conversation = $found;
 			}
+		}
+		if ($conversation === null && $ctx->isPrivate()) {
+			$conversation = $this->conversations->findLatest($ctx->chatId(), $ctx->actor->id, $this->clock->now());
 		}
 		$history = $conversation['history'] ?? [];
 		$user_text = $message->textWithoutMention($this->bot->username);
@@ -71,6 +77,7 @@ class Assistant {
 		$card = null;
 		$list = false;
 		$levels = false;
+		$groups = [];
 		$response = $this->ai->createResponse($this->system_prompt, $input, $tools);
 		for ($round = 0; $response->tool_calls !== [] && $round < self::MAX_ROUNDS; $round++) {
 			$outputs = [];
@@ -88,6 +95,10 @@ class Assistant {
 				}
 				if (!empty($result['show_levels'])) {
 					$levels = true;
+				}
+				if (!empty($result['choose_group_ids'])) {
+					$groups = (array) $result['choose_group_ids'];
+					unset($result['choose_group_ids']);
 				}
 				if (isset($result['show_card'])) {
 					$card = (int) $result['show_card'];
@@ -134,6 +145,7 @@ class Assistant {
 			'card' => $card,
 			'list' => $list,
 			'levels' => $levels,
+			'groups' => $groups,
 			'history' => array_slice(
 				array_merge($history, [['role' => 'user', 'content' => $user_text]]),
 				-self::MAX_HISTORY,
@@ -159,6 +171,10 @@ class Assistant {
 				$author->username !== null ? ' (@' . $author->username . ')' : '',
 			),
 			'Автор — ' . self::role($ctx),
+			$ctx->isPrivate()
+				? 'Разговор в личке. Группа турниров: ' . ($ctx->group_title !== '' ? $ctx->group_title : 'не выбрана')
+					. ' (номера турниров — внутри этой группы; переключить группу: /group).'
+				: 'Разговор в группе.',
 			'Активные турниры: ' . ($tournaments === [] ? 'нет.' : "\n- " . implode("\n- ", $tournaments)),
 			'Заявки автора: ' . implode('; ', $status),
 			'Неопубликованные черновики автора: ' . ($drafts === [] ? 'нет.' : "\n- " . implode("\n- ", $drafts)),

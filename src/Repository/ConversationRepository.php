@@ -9,7 +9,8 @@ use P1Bot\Support\Database;
 use P1Bot\Support\DateFormat;
 
 /**
-	Short-lived AI dialog memory: a reply to last_bot_msg_id continues the dialog.
+	Short-lived AI dialog memory: a reply to last_bot_msg_id continues the dialog
+	(in private any next message does, see findLatest).
 */
 class ConversationRepository {
 
@@ -25,6 +26,28 @@ class ConversationRepository {
 				WHERE chat_id = :c AND last_bot_msg_id = :m AND expires_at > :now
 				ORDER BY id DESC LIMIT 1',
 			['c' => $chat_id, 'm' => $bot_message_id, 'now' => DateFormat::toDb($now)],
+		);
+		if ($row === null) {
+			return null;
+		}
+		return [
+			'id' => (int) $row['id'],
+			'player_id' => (int) $row['player_id'],
+			'history' => json_decode((string) $row['history_json'], true, 512, JSON_THROW_ON_ERROR),
+		];
+	}
+
+	/**
+		The player's latest live dialog in a chat (private chats continue it without a reply).
+
+		@return array{id: int, player_id: int, history: list<array<string, mixed>>}|null
+	*/
+	public function findLatest(int $chat_id, int $player_id, DateTimeImmutable $now): ?array {
+		$row = $this->db->fetchOne(
+			'SELECT id, player_id, history_json FROM conversations
+				WHERE chat_id = :c AND player_id = :p AND expires_at > :now
+				ORDER BY id DESC LIMIT 1',
+			['c' => $chat_id, 'p' => $player_id, 'now' => DateFormat::toDb($now)],
 		);
 		if ($row === null) {
 			return null;

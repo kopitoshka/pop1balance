@@ -76,7 +76,7 @@ class AnnouncementViewTest extends TestCase {
 		self::assertStringContainsString("⏳ <b>Резерв:</b>\n1. <b>Late</b> — 👑 @p6 (кэп), @p7\n🙋 Соло: @p8", $text);
 		self::assertStringContainsString("🧩 <b>Собираются:</b>\n• Forming — 👑 @p9 (кэп) (1/2)", $text);
 		self::assertDoesNotMatchRegularExpression('/средний \(3\)|\(3\)/u', $text, 'player levels are not shown');
-		self::assertStringContainsString('напиши @pop1_bot', $text);
+		self::assertStringContainsString('в личке у @pop1_bot', $text);
 	}
 
 	public function testClosedTournamentHasStatusLineAndNoCallToAction(): void {
@@ -141,7 +141,7 @@ class AnnouncementViewTest extends TestCase {
 
 		$announcement = $view->render($t, $lineup);
 		self::assertLessThanOrEqual(4000, mb_strlen($announcement));
-		self::assertStringEndsWith('или нажми кнопку ниже.', $announcement);
+		self::assertStringEndsWith('жми кнопку ниже 👇', $announcement);
 
 		$messages = $view->fullMessages($t, $lineup);
 		self::assertGreaterThan(1, count($messages));

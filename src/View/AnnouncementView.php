@@ -51,7 +51,7 @@ class AnnouncementView {
 	*/
 	public function render(Tournament $t, Lineup $lineup): string {
 		$footer = $t->status === TournamentStatus::REGISTRATION
-			? 'Записаться командой или соло: напиши @' . Html::e($this->bot_username) . ' или нажми кнопку ниже.'
+			? 'Записаться командой или соло, задать вопрос — в личке у @' . Html::e($this->bot_username) . ': жми кнопку ниже 👇'
 			: '';
 		return $this->compose($t, $lineup, $footer, self::MESSAGE_LIMIT, false);
 	}

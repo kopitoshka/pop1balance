@@ -15,12 +15,14 @@ use P1Bot\Telegram\BotIdentity;
 use P1Bot\Telegram\TelegramApi;
 use P1Bot\Telegram\TelegramError;
 use P1Bot\View\AnnouncementView;
+use P1Bot\View\DeepLink;
 use Throwable;
 
 /**
 	Posts the tournament announcement and keeps it up to date.
 */
 class Announcer {
+	public const BUTTON = '💬 Записаться / вопросы в личке';
 
 	public function __construct(
 		protected TelegramApi $api,
@@ -121,15 +123,11 @@ class Announcer {
 		@return array<string, mixed>
 	*/
 	protected function markup(Tournament $t): array {
-		if ($t->status !== TournamentStatus::REGISTRATION) {
+		if (!in_array($t->status, TournamentStatus::active(), true)) {
 			return ['reply_markup' => ['inline_keyboard' => []]];
 		}
-		return ['reply_markup' => ['inline_keyboard' => [[
-			['text' => '🙋 Хочу участвовать', 'callback_data' => 'solo:' . $t->id],
-			['text' => 'Передумал', 'callback_data' => 'unsolo:' . $t->id],
-		], [
-			['text' => 'Как записать команду?', 'callback_data' => 'howto:' . $t->id],
-		]]]];
+		// Everything happens in private: a single URL button with a deep link to this tournament.
+		return DeepLink::button(self::BUTTON, DeepLink::tournament($this->bot->username, $t->id));
 	}
 
 	protected function view(Tournament $t, Lineup $lineup): AnnouncementView {

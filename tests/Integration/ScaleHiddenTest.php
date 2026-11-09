@@ -39,7 +39,7 @@ class ScaleHiddenTest extends IntegrationTestCase {
 	}
 
 	public function testCardDoesNotShowTheScale(): void {
-		$this->dispatch($this->groupMessage($this->admin, '/new 23.11 20:00 | Кубок | 3 | 10'));
+		$this->dispatch($this->privateMessage($this->admin, '/new 23.11 20:00 | Кубок | 3 | 10'));
 
 		$card = $this->http->lastText();
 		self::assertStringContainsString('Уровень турнира', $card);
@@ -53,14 +53,14 @@ class ScaleHiddenTest extends IntegrationTestCase {
 	}
 
 	public function testPublicHelpHasNoScaleAndOwnerSeesHisCommands(): void {
-		$this->dispatch($this->groupMessage($this->admin, '/help'));
+		$this->dispatch($this->privateMessage($this->admin, '/help'));
 		$help = $this->http->lastText();
 		self::assertStringContainsString('/new', $help);
 		foreach (['шкал', 'баланс', '/balance', '/level ', 'главного админа'] as $hidden) {
 			self::assertStringNotContainsStringIgnoringCase($hidden, $help);
 		}
 
-		$this->dispatch($this->groupMessage($this->owner, '/help'));
+		$this->dispatch($this->privateMessage($this->owner, '/help'));
 		$owner_help = $this->http->lastText();
 		self::assertStringContainsString('Только для главного админа', $owner_help);
 		self::assertStringContainsString('/level @user 4', $owner_help);
@@ -70,30 +70,30 @@ class ScaleHiddenTest extends IntegrationTestCase {
 
 	public function testOnlyOwnerSetsLevels(): void {
 		$vasya = $this->player('vasya');
-		$this->dispatch($this->groupMessage($this->admin, '/level @vasya 5'));
+		$this->dispatch($this->privateMessage($this->admin, '/level @vasya 5'));
 		self::assertSame('Уровни игроков меняет только главный админ.', $this->http->lastText());
-		$this->dispatch($this->groupMessage($vasya, '/level @vasya 6'));
+		$this->dispatch($this->privateMessage($vasya, '/level @vasya 6'));
 		self::assertSame('Уровни игроков меняет только главный админ.', $this->http->lastText());
 		self::assertSame(3, $this->app->balances->levelOf($this->app->balances->findDefault()->id, $vasya->id));
 
-		$this->dispatch($this->groupMessage($this->admin, '/balance'));
+		$this->dispatch($this->privateMessage($this->admin, '/balance'));
 		self::assertSame('Это доступно только главному админу.', $this->http->lastText());
 
-		$this->dispatch($this->groupMessage($this->owner, '/level @vasya 5'));
+		$this->dispatch($this->privateMessage($this->owner, '/level @vasya 5'));
 		self::assertSame('Записал: @vasya — высокий (5).', $this->http->lastText());
 		self::assertSame(5, $this->app->balances->levelOf($this->app->balances->findDefault()->id, $vasya->id));
 	}
 
 	public function testOnlyOwnerChangesTournamentScale(): void {
 		$other = $this->app->balances->create(self::CHAT_ID, $this->owner->id, 'Другая');
-		$this->dispatch($this->groupMessage($this->admin, '/new 23.11 20:00 | Кубок | 3 | 10'));
+		$this->dispatch($this->privateMessage($this->admin, '/new 23.11 20:00 | Кубок | 3 | 10'));
 		$default_id = $this->app->balances->findDefault()->id;
 
-		$this->dispatch($this->groupMessage($this->admin, '/edit 1 баланс ' . $other->id));
+		$this->dispatch($this->privateMessage($this->admin, '/edit 1 баланс ' . $other->id));
 		self::assertSame('Это доступно только главному админу.', $this->http->lastText());
 		self::assertSame($default_id, $this->app->tournament_repo->find(1)->balance_id);
 
-		$this->dispatch($this->groupMessage($this->admin, '/edit 1 уровень 11'));
+		$this->dispatch($this->privateMessage($this->admin, '/edit 1 уровень 11'));
 		self::assertSame($default_id, $this->app->tournament_repo->find(1)->balance_id, 'other edits keep the scale');
 
 		try {
@@ -111,7 +111,7 @@ class ScaleHiddenTest extends IntegrationTestCase {
 			self::assertSame('Это доступно только главному админу.', $e->getMessage());
 		}
 
-		$this->dispatch($this->groupMessage($this->owner, '/edit 1 баланс ' . $other->id));
+		$this->dispatch($this->privateMessage($this->owner, '/edit 1 баланс ' . $other->id));
 		self::assertSame($other->id, $this->app->tournament_repo->find(1)->balance_id);
 		self::assertStringNotContainsStringIgnoringCase('шкал', $this->http->lastText(), 'the card stays scale-free');
 
@@ -146,7 +146,7 @@ class ScaleHiddenTest extends IntegrationTestCase {
 		$other = $this->app->balances->create(self::CHAT_ID, $this->owner->id, 'Другая');
 		$this->http->queueOpenAi($this->call('r1', 'set_level', ['player' => '@vasya', 'level' => '5']));
 		$this->http->queueOpenAi($this->text('r2', 'Уровни игроков меняет только главный админ.'));
-		$this->dispatch($this->groupMessage($this->admin, '@' . self::BOT_USERNAME . ' поставь @vasya уровень 5'));
+		$this->dispatch($this->privateMessage($this->admin, '@' . self::BOT_USERNAME . ' поставь @vasya уровень 5'));
 		self::assertSame(3, $this->app->balances->levelOf($this->app->balances->findDefault()->id, $vasya->id));
 		self::assertStringContainsString(
 			'"ok":false',
@@ -162,7 +162,7 @@ class ScaleHiddenTest extends IntegrationTestCase {
 			'balance_id' => $other->id,
 		]));
 		$this->http->queueOpenAi($this->text('r4', 'Готово'));
-		$this->dispatch($this->groupMessage($this->admin, '@' . self::BOT_USERNAME . ' создай кубок'));
+		$this->dispatch($this->privateMessage($this->admin, '@' . self::BOT_USERNAME . ' создай кубок'));
 		self::assertSame($this->app->balances->findDefault()->id, $this->app->tournament_repo->find(1)->balance_id);
 		self::assertStringNotContainsStringIgnoringCase('шкал', $this->http->sent('sendMessage')[1]['text'] ?? '');
 	}

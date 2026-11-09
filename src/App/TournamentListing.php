@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace P1Bot\App;
 
+use P1Bot\Domain\Model\Tournament;
 use P1Bot\Domain\TournamentService;
 use P1Bot\Domain\TournamentStatus;
 use P1Bot\View\AnnouncementView;
@@ -17,7 +18,7 @@ class TournamentListing {
 	protected const TITLE = '📋 <b>Турниры</b>';
 	protected const SEPARATOR = "\n\n➖➖➖➖➖\n\n";
 
-	protected const PRIVATE_DRAFT = '<i>Черновик, его видишь только ты. Опубликовать: /open %d в группе</i>';
+	protected const PRIVATE_DRAFT = '<i>Черновик, его видишь только ты. Опубликовать: /open %d</i>';
 
 	public function __construct(
 		protected TournamentService $tournaments,
@@ -65,30 +66,58 @@ class TournamentListing {
 		$block_limit = $limit - mb_strlen(self::TITLE) - mb_strlen(self::SEPARATOR);
 		$with_headers = count($groups) > 1;
 		$blocks = [];
-		foreach ($groups as $chat_id => $title) {
-			$group_blocks = [];
-			foreach ($this->tournaments->listActive($chat_id) as $t) {
-				$group_blocks[] = $this->announcer->listBlock($t, $block_limit);
+		$current_group = null;
+		foreach ($this->privateTournaments($groups, $player_id, $is_owner) as $t) {
+			$footer = $t->status === TournamentStatus::DRAFT ? sprintf(self::PRIVATE_DRAFT, (int) $t->number) : '';
+			$block = $this->announcer->listBlock($t, $block_limit, $footer);
+			if ($with_headers && $t->chat_id !== $current_group) {
+				$title = $groups[$t->chat_id] ?? '';
+				$block = '👥 Группа <b>' . Html::e($title !== '' ? $title : (string) $t->chat_id) . "</b>\n\n" . $block;
 			}
-			foreach ($this->tournaments->listByStatus($chat_id, [TournamentStatus::DRAFT]) as $t) {
-				if (!$is_owner && $t->organizer_id !== $player_id) {
-					continue;
-				}
-				$this->announcer->number($t);
-				$group_blocks[] = $this->announcer->listBlock(
-					$t,
-					$block_limit,
-					sprintf(self::PRIVATE_DRAFT, (int) $t->number),
-				);
-			}
-			if ($group_blocks !== [] && $with_headers) {
-				$group_blocks[0] = '👥 Группа <b>' . Html::e($title !== '' ? $title : (string) $chat_id) . "</b>
-
-" . $group_blocks[0];
-			}
-			$blocks = array_merge($blocks, $group_blocks);
+			$current_group = $t->chat_id;
+			$blocks[] = $block;
 		}
 		return $this->pack($blocks, $limit);
+	}
+
+	/**
+		Tournaments for the private list, numbered, group by group (published first, then drafts).
+
+		@param array<int, string> $groups
+		@return list<Tournament>
+	*/
+	public function privateTournaments(array $groups, int $player_id, bool $is_owner): array {
+		$result = [];
+		foreach (array_keys($groups) as $chat_id) {
+			foreach ($this->tournaments->listActive($chat_id) as $t) {
+				$result[] = $this->announcer->number($t);
+			}
+			foreach ($this->tournaments->listByStatus($chat_id, [TournamentStatus::DRAFT]) as $t) {
+				if ($is_owner || $t->organizer_id === $player_id) {
+					$result[] = $this->announcer->number($t);
+				}
+			}
+		}
+		return $result;
+	}
+
+	/**
+		Inline buttons «№N Title» that open a tournament in private (callback popen:<id>).
+
+		@param list<Tournament> $tournaments
+		@param array<int, string> $groups
+		@return array<string, mixed>
+	*/
+	public static function openButtons(array $tournaments, array $groups): array {
+		$rows = [];
+		foreach ($tournaments as $t) {
+			$label = '№' . (int) $t->number . ' ' . $t->title;
+			if (count($groups) > 1) {
+				$label .= ' · ' . ($groups[$t->chat_id] ?? '');
+			}
+			$rows[] = [['text' => mb_substr($label, 0, 60), 'callback_data' => 'popen:' . $t->id]];
+		}
+		return $rows === [] ? [] : ['reply_markup' => ['inline_keyboard' => $rows]];
 	}
 
 	/**
