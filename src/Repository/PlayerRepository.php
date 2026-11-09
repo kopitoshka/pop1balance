@@ -105,7 +105,11 @@ class PlayerRepository {
 				return $this->find($id) ?? throw new \LogicException('Player insert failed');
 			}
 
-			if ($existing->username !== $username || $existing->display_name !== $display_name) {
+			// Keep a known @username when Telegram omits it (common for users_shared /
+			// privacy); only overwrite when a non-empty username arrives. Always refresh
+			// display_name so request_name / profile changes stick.
+			$keep_username = $username ?? $existing->username;
+			if ($keep_username !== $existing->username || $existing->display_name !== $display_name) {
 				if ($username !== null && $existing->username !== $username) {
 					$orphan_ids = array_values(array_filter(
 						$this->idsWithUsername($username),
@@ -121,7 +125,7 @@ class PlayerRepository {
 				}
 				$this->db->run(
 					'UPDATE players SET username = :u, display_name = :d WHERE id = :id',
-					['u' => $username, 'd' => $display_name, 'id' => $existing->id],
+					['u' => $keep_username, 'd' => $display_name, 'id' => $existing->id],
 				);
 			}
 			return $this->find($existing->id) ?? throw new \LogicException('Player vanished');
@@ -478,7 +482,106 @@ class PlayerRepository {
 		return str_replace(['\\', '%', '_'], ['\\\\', '\\%', '\\_'], $value);
 	}
 
+	/**
+		Delete every player with tg_user_id IS NULL together with roster links and
+		ratings. Empty teams are removed. Captains that pointed at a placeholder are
+		reassigned to the oldest remaining member. Placeholders that still organize a
+		tournament or own a balance are left (rare); count them in the return value.
+		@return array{deleted: int, teams_removed: int, skipped: int}
+	*/
+	public function purgePlaceholders(): array {
+		return $this->db->transactional(function (): array {
+			$ph = $this->db->fetchAll('SELECT id FROM players WHERE tg_user_id IS NULL');
+			$ids = array_map(static fn (array $r): int => (int) $r['id'], $ph);
+			if ($ids === []) {
+				return ['deleted' => 0, 'teams_removed' => 0, 'skipped' => 0];
+			}
+			$in = [];
+			$params = [];
+			foreach ($ids as $i => $id) {
+				$key = 'p' . $i;
+				$in[] = ':' . $key;
+				$params[$key] = $id;
+			}
+			$list = implode(', ', $in);
+
+			$this->db->run("DELETE FROM team_members WHERE player_id IN ({$list})", $params);
+			$this->db->run("DELETE FROM solo_players WHERE player_id IN ({$list})", $params);
+
+			// Reassign captains on non-empty teams that still point at a placeholder.
+			$broken = $this->db->fetchAll(
+				"SELECT t.id AS team_id, t.tournament_id
+					FROM teams t
+					WHERE t.captain_id IN ({$list})
+						AND EXISTS (
+							SELECT 1 FROM team_members tm
+							WHERE tm.team_id = t.id AND tm.tournament_id = t.tournament_id
+						)",
+				$params,
+			);
+			foreach ($broken as $row) {
+				$new = $this->db->fetchOne(
+					'SELECT player_id FROM team_members
+						WHERE team_id = :t AND tournament_id = :tr
+						ORDER BY joined_at ASC, player_id ASC LIMIT 1',
+					['t' => (int) $row['team_id'], 'tr' => (int) $row['tournament_id']],
+				);
+				if ($new !== null) {
+					$this->db->run(
+						'UPDATE teams SET captain_id = :c WHERE id = :id',
+						['c' => (int) $new['player_id'], 'id' => (int) $row['team_id']],
+					);
+				}
+			}
+
+			$empty = $this->db->fetchAll(
+				'SELECT t.id FROM teams t
+					WHERE NOT EXISTS (
+						SELECT 1 FROM team_members tm
+						WHERE tm.team_id = t.id AND tm.tournament_id = t.tournament_id
+					)',
+			);
+			$teams_removed = 0;
+			foreach ($empty as $row) {
+				$this->db->run('DELETE FROM teams WHERE id = :id', ['id' => (int) $row['id']]);
+				$teams_removed++;
+			}
+
+			$this->db->run(
+				"UPDATE balance_ratings SET updated_by = player_id WHERE updated_by IN ({$list})",
+				$params,
+			);
+			$this->db->run(
+				"UPDATE player_ign_history SET changed_by = NULL WHERE changed_by IN ({$list})",
+				$params,
+			);
+
+			$protected = $this->db->fetchAll(
+				"SELECT id FROM players
+					WHERE id IN ({$list})
+						AND (
+							id IN (SELECT organizer_id FROM tournaments)
+							OR id IN (SELECT owner_id FROM balances)
+						)",
+				$params,
+			);
+			$skip = array_map(static fn (array $r): int => (int) $r['id'], $protected);
+			$to_delete = array_values(array_diff($ids, $skip));
+			$deleted = 0;
+			foreach ($to_delete as $i => $id) {
+				$this->db->run('DELETE FROM players WHERE id = :id', ['id' => $id]);
+				$deleted++;
+			}
+			return [
+				'deleted' => $deleted,
+				'teams_removed' => $teams_removed,
+				'skipped' => count($skip),
+			];
+		});
+	}
+
 	public static function normalizeUsername(string $username): string {
+
 		return mb_strtolower(ltrim(trim($username), '@'));
 	}
 }

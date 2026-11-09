@@ -5,6 +5,7 @@ declare(strict_types=1);
 // Health check:     php bin/diag.php
 // Player dig:       php bin/diag.php --player @nick   (or IGN / numeric player id)
 // Placeholders dig: php bin/diag.php --placeholders
+// After migrate 014 (or PlayerRepository::purgePlaceholders) this should print None.
 // MTProto resolve:  php bin/diag.php --resolve @nick
 
 use P1Bot\App\Diagnostics;
@@ -106,7 +107,7 @@ if ($placeholders_mode) {
 				$refs[] = "{$table}×{$n}";
 			}
 		}
-		$status = $refs === [] ? 'UNREFERENCED (cleaned by 011 if applied)' : 'REFERENCED: ' . implode(', ', $refs);
+		$status = $refs === [] ? 'UNREFERENCED (011/014 clean these)' : 'REFERENCED: ' . implode(', ', $refs);
 		fwrite(STDOUT, sprintf(
 			"#%d @%s ign=%s — %s
 ",
