@@ -1,0 +1,5 @@
+# Python deps for bin/resolve_username.py (MTProto username resolve).
+# AlmaLinux 8: use python3.11 (AppStream), not the system python3 (3.6).
+#   sudo dnf install -y python3.11 python3.11-pip
+#   python3.11 -m pip install --user -r bin/requirements.txt
+Telethon==1.45.0

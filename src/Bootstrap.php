@@ -16,6 +16,7 @@ use P1Bot\App\DraftCards;
 use P1Bot\App\GroupRedirect;
 use P1Bot\App\TeamDisbandNotifier;
 use P1Bot\App\PlayerResolver;
+use P1Bot\App\UsernameResolver;
 use P1Bot\App\PrivateGroups;
 use P1Bot\App\PrivateViews;
 use P1Bot\App\TournamentListing;
@@ -176,7 +177,24 @@ class Bootstrap {
 			(int) ($config['admins_cache_minutes'] ?? 10),
 		);
 
-		$this->player_resolver = new PlayerResolver($this->players, $clock, $this->bot->username);
+		$username_lookup = null;
+		$api_id = (int) ($config['tg_api_id'] ?? 0);
+		$api_hash = trim((string) ($config['tg_api_hash'] ?? ''));
+		if ($api_id > 0 && $api_hash !== '') {
+			$ur = $config['username_resolve'] ?? [];
+			$username_lookup = new UsernameResolver([
+				'api_id' => $api_id,
+				'api_hash' => $api_hash,
+				'token' => (string) ($config['telegram']['token'] ?? ''),
+				'python' => (string) ($ur['python'] ?? 'python3.11'),
+				'script' => (string) ($ur['script'] ?? ($config['paths']['root'] ?? '') . '/bin/resolve_username.py'),
+				'session_dir' => (string) ($ur['session_dir'] ?? ($config['paths']['runtime'] ?? \sys_get_temp_dir())),
+				'timeout' => (int) ($ur['timeout'] ?? 10),
+				'negative_ttl' => (int) ($ur['negative_ttl'] ?? 600),
+				'root' => (string) ($config['paths']['root'] ?? ''),
+			], $clock, $this->logger);
+		}
+		$this->player_resolver = new PlayerResolver($this->players, $clock, $this->bot->username, $username_lookup);
 		$this->tournament_resolver = new TournamentResolver($this->tournament_repo);
 		$this->announcements = new TournamentAnnouncementRepository($db);
 		$this->announcer = new Announcer(

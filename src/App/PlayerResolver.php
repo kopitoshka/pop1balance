@@ -14,6 +14,7 @@ use P1Bot\View\DeepLink;
 /**
 	Turns "@vasya", a text_mention user or "я/me" into a known player (with Telegram id).
 	Never creates placeholder rows without tg_user_id.
+	Unknown @username may be resolved via MTProto (UsernameLookup) when configured.
 */
 class PlayerResolver {
 
@@ -21,6 +22,7 @@ class PlayerResolver {
 		protected PlayerRepository $players,
 		protected Clock $clock,
 		protected string $bot_username = '',
+		protected ?UsernameLookup $username_lookup = null,
 	) {
 	}
 
@@ -36,7 +38,7 @@ class PlayerResolver {
 		if (in_array(mb_strtolower($ref), ['я', 'меня', 'себя', 'me', 'self'], true)) {
 			return $actor;
 		}
-		// Telegram @username — only an existing player who already talked to the bot / was seen.
+		// Telegram @username — known player, or MTProto resolve when enabled.
 		if (str_starts_with($ref, '@') || preg_match('/^[A-Za-z][A-Za-z0-9_]{2,31}$/', $ref)) {
 			$username = ltrim($ref, '@');
 			if (preg_match('/^[A-Za-z][A-Za-z0-9_]{2,31}$/', $username)) {
@@ -46,6 +48,10 @@ class PlayerResolver {
 				$known = $this->players->findKnownByUsername($username);
 				if ($known !== null) {
 					return $known;
+				}
+				$resolved = $this->tryMtproto($username);
+				if ($resolved !== null) {
+					return $resolved;
 				}
 				throw new ValidationError($this->unknownUsernameMessage($username));
 			}
@@ -63,6 +69,26 @@ class PlayerResolver {
 			'Не могу найти игрока «%s». Укажи @username человека, который уже писал мне, или игровой ник.',
 			$ref,
 		));
+	}
+
+	protected function tryMtproto(string $username): ?Player {
+		if ($this->username_lookup === null || !$this->username_lookup->isAvailable()) {
+			return null;
+		}
+		$info = $this->username_lookup->resolve($username);
+		if ($info === null) {
+			return null;
+		}
+		$display = trim($info['first_name'] . ' ' . $info['last_name']);
+		if ($display === '') {
+			$display = $info['username'] ?? ('user' . $info['id']);
+		}
+		return $this->players->ensureByTelegram(
+			$info['id'],
+			$info['username'],
+			$display,
+			$this->clock->now(),
+		);
 	}
 
 	protected function unknownUsernameMessage(string $username): string {

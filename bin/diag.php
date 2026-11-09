@@ -5,16 +5,20 @@ declare(strict_types=1);
 // Health check:     php bin/diag.php
 // Player dig:       php bin/diag.php --player @nick   (or IGN / numeric player id)
 // Placeholders dig: php bin/diag.php --placeholders
+// MTProto resolve:  php bin/diag.php --resolve @nick
 
 use P1Bot\App\Diagnostics;
+use P1Bot\App\UsernameResolver;
 use P1Bot\Http\CurlHttpClient;
 use P1Bot\Support\Database;
+use P1Bot\Support\SystemClock;
 use P1Bot\Telegram\BotApi;
 
 require dirname(__DIR__) . '/autoload.php';
 $config = require dirname(__DIR__) . '/config/config.php';
 
 $player_arg = null;
+$resolve_arg = null;
 $placeholders_mode = in_array('--placeholders', $argv, true);
 foreach ($argv as $i => $arg) {
 	if ($arg === '--player' && isset($argv[$i + 1])) {
@@ -25,9 +29,56 @@ foreach ($argv as $i => $arg) {
 		$player_arg = substr($arg, strlen('--player='));
 		break;
 	}
+	if ($arg === '--resolve' && isset($argv[$i + 1])) {
+		$resolve_arg = (string) $argv[$i + 1];
+		break;
+	}
+	if (str_starts_with($arg, '--resolve=')) {
+		$resolve_arg = substr($arg, strlen('--resolve='));
+		break;
+	}
 }
 
 $db = Database::fromConfig($config['db']);
+
+if ($resolve_arg !== null) {
+	$nick = ltrim(trim($resolve_arg), '@');
+	fwrite(STDOUT, "== MTProto resolve: @{$nick}\n");
+	$api_id = (int) ($config['tg_api_id'] ?? 0);
+	$api_hash = trim((string) ($config['tg_api_hash'] ?? ''));
+	if ($api_id <= 0 || $api_hash === '') {
+		fwrite(STDERR, "TG_API_ID / TG_API_HASH не заданы в .env — resolve недоступен.\n");
+		exit(2);
+	}
+	$ur = $config['username_resolve'] ?? [];
+	$resolver = new UsernameResolver([
+		'api_id' => $api_id,
+		'api_hash' => $api_hash,
+		'token' => (string) ($config['telegram']['token'] ?? ''),
+		'python' => (string) ($ur['python'] ?? 'python3.11'),
+		'script' => (string) ($ur['script'] ?? dirname(__DIR__) . '/bin/resolve_username.py'),
+		'session_dir' => (string) ($ur['session_dir'] ?? dirname(__DIR__) . '/storage/runtime'),
+		'timeout' => (int) ($ur['timeout'] ?? 10),
+		'negative_ttl' => (int) ($ur['negative_ttl'] ?? 600),
+		'root' => dirname(__DIR__),
+	], new SystemClock());
+	if (!$resolver->isAvailable()) {
+		fwrite(STDERR, "Resolver недоступен (проверь token / script / python3.11 + Telethon).\n");
+		exit(2);
+	}
+	$info = $resolver->resolve($nick);
+	if ($info === null) {
+		fwrite(STDOUT, "not resolved (not_found / flood / cache / error — смотри storage/logs)\n");
+		exit(1);
+	}
+	fwrite(STDOUT, sprintf(
+		"ok id=%d username=@%s name=%s\n",
+		$info['id'],
+		$info['username'] ?? '',
+		trim($info['first_name'] . ' ' . $info['last_name']),
+	));
+	exit(0);
+}
 
 if ($placeholders_mode) {
 	fwrite(STDOUT, "== Placeholder players (tg_user_id IS NULL)

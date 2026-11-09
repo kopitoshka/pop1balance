@@ -73,5 +73,16 @@ return [
 		'root'   => $root,
 		'logs'   => $root . '/storage/logs',
 		'prompt' => __DIR__ . '/prompts/system.md',
+		'runtime' => $root . '/storage/runtime',
+	],
+	// MTProto @username resolve (Telethon). Python binary is NOT an .env key.
+	'tg_api_id' => Env::int('TG_API_ID', 0),
+	'tg_api_hash' => Env::get('TG_API_HASH', ''),
+	'username_resolve' => [
+		'python' => 'python3.11',
+		'script' => $root . '/bin/resolve_username.py',
+		'session_dir' => $root . '/storage/runtime',
+		'timeout' => 10,
+		'negative_ttl' => 600,
 	],
 ];

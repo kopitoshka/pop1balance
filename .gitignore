@@ -3,3 +3,5 @@
 /storage/logs/*
 !/storage/logs/.gitkeep
 /.phpunit.cache/
+/storage/runtime/*
+!/storage/runtime/.gitkeep
