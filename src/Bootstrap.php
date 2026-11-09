@@ -4,6 +4,10 @@ declare(strict_types=1);
 
 namespace P1Bot;
 
+use P1Bot\Ai\AiClient;
+use P1Bot\Ai\Assistant;
+use P1Bot\Ai\Dispatcher;
+use P1Bot\Ai\OpenAiClient;
 use P1Bot\App\Announcer;
 use P1Bot\App\PlayerResolver;
 use P1Bot\App\TournamentResolver;
@@ -59,6 +63,8 @@ final class Bootstrap
     public Announcer $announcer;
     public PlayerResolver $playerResolver;
     public TournamentResolver $tournamentResolver;
+    public Dispatcher $dispatcher;
+    public ?Assistant $assistant = null;
 
     /** @var array<string, mixed> */
     public array $config;
@@ -145,6 +151,32 @@ final class Bootstrap
             $clock,
         );
 
+        $this->dispatcher = new Dispatcher(
+            $this->tournaments,
+            $this->teams,
+            $this->balances,
+            $this->balanceRepo,
+            $this->players,
+            $this->tournamentResolver,
+            $this->playerResolver,
+            $this->announcer,
+            $clock,
+            $this->logger,
+        );
+        $ai = $this->makeAiClient();
+        if ($ai !== null) {
+            $this->assistant = new Assistant(
+                $ai,
+                $this->dispatcher,
+                $this->conversations,
+                $this->bot,
+                $clock,
+                $this->logger,
+                $this->systemPrompt(),
+                (int) ($config['conversation_ttl_minutes'] ?? 30),
+            );
+        }
+
         $this->router = new UpdateRouter(
             $this->telegram,
             $this->bot,
@@ -154,9 +186,34 @@ final class Bootstrap
             $this->access,
             $clock,
             $commands,
-            new MessageHandler($this->telegram, $this->bot),
+            new MessageHandler($this->telegram, $this->bot, $this->assistant, $this->logger),
             new CallbackHandler($this->telegram, $this->bot, $this->tournaments, $this->teams, $this->announcer),
         );
+    }
+
+    /** null when OPENAI_API_KEY is empty: the bot then answers mentions with a short help. */
+    private function makeAiClient(): ?AiClient
+    {
+        $openai = $this->config['openai'] ?? [];
+        $key = (string) ($openai['api_key'] ?? '');
+        if ($key === '') {
+            return null;
+        }
+        return new OpenAiClient(
+            $this->http,
+            $key,
+            (string) ($openai['model'] ?? 'gpt-6-luna'),
+            (string) ($openai['reasoning_effort'] ?? 'low'),
+            (string) ($openai['base_url'] ?? 'https://api.openai.com/v1'),
+            (int) ($openai['timeout'] ?? 30),
+        );
+    }
+
+    private function systemPrompt(): string
+    {
+        $path = (string) ($this->config['paths']['prompt'] ?? dirname(__DIR__) . '/config/prompts/system.md');
+        $prompt = is_file($path) ? (string) file_get_contents($path) : '';
+        return str_replace('{bot_username}', $this->bot->username, $prompt);
     }
 
     /** @param array<string, mixed> $config */
