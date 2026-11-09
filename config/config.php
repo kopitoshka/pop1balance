@@ -29,11 +29,11 @@ $reminders = array_values(array_filter(array_map('intval', explode(',', Env::get
 return [
     'telegram' => [
         'token'          => Env::get('TELEGRAM_BOT_TOKEN', ''),
-        'username'       => ltrim(Env::get('BOT_USERNAME', ''), '@'),
+        'username'       => ltrim(Env::get('TELEGRAM_BOT_USERNAME', ''), '@'),
         'webhook_secret' => Env::get('TELEGRAM_WEBHOOK_SECRET', ''),
         'webhook_url'    => Env::get('WEBHOOK_URL', ''),
     ],
-    'owner_tg_id' => Env::int('OWNER_TG_ID', 0),
+    'owner_tg_id' => Env::int('BOT_OWNER_TG_ID', 0),
     'openai' => [
         'api_key'          => Env::get('OPENAI_API_KEY', ''),
         'model'            => Env::get('OPENAI_MODEL', 'gpt-6-luna'),

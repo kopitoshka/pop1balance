@@ -111,10 +111,10 @@ and `sudo setsebool -P httpd_can_network_connect 1` (the bot calls Telegram and 
 | Key | What |
 |---|---|
 | `TELEGRAM_BOT_TOKEN` | token from @BotFather |
-| `BOT_USERNAME` | bot username without `@` |
+| `TELEGRAM_BOT_USERNAME` | bot username without `@` |
 | `TELEGRAM_WEBHOOK_SECRET` | random string, only `A-Z a-z 0-9 _ -`, e.g. `openssl rand -hex 32` |
 | `WEBHOOK_URL` | `https://<subdomain>/webhook.php` |
-| `OWNER_TG_ID` | your numeric Telegram id (ask @userinfobot); owner = admin everywhere, owns the default balance |
+| `BOT_OWNER_TG_ID` | your numeric Telegram id (ask @userinfobot); owner = admin everywhere, owns the default balance |
 | `OPENAI_API_KEY` | OpenAI key; empty = AI off |
 | `OPENAI_MODEL` | default `gpt-6-luna` |
 | `OPENAI_REASONING_EFFORT` | default `low` |
@@ -147,7 +147,7 @@ php bin/set_webhook.php
 # Webhook set: https://pop1.example.com/webhook.php
 ```
 
-The script warns if privacy mode is off or `BOT_USERNAME` differs from the real one.
+The script warns if privacy mode is off or `TELEGRAM_BOT_USERNAME` differs from the real one.
 Check: `curl https://api.telegram.org/bot<TOKEN>/getWebhookInfo`.
 
 ### 8. Cron

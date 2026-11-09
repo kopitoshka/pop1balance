@@ -30,7 +30,7 @@ try {
     $me = $api->getMe();
     fwrite(STDOUT, sprintf("Bot: @%s (id %d)\n", $me['username'] ?? '?', $me['id'] ?? 0));
     if (strcasecmp((string) ($me['username'] ?? ''), (string) $config['telegram']['username']) !== 0) {
-        fwrite(STDOUT, "Warning: BOT_USERNAME in .env differs from the real bot username.\n");
+        fwrite(STDOUT, "Warning: TELEGRAM_BOT_USERNAME in .env differs from the real bot username.\n");
     }
     if (($me['can_read_all_group_messages'] ?? false) === true) {
         fwrite(STDOUT, "Warning: privacy mode is OFF. Turn it on in @BotFather (/setprivacy -> Enable).\n");
