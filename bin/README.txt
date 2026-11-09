@@ -13,6 +13,8 @@ diag.php
 
 set_webhook.php
   Ставит webhook по TELEGRAM_* из .env.
+  Также обновляет меню команд (в т.ч.
+  /adduser только у владельца в личке).
 
 cron.php
   Напоминания и автозавершение турниров
@@ -21,12 +23,16 @@ cron.php
 import_members.php
   Импорт участников группы из экспорта
   Telegram Desktop (JSON) в таблицу players.
+  Большие файлы читаются потоком (без
+  полной загрузки JSON в память).
 
+  php bin/import_members.php --list-groups
   php bin/import_members.php path/result.json \
     [chat_id] [--dry-run]
 
   Без chat_id id берётся из экспорта:
-  супергруппа → -100{id}, обычная группа → -{id}.
+  супергруппа (private/public_supergroup) →
+  -100{id}; обычная группа → -{id}.
 
   Для каждого уникального user id из from_id /
   actor_id вызывается getChatMember. В БД
@@ -38,6 +44,9 @@ import_members.php
   обычном сообщении в группе). Никому не пишет.
   Лимит ≈20 запросов/с, при 429 ждёт retry_after.
   --dry-run считает статистику без записи в БД.
+  Если getChat = chat not found — бота нет в
+  этой группе: скрипт покажет активные группы
+  из БД и подскажет передать верный chat_id.
 
   Как выгрузить чат в Desktop:
   группа → ⋮ → Export chat history → снять
@@ -45,6 +54,7 @@ import_members.php
   result.json.
 
   Пример:
+  php bin/import_members.php --list-groups
   php bin/import_members.php ~/Downloads/Chat/\
   result.json --dry-run
   php bin/import_members.php ~/Downloads/Chat/\

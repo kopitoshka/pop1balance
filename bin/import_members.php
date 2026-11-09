@@ -3,8 +3,11 @@
 declare(strict_types=1);
 
 // Import current group members from a Telegram Desktop JSON export.
-// Usage: php bin/import_members.php <path/result.json> [<chat_id>] [--dry-run]
+// Usage:
+//   php bin/import_members.php --list-groups
+//   php bin/import_members.php <path/result.json> [<chat_id>] [--dry-run]
 // Does not message anyone. Never creates placeholders. Idempotent.
+// Large exports are streamed (no full json_decode).
 
 use P1Bot\App\ChatExportParser;
 use P1Bot\App\MembersImporter;
@@ -14,18 +17,29 @@ use P1Bot\Repository\PlayerRepository;
 use P1Bot\Support\Database;
 use P1Bot\Support\SystemClock;
 use P1Bot\Telegram\BotApi;
+use P1Bot\Telegram\TelegramError;
 
 require dirname(__DIR__) . '/autoload.php';
 $config = require dirname(__DIR__) . '/config/config.php';
 
+$db = Database::fromConfig($config['db']);
+$chats = new ChatRepository($db);
+
+if (in_array('--list-groups', $argv, true)) {
+	printActiveGroups($chats);
+	exit(0);
+}
+
 $dry_run = in_array('--dry-run', $argv, true);
 $args = array_values(array_filter(
 	array_slice($argv, 1),
-	static fn (string $a): bool => $a !== '--dry-run',
+	static fn (string $a): bool => !in_array($a, ['--dry-run', '--list-groups'], true),
 ));
 
 if ($args === []) {
-	fwrite(STDERR, "Usage: php bin/import_members.php <path/result.json> [<chat_id>] [--dry-run]\n");
+	fwrite(STDERR, "Usage:\n");
+	fwrite(STDERR, "  php bin/import_members.php --list-groups\n");
+	fwrite(STDERR, "  php bin/import_members.php <path/result.json> [<chat_id>] [--dry-run]\n");
 	exit(1);
 }
 
@@ -37,36 +51,13 @@ if (!is_file($path) || !is_readable($path)) {
 	exit(1);
 }
 
-$size = (int) filesize($path);
-if ($size > 40 * 1024 * 1024) {
-	fwrite(STDERR, sprintf(
-		"Внимание: файл %.1f МБ — json_decode может съесть много памяти.\n",
-		$size / (1024 * 1024),
-	));
-	@ini_set('memory_limit', '512M');
-}
-
-$raw = file_get_contents($path);
-if ($raw === false) {
-	fwrite(STDERR, "Не удалось прочитать файл.\n");
-	exit(1);
-}
-
-$data = json_decode($raw, true);
-if (!is_array($data)) {
-	fwrite(STDERR, "Невалидный JSON: " . json_last_error_msg() . "\n");
-	exit(1);
-}
-unset($raw);
-
 $parser = new ChatExportParser();
 try {
-	$parsed = $parser->parse($data);
+	$parsed = $parser->parseFile($path);
 } catch (Throwable $e) {
 	fwrite(STDERR, $e->getMessage() . "\n");
 	exit(1);
 }
-unset($data);
 
 $chat_id = $chat_id_arg ?? $parsed['chat_id'];
 fwrite(STDOUT, sprintf(
@@ -79,12 +70,11 @@ fwrite(STDOUT, sprintf(
 	$dry_run ? ' [dry-run]' : '',
 ));
 
-$db = Database::fromConfig($config['db']);
 $api = new BotApi(new CurlHttpClient(), (string) $config['telegram']['token']);
 $importer = new MembersImporter(
 	$api,
 	new PlayerRepository($db),
-	new ChatRepository($db),
+	$chats,
 	new SystemClock(),
 );
 
@@ -92,7 +82,17 @@ try {
 	$stats = $importer->import($chat_id, $parsed['user_ids'], $dry_run);
 } catch (Throwable $e) {
 	fwrite(STDERR, "Ошибка getChat/импорта: " . $e->getMessage() . "\n");
-	fwrite(STDERR, "Проверьте, что бот в чате и chat_id верный ({$chat_id}).\n");
+	$not_found = $e instanceof TelegramError
+		&& (stripos($e->getMessage(), 'chat not found') !== false || $e->getCode() === 400);
+	if ($not_found || stripos($e->getMessage(), 'chat not found') !== false) {
+		fwrite(STDERR, "Похоже, бота нет в этом чате, либо chat_id другой.\n");
+		fwrite(STDERR, "Добавь бота в группу «{$parsed['name']}» или передай верный chat_id.\n");
+		fwrite(STDERR, "Активные группы, где бот уже есть (из БД):\n");
+		printActiveGroups($chats, STDERR);
+		fwrite(STDERR, "Список ещё раз: php bin/import_members.php --list-groups\n");
+	} else {
+		fwrite(STDERR, "Проверьте, что бот в чате и chat_id верный ({$chat_id}).\n");
+	}
 	exit(1);
 }
 
@@ -119,3 +119,18 @@ foreach ($stats['error_samples'] as $sample) {
 	fwrite(STDOUT, "  · {$sample}\n");
 }
 exit($stats['errors'] > 0 ? 2 : 0);
+
+/**
+	@param resource $out
+*/
+function printActiveGroups(ChatRepository $chats, $out = null): void {
+	$out = $out ?? STDOUT;
+	$groups = $chats->listActiveGroups();
+	if ($groups === []) {
+		fwrite($out, "(пусто — бот ещё ни в одной группе не отмечен)\n");
+		return;
+	}
+	foreach ($groups as $id => $title) {
+		fwrite($out, sprintf("  %s  %d\n", $title !== '' ? $title : '?', $id));
+	}
+}

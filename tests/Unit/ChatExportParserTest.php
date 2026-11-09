@@ -29,6 +29,11 @@ class ChatExportParserTest extends TestCase {
 		self::assertSame(-42, $p->deriveChatId(-42, 'private_group'));
 	}
 
+	public function testPrivateSupergroupDerivationMatchesBotApi(): void {
+		$p = new ChatExportParser();
+		self::assertSame(-1002119660082, $p->deriveChatId(2119660082, 'private_supergroup'));
+	}
+
 	public function testParsePeerIdOnlyUsers(): void {
 		$p = new ChatExportParser();
 		self::assertSame(123456, $p->parsePeerId('user123456'));
@@ -71,5 +76,46 @@ class ChatExportParserTest extends TestCase {
 		$p = new ChatExportParser();
 		$this->expectException(InvalidArgumentException::class);
 		$p->parse(['type' => 'private_supergroup', 'messages' => []]);
+	}
+
+	public function testParseFileStreamsLargeExport(): void {
+		$path = sys_get_temp_dir() . '/p1_export_' . getmypid() . '.json';
+		$fh = fopen($path, 'wb');
+		fwrite($fh, "{\n \"name\": \"Наследие\",\n \"type\": \"private_supergroup\",\n \"id\": 2119660082,\n \"messages\": [\n");
+		for ($i = 0; $i < 500; $i++) {
+			fwrite($fh, json_encode([
+				'id' => $i,
+				'type' => 'message',
+				'from_id' => 'user' . (1000 + ($i % 7)),
+				'from' => 'U' . $i,
+				'text' => str_repeat('x', 200),
+			], JSON_UNESCAPED_UNICODE) . ",\n");
+		}
+		fwrite($fh, json_encode([
+			'id' => 9999,
+			'type' => 'service',
+			'actor_id' => 'user777',
+			'action' => 'join_group_by_link',
+		], JSON_UNESCAPED_UNICODE) . ",\n");
+		fwrite($fh, json_encode([
+			'id' => 10000,
+			'type' => 'message',
+			'from_id' => 'channel55',
+			'from' => 'Chan',
+		], JSON_UNESCAPED_UNICODE) . "\n]\n}\n");
+		fclose($fh);
+
+		$p = new ChatExportParser();
+		$result = $p->parseFile($path);
+		@unlink($path);
+
+		self::assertSame(2119660082, $result['export_id']);
+		self::assertSame('private_supergroup', $result['type']);
+		self::assertSame('Наследие', $result['name']);
+		self::assertSame(-1002119660082, $result['chat_id']);
+		self::assertContains(777, $result['user_ids']);
+		self::assertContains(1000, $result['user_ids']);
+		self::assertNotContains(55, $result['user_ids']);
+		self::assertCount(8, $result['user_ids']);
 	}
 }
