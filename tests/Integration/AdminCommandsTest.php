@@ -368,11 +368,14 @@ class AdminCommandsTest extends IntegrationTestCase {
 		$text = $this->http->lastText();
 		self::assertCount(1, $this->http->sent('sendMessage'));
 		self::assertStringContainsString('🏆 <b>Кубок &lt;1&gt;</b> · №1', $text);
-		self::assertStringContainsString('👤 Организатор: @andrey', $text);
+		self::assertStringContainsString('👤 Организатор: <a href="tg://user?id=', $text);
 		self::assertStringContainsString('🟢 Идёт регистрация', $text);
 		self::assertStringContainsString('🎟 Занято 3/24 · запас 0', $text);
-		self::assertStringContainsString("🛡 <b>Команды:</b>\n1. <b>Wolves &amp; Co</b> — 👑 @cap (кэп), @mate", $text);
-		self::assertStringContainsString("🙋 <b>Ищут команду:</b>\n@solo", $text);
+		self::assertStringContainsString("Wolves &amp; Co", $text);
+		self::assertStringContainsString("@cap</a> (кэп)", $text);
+		self::assertStringContainsString("@mate</a>", $text);
+		self::assertStringContainsString("🙋 <b>Ищут команду:</b>", $text);
+		self::assertStringContainsString("@solo</a>", $text);
 		self::assertStringNotContainsString('Черновой', $text, 'players do not see drafts');
 
 		$this->dispatch($this->privateMessage($this->owner, '/tournaments'));

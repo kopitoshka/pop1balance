@@ -34,7 +34,8 @@ class CallbackHandlerTest extends IntegrationTestCase {
 		self::assertStringContainsString('Записала тебя соло', $this->lastAnswer());
 		$edit = $this->http->sent('editMessageText')[0];
 		self::assertSame(self::CHAT_ID, $edit['chat_id'], 'the group card is edited');
-		self::assertStringContainsString("🙋 <b>Ищут команду:</b>\n@vasya", $edit['text']);
+		self::assertStringContainsString("🙋 <b>Ищут команду:</b>", $edit['text']);
+		self::assertStringContainsString("@vasya</a>", $edit['text']);
 		$sent = $this->http->sent('sendMessage');
 		self::assertSame($this->tgIdOf($vasya), end($sent)['chat_id'], 'no message in the group');
 		self::assertSame('punsolo:' . $t->id, end($sent)['reply_markup']['inline_keyboard'][0][0]['callback_data']);

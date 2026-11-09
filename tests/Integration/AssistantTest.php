@@ -270,7 +270,9 @@ class AssistantTest extends IntegrationTestCase {
 		$sent = $this->http->sent('sendMessage');
 		self::assertCount(2, $sent);
 		self::assertStringStartsWith('📋 <b>Турниры</b>', $sent[0]['text']);
-		self::assertStringContainsString('1. <b>Wolves</b> — 👑 @cap (кэп), @mate', $sent[0]['text']);
+		self::assertStringContainsString('👑 <a href="tg://user?id=', $sent[0]['text']);
+		self::assertStringContainsString('@cap</a> (кэп)', $sent[0]['text']);
+		self::assertStringContainsString('@mate</a>', $sent[0]['text']);
 		self::assertSame('Вот что есть 👇', $sent[1]['text']);
 		$output = json_decode($this->lastOpenAiRequest()['input'][0]['output'], true);
 		self::assertTrue($output['show_list']);

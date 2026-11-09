@@ -86,6 +86,40 @@ class PrivateChatTest extends IntegrationTestCase {
 		}));
 	}
 
+
+	public function testTournamentCardHasNoTeamManageButtonsForOrganizerCaptain(): void {
+		$t = $this->openTournament(3);
+		$mate = $this->player('mate_tm');
+		$this->rate($this->owner, 3);
+		$this->rate($mate, 3);
+		$entry = $this->app->teams->createTeam($t->id, $this->owner->id, 'Owners', [$mate->id]);
+		$this->say($this->owner, '/start t_' . $t->id);
+		$buttons = $this->lastButtons();
+		self::assertSame(
+			['tcard:' . $entry->team->id, 'oteams:' . $t->id],
+			$buttons,
+		);
+		foreach (['padd:', 'prem:', 'pdissolve:', 'otren:', 'otcap:', 'otdel:'] as $prefix) {
+			foreach ($buttons as $b) {
+				self::assertStringStartsNotWith($prefix, $b);
+			}
+		}
+		// Team card still has manage actions.
+		$this->http->reset();
+		$this->dispatch($this->press($this->owner, 'tcard:' . $entry->team->id));
+		$team_btns = [];
+		foreach ($this->http->sent('sendMessage') as $msg) {
+			foreach ($msg['reply_markup']['inline_keyboard'] ?? [] as $row) {
+				foreach ($row as $btn) {
+					$team_btns[] = $btn['callback_data'] ?? '';
+				}
+			}
+		}
+		self::assertContains('padd:' . $entry->team->id, $team_btns);
+		self::assertContains('otren:' . $entry->team->id, $team_btns);
+		self::assertContains('oteams:' . $t->id, $team_btns, 'back to list on team card');
+	}
+
 	public function testStartWithTournamentShowsItWithButtons(): void {
 		$t = $this->openTournament(3);
 		$vasya = $this->player('vasya');
@@ -106,9 +140,10 @@ class PrivateChatTest extends IntegrationTestCase {
 		$mate = $this->player('mate');
 		$entry = $this->app->teams->createTeam($t->id, $cap->id, 'Wolves', [$mate->id]);
 		$this->say($cap, '/start t_' . $t->id);
-		self::assertSame(['padd:' . $entry->team->id, 'prem:' . $entry->team->id, 'pdissolve:' . $entry->team->id], $this->lastButtons());
+		// Tournament card: entry to own team, not full team-manage keyboard.
+		self::assertSame(['tcard:' . $entry->team->id], $this->lastButtons());
 		$this->say($mate, '/start t_' . $t->id);
-		self::assertSame(['pleave:' . $entry->team->id], $this->lastButtons());
+		self::assertSame(['tcard:' . $entry->team->id], $this->lastButtons());
 	}
 
 	public function testStartWithUnknownTournamentShowsTheList(): void {

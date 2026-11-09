@@ -35,9 +35,10 @@ class OrganizerTeamsTest extends IntegrationTestCase {
 		$this->dispatch($this->press($this->owner, 'popen:' . $t->id));
 		$callbacks = $this->allCallbacks();
 		$oteams = array_values(array_filter($callbacks, static fn ($c) => $c === 'oteams:' . $t->id));
-		self::assertCount(1, $oteams, 'one oteams button, not Команды + К списку команд');
-		self::assertContains('oteams:' . $t->id, $callbacks);
-		self::assertContains('padd:' . $entry->team->id, $callbacks);
+		self::assertCount(1, $oteams, 'one oteams on tournament card');
+		self::assertContains('tcard:' . $entry->team->id, $callbacks, 'own team entry');
+		self::assertNotContains('padd:' . $entry->team->id, $callbacks, 'team manage not on tournament card');
+		self::assertNotContains('otren:' . $entry->team->id, $callbacks);
 	}
 
 	public function testTournamentCardShowsTeamsButtonForOrganizer(): void {

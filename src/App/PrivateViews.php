@@ -15,8 +15,8 @@ use P1Bot\View\Html;
 
 /**
 	What the private chat shows: a tournament with buttons for the player's state and the list of
-	tournaments with «open» buttons. Callbacks: psolo:<t>, punsolo:<t>, pteam:<t>, pleave:<team>,
-	pdissolve:<team>, padd:<team>, tadd:<team>:<player>, popen:<t>, oteams:<t> (handled by CallbackHandler).
+	tournaments with «open» buttons. Tournament card: psolo/punsolo/pteam, «🛡 Моя команда» (tcard),
+	«👥 Команды» (oteams). Team manage buttons only on the team card (TeamCards).
 */
 class PrivateViews {
 
@@ -73,21 +73,15 @@ class PrivateViews {
 		if ($time_locked && !$can_manage) {
 			return [];
 		}
+		// Tournament info card: only tournament-level actions. Team manage buttons live on team cards.
 		$team = $this->teams->teamOf($t->id, $player->id);
 		if ($team !== null) {
-			if ($this->team_cards !== null) {
-				$rows = $this->team_cards->rows($t, $team, $player);
-			} else {
-				$rows = $team->team->captain_id === $player->id
-					? [[[
-						'text' => '🚫 Распустить команду «' . $team->team->name . '»',
-						'callback_data' => 'pdissolve:' . $team->team->id,
-					]]]
-					: [[[
-						'text' => '🚪 Выйти из команды «' . $team->team->name . '»',
-						'callback_data' => 'pleave:' . $team->team->id,
-					]]];
-			}
+			$rows = [[
+				[
+					'text' => '🛡 Моя команда «' . mb_substr($team->team->name, 0, 40) . '»',
+					'callback_data' => 'tcard:' . $team->team->id,
+				],
+			]];
 		} elseif (($placement = $this->tournaments->lineup($t->id)->placementOf($player->id)) !== null) {
 			$rows = [[['text' => '❌ Отписаться', 'callback_data' => 'punsolo:' . $t->id]]];
 		} elseif (!$this->tournaments->isUserRegistrationOpen($t)) {
@@ -101,25 +95,10 @@ class PrivateViews {
 		if (
 			$can_manage
 			&& in_array($t->status, [TournamentStatus::REGISTRATION, TournamentStatus::CLOSED], true)
-			&& !self::hasCallback($rows, 'oteams:' . $t->id)
 		) {
 			$rows[] = [['text' => '👥 Команды', 'callback_data' => 'oteams:' . $t->id]];
 		}
 		return $rows;
-	}
-
-	/**
-		@param list<list<array<string, string>>> $rows
-	*/
-	protected static function hasCallback(array $rows, string $callback_data): bool {
-		foreach ($rows as $row) {
-			foreach ($row as $btn) {
-				if (($btn['callback_data'] ?? null) === $callback_data) {
-					return true;
-				}
-			}
-		}
-		return false;
 	}
 
 	/**

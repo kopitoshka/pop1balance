@@ -49,18 +49,24 @@ class Player {
 	}
 
 	/**
-		HTML for lineups/cards: IGN as tg:// link when possible, else @username / name.
+		HTML for lineups/cards: IGN / @username / name as a profile link when possible.
 		Already escaped — do not Html::e again.
 	*/
 	public function lineupLabel(): string {
 		if ($this->hasIgn()) {
 			$label = Html::e((string) $this->ign);
-			if ($this->tg_user_id !== null) {
-				return '<a href="tg://user?id=' . $this->tg_user_id . '">' . $label . '</a>';
-			}
-			return $label;
+		} elseif ($this->username !== null && $this->username !== '') {
+			$label = Html::e('@' . $this->username);
+		} else {
+			$label = Html::e($this->display_name !== '' ? $this->display_name : 'игрок #' . $this->id);
 		}
-		return Html::e($this->mention());
+		if ($this->tg_user_id !== null) {
+			return '<a href="tg://user?id=' . $this->tg_user_id . '">' . $label . '</a>';
+		}
+		if ($this->username !== null && $this->username !== '') {
+			return '<a href="https://t.me/' . rawurlencode($this->username) . '">' . $label . '</a>';
+		}
+		return $label;
 	}
 
 	/**

@@ -97,7 +97,15 @@ class RegistrationCloseTest extends IntegrationTestCase {
 		$t = $this->app->tournaments->get($t->id);
 		self::assertSame([], $views->rows($t, $vasya), 'regular player: no buttons after lock');
 		$rows = $views->rows($t, $this->owner);
-		self::assertSame('pdissolve:' . $entry->team->id, $rows[0][0]['callback_data'], 'organizer keeps dissolve');
+		$callbacks = [];
+		foreach ($rows as $row) {
+			foreach ($row as $btn) {
+				$callbacks[] = $btn['callback_data'] ?? '';
+			}
+		}
+		self::assertContains('tcard:' . $entry->team->id, $callbacks, 'organizer still reaches own team');
+		self::assertContains('oteams:' . $t->id, $callbacks, 'organizer keeps team list');
+		self::assertNotContains('pdissolve:' . $entry->team->id, $callbacks, 'dissolve not on tournament card');
 	}
 
 	public function testGroupNoticeShowsClosedWhenTimeLocked(): void {

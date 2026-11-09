@@ -64,17 +64,17 @@ class AnnouncementViewTest extends TestCase {
 
 		self::assertStringContainsString('🏆 <b>Кубок &lt;выходного&gt;</b> · №2', $text);
 		self::assertStringContainsString('🗓 14.11.2026 ⏰ 19:00 МСК', $text);
-		self::assertStringContainsString('👤 Организатор: @andrey', $text);
+		self::assertStringContainsString('👤 Организатор: <a href="tg://user?id=10">@andrey</a>', $text);
 		self::assertStringContainsString('⚖️ Уровень: средний+ (7 баллов на двоих)', $text);
 		self::assertStringContainsString('👥 Команды по 2 игрока', $text);
 		self::assertStringContainsString('🟢 Идёт регистрация', $text);
 		self::assertStringContainsString('🎟 Занято 4/4 · запас 3', $text);
 		self::assertStringContainsString(
-			"🛡 <b>Команды:</b>\n1. <b>Wolves</b> — 👑 @p2 (кэп), @p3\n2. <b>Bears</b> — 👑 @p4 (кэп), @p5",
+			"🛡 <b>Команды:</b>\n1. <b>Wolves</b> — 👑 <a href=\"tg://user?id=12\">@p2</a> (кэп), <a href=\"tg://user?id=13\">@p3</a>\n2. <b>Bears</b> — 👑 <a href=\"tg://user?id=14\">@p4</a> (кэп), <a href=\"tg://user?id=15\">@p5</a>",
 			$text,
 		);
-		self::assertStringContainsString("⏳ <b>Запас:</b>\n1. <b>Late</b> — 👑 @p6 (кэп), @p7\n🙋 Соло: @p8", $text);
-		self::assertStringContainsString("🧩 <b>Собираются:</b>\n• Forming — 👑 @p9 (кэп) (1/2)", $text);
+		self::assertStringContainsString("⏳ <b>Запас:</b>\n1. <b>Late</b> — 👑 <a href=\"tg://user?id=16\">@p6</a> (кэп), <a href=\"tg://user?id=17\">@p7</a>\n🙋 Соло: <a href=\"tg://user?id=18\">@p8</a>", $text);
+		self::assertStringContainsString("🧩 <b>Собираются:</b>\n• Forming — 👑 <a href=\"tg://user?id=19\">@p9</a> (кэп) (1/2)", $text);
 		self::assertDoesNotMatchRegularExpression('/средний \(3\)|\(3\)/u', $text, 'player levels are not shown');
 		self::assertStringContainsString('в личке у @pop1_bot', $text);
 	}
