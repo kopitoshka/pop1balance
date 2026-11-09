@@ -8,7 +8,6 @@ use P1Bot\Domain\Levels;
 use P1Bot\Domain\Model\Balance;
 use P1Bot\Domain\Model\Player;
 use P1Bot\Domain\Model\Tournament;
-use P1Bot\Domain\MoscowTime;
 use P1Bot\Support\RuPlural;
 
 /** Draft card shown to the organizer before publishing (HTML). */
@@ -19,9 +18,9 @@ final class TournamentCard
     public static function render(Tournament $t, ?Player $organizer, ?Balance $balance): string
     {
         $lines = [
-            '📝 ' . Html::b('Турнир №' . $t->id . ' (черновик)'),
+            '📝 ' . Html::b('Турнир' . ($t->number !== null ? ' №' . $t->number : '') . ' (черновик)'),
             '🏆 Название: ' . Html::e($t->title),
-            '🕗 Старт: ' . MoscowTime::format($t->startsAt),
+            AnnouncementView::when($t),
             '👥 Команды по ' . $t->teamSize . ' ' . RuPlural::choose($t->teamSize, ['игроку', 'игрока', 'игроков']),
         ];
         if ($t->referenceTeam !== null && $t->maxPoints !== null) {

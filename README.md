@@ -177,9 +177,32 @@ Admins:
 - `/open [id]` — for a draft: shows the same card and publishes only after a clear confirmation (see below);
   for a closed tournament: reopens registration right away. `/close [id]`; `/cancel [id]`
 - `/level @user 4 [balance]`, `/balance [id]`
-- `/tournaments`, `/info [id]`, `/help` — for everyone
+- `/tournaments` — pretty list of active tournaments with teams (👑 captain), solo players, reserve and forming teams
+  (admins also see drafts); `/info [N]` — full lineup of one tournament; `/help` — for everyone
 
-The id can be omitted when only one tournament fits. Admins can do all of this in plain text too.
+The number can be omitted when only one tournament fits. Admins can do all of this in plain text too.
+
+### Tournament numbers
+
+Users never see database ids. `№N` everywhere (lists, cards, announcements, `/info N`, `/edit N`, `/open N`,
+`/close N`, `/cancel N`, the AI's `tournament_id`) is a short per-chat number: the position among the chat's
+tournaments that are not finished or cancelled (drafts included), ordered by start time, then id: 1, 2, 3...
+It is computed on the fly (`App\TournamentResolver::numbers()`), nothing is stored.
+
+Numbers are stable while the set of tournaments is unchanged, but **can shift** when an earlier tournament
+finishes or is cancelled, or a new/moved tournament starts earlier. The bot then re-renders the other
+announcements (`Announcer::renumber`) so they show the current numbers; always check `/tournaments`.
+Players may see gaps in the numbering, because drafts are numbered but only visible to admins.
+Inline buttons keep using real ids internally, so old buttons stay correct.
+
+### Output format
+
+`/tournaments`, `/info`, announcements and the AI list share one renderer (`View\AnnouncementView`):
+🏆 title · №N, 🗓 date ⏰ time МСК, 👤 organizer, ⚖️ level, 👥 team size, status, 🎟 occupied/reserve, then
+🛡 teams (👑 captain), 🙋 solo players, ⏳ reserve, 🧩 forming teams. Player levels are never shown.
+Messages stay under Telegram's 4096 characters: the list is split into several messages, a too long
+tournament block is cut with «…и ещё N строк. Полный состав: /info N», `/info` sends the full lineup in parts.
+When the AI calls `list_tournaments`, the bot sends this block itself and the model only adds a short phrase.
 
 ### Creating a tournament (draft → card → confirmation)
 

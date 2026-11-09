@@ -7,6 +7,7 @@ namespace P1Bot\Handlers;
 use P1Bot\App\Announcer;
 use P1Bot\App\DraftCards;
 use P1Bot\App\PlayerResolver;
+use P1Bot\App\TournamentListing;
 use P1Bot\App\TournamentResolver;
 use P1Bot\Domain\BalanceService;
 use P1Bot\Domain\CreateTournament;
@@ -49,6 +50,7 @@ final class AdminCommands
         private Announcer $announcer,
         private Clock $clock,
         private DraftCards $drafts,
+        private TournamentListing $listing,
     ) {
     }
 
@@ -84,7 +86,7 @@ final class AdminCommands
             case 'info':
                 [$id] = self::splitId($args);
                 $t = $this->resolver->resolve($ctx->chatId(), $id, TournamentStatus::active());
-                return $this->announcer->text($t);
+                return $this->sendAllButLast($ctx, $this->announcer->infoMessages($t));
             case 'new':
                 return $this->create($ctx, $args);
             case 'edit':
@@ -98,6 +100,7 @@ final class AdminCommands
             case 'cancel':
                 $t = $this->tournaments->cancel($ctx->actor->id, $this->target($ctx, $args)->id);
                 $this->announcer->refresh($t->id);
+                $this->announcer->renumber($t->chatId, $t->id);
                 return sprintf('Турнир %s отменён. Жаль!', Html::b($t->title));
             case 'level':
                 return $this->setLevel($ctx, $args);
@@ -109,25 +112,31 @@ final class AdminCommands
 
     private function listTournaments(Context $ctx): string
     {
-        $active = $this->tournaments->listActive($ctx->chatId());
-        $lines = [];
-        foreach ($active as $t) {
-            $lines[] = '• ' . $this->line($t);
-        }
-        if ($ctx->isAdmin) {
-            foreach ($this->tournaments->listByStatus($ctx->chatId(), [TournamentStatus::DRAFT]) as $t) {
-                $lines[] = '• ' . $this->line($t) . ' — <i>черновик, открыть: /open ' . $t->id . '</i>';
-            }
-        }
-        if ($lines === []) {
+        $messages = $this->listing->messages($ctx->chatId(), $ctx->isAdmin);
+        if ($messages === []) {
             return 'Сейчас активных турниров нет.' . ($ctx->isAdmin ? ' Создать: /new 23.11 20:00 | Название | 3 | средний, средний, средний+ | 24' : '');
         }
-        return "<b>Турниры:</b>\n" . implode("\n", $lines);
+        return $this->sendAllButLast($ctx, $messages);
+    }
+
+    /**
+     * Sends all messages but the last one (as replies); the last one is returned for handle().
+     *
+     * @param list<string> $messages
+     */
+    private function sendAllButLast(Context $ctx, array $messages): string
+    {
+        $last = (string) array_pop($messages);
+        foreach ($messages as $message) {
+            $this->api->sendMessage($ctx->chatId(), $message, $ctx->message->messageId);
+        }
+        return $last;
     }
 
     private function line(Tournament $t): string
     {
-        return '№' . $t->id . ' ' . Html::e(Messages::tournamentLine($t, $this->tournaments->lineup($t->id)));
+        $this->resolver->number($t);
+        return '№' . $t->number . ' ' . Html::e(Messages::tournamentLine($t, $this->tournaments->lineup($t->id)));
     }
 
     /** /new 23.11 20:00 | Название | 3 | средний, средний, средний+ | 24 => draft card with confirmation */
@@ -158,6 +167,7 @@ final class AdminCommands
             $maxPlayers,
         ));
 
+        $this->announcer->renumber($t->chatId, $t->id);
         $this->drafts->show($t->id, $ctx->message->messageId, $ctx->actor->id, [
             ['role' => 'user', 'content' => '/new ' . $args],
         ]);
@@ -207,6 +217,7 @@ final class AdminCommands
         }
 
         $t = $this->tournaments->edit($ctx->actor->id, $t->id, $edit);
+        $this->announcer->renumber($t->chatId, $t->id); // a new start time may change the order
         if ($t->status === TournamentStatus::DRAFT) {
             $this->drafts->show($t->id, $ctx->message->messageId, $ctx->actor->id, [
                 ['role' => 'user', 'content' => '/edit ' . $args],
@@ -214,7 +225,7 @@ final class AdminCommands
             return '';
         }
         $this->announcer->refresh($t->id);
-        return "Обновил:\n" . Html::e(Messages::tournamentLine($t, $this->tournaments->lineup($t->id)));
+        return "Обновил:\n" . $this->line($t);
     }
 
     private function open(Context $ctx, string $args): string

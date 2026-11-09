@@ -125,7 +125,7 @@ final class Tools
     /** @return array<string, mixed> */
     private static function tournamentId(): array
     {
-        return ['type' => 'integer', 'description' => 'Номер турнира (№). Можно не указывать, если активный турнир один.'];
+        return ['type' => 'integer', 'description' => 'Номер турнира в чате (№ из списка и контекста: 1, 2, 3...). Можно не указывать, если подходящий турнир один.'];
     }
 
     /**

@@ -201,6 +201,54 @@ final class AssistantTest extends IntegrationTestCase
         self::assertSame('Опубликовал, анонс в чате!', $this->http->lastText());
     }
 
+    public function testListTournamentsSendsPrettyBlockAndShortText(): void
+    {
+        $t = $this->openTournament(2, '3,4');
+        $this->app->teams->createTeam($t->id, $this->player('cap')->id, 'Wolves', [$this->player('mate')->id]);
+        $vasya = $this->player('vasya');
+        $this->http->queueOpenAi($this->functionCall('r1', 'c1', 'list_tournaments', []));
+        $this->http->queueOpenAi($this->text('r2', 'Вот что есть 👇'));
+        $this->dispatch($this->groupMessage($vasya, '@' . self::BOT_USERNAME . ' какие турниры?'));
+
+        $sent = $this->http->sent('sendMessage');
+        self::assertCount(2, $sent);
+        self::assertStringStartsWith('📋 <b>Турниры</b>', $sent[0]['text']);
+        self::assertStringContainsString('1. <b>Wolves</b> — 👑 @cap (кэп), @mate', $sent[0]['text']);
+        self::assertSame('Вот что есть 👇', $sent[1]['text']);
+        $output = json_decode($this->lastOpenAiRequest()['input'][0]['output'], true);
+        self::assertTrue($output['show_list']);
+        self::assertStringContainsString('Не пересказывай', $output['note']);
+
+        // The model may add nothing: then only the list is sent.
+        $this->http->reset();
+        $this->http->queueOpenAi($this->functionCall('r3', 'c3', 'list_tournaments', []));
+        $this->http->queueOpenAi($this->text('r4', ''));
+        $this->dispatch($this->groupMessage($vasya, '@' . self::BOT_USERNAME . ' турниры'));
+        $sent = $this->http->sent('sendMessage');
+        self::assertCount(1, $sent);
+        self::assertStringStartsWith('📋 <b>Турниры</b>', $sent[0]['text']);
+    }
+
+    public function testToolsUseShortNumbers(): void
+    {
+        $later = $this->app->tournaments->create(new \P1Bot\Domain\CreateTournament(self::CHAT_ID, $this->owner->id, 'Поздний', '2026-11-25 19:00', 2, '3,3'));
+        $this->app->tournaments->openRegistration($this->owner->id, $later->id);
+        $earlier = $this->openTournament(2, '3,3'); // real id 2, starts 14.11 => №1
+        $vasya = $this->player('vasya');
+
+        $this->http->queueOpenAi($this->functionCall('r1', 'c1', 'join_solo', ['tournament_id' => 2]));
+        $this->http->queueOpenAi($this->text('r2', 'Записал!'));
+        $this->dispatch($this->groupMessage($vasya, '@' . self::BOT_USERNAME . ' запиши меня соло на №2'));
+
+        self::assertSame('main', $this->app->tournaments->lineup($later->id)->placementOf($vasya->id), '№2 = the later tournament (real id 1)');
+        self::assertNull($this->app->tournaments->lineup($earlier->id)->placementOf($vasya->id));
+        $output = json_decode($this->lastOpenAiRequest()['input'][0]['output'], true);
+        self::assertSame(2, $output['tournament_id']);
+        $context = $this->firstOpenAiRequest()['input'][0]['content'];
+        self::assertStringContainsString('№1 Субботний кубок', $context);
+        self::assertStringContainsString('№2 Поздний', $context);
+    }
+
     /** @return array<string, mixed> */
     private function replyTo(?int $messageId): array
     {

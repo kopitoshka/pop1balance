@@ -41,6 +41,16 @@ final class TournamentStatus
         return [self::REGISTRATION, self::CLOSED, self::RUNNING];
     }
 
+    /**
+     * Statuses that get a short per-chat number (№1, №2, ...): everything not finished or cancelled.
+     *
+     * @return list<string>
+     */
+    public static function numbered(): array
+    {
+        return [self::DRAFT, self::REGISTRATION, self::CLOSED, self::RUNNING];
+    }
+
     public static function assertValid(string $status): string
     {
         if (!isset(self::LABELS[$status])) {

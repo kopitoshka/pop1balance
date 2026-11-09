@@ -26,7 +26,31 @@ final class Announcer
         private PlayerRepository $players,
         private BotIdentity $bot,
         private Logger $logger,
+        private ?TournamentResolver $resolver = null,
     ) {
+    }
+
+    /** Sets the short per-chat number users see (№1, №2, ...). */
+    public function number(Tournament $t): Tournament
+    {
+        return $this->resolver !== null ? $this->resolver->number($t) : $t;
+    }
+
+    /**
+     * Numbers depend on the order of the chat's tournaments: after a tournament was created,
+     * published, moved, finished or cancelled, re-render the other announcements. Never throws.
+     */
+    public function renumber(int $chatId, ?int $exceptId = null): void
+    {
+        try {
+            foreach ($this->tournaments->listByStatus($chatId, TournamentStatus::active()) as $t) {
+                if ($t->id !== $exceptId && $t->announceMsgId !== null) {
+                    $this->refresh($t->id);
+                }
+            }
+        } catch (Throwable $e) {
+            $this->logger->exception($e, 'renumber ' . $chatId);
+        }
     }
 
     /** Sends a new announcement and remembers its message id. Returns the message id. */
@@ -62,11 +86,25 @@ final class Announcer
         return $this->view($t, $lineup)->render($t, $lineup);
     }
 
-    /** Lineup lists only (for /tournament info replies). */
+    /** Lineup lists only (for the AI tournament_info result). */
     public function lineupText(Tournament $t): string
     {
         $lineup = $this->tournaments->lineup($t->id);
-        return $this->view($t, $lineup)->lineupText($lineup);
+        return $this->view($t, $lineup)->lineupText($lineup, $t->teamSize);
+    }
+
+    /** Pretty block for /tournaments and the AI list, cut with a hint to /info N when too long. */
+    public function listBlock(Tournament $t, int $limit = AnnouncementView::MESSAGE_LIMIT, string $footer = ''): string
+    {
+        $lineup = $this->tournaments->lineup($t->id);
+        return $this->view($t, $lineup)->listBlock($t, $lineup, $limit, $footer);
+    }
+
+    /** @return list<string> full tournament info for /info, split into messages when needed */
+    public function infoMessages(Tournament $t): array
+    {
+        $lineup = $this->tournaments->lineup($t->id);
+        return $this->view($t, $lineup)->fullMessages($t, $lineup);
     }
 
     /** @return array<string, mixed> */
@@ -85,6 +123,7 @@ final class Announcer
 
     private function view(Tournament $t, Lineup $lineup): AnnouncementView
     {
+        $this->number($t);
         $ids = [$t->organizerId];
         foreach (array_merge($lineup->mainTeams, $lineup->reserveTeams, $lineup->formingTeams) as $entry) {
             foreach ($entry->members as $member) {

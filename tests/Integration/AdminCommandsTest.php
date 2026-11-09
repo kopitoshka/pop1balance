@@ -158,9 +158,9 @@ final class AdminCommandsTest extends IntegrationTestCase
         $announcement = $sent[0];
         self::assertArrayNotHasKey('reply_parameters', $announcement);
         self::assertStringContainsString('<b>Кубок</b>', $announcement['text']);
-        self::assertStringContainsString('23.11.2026 20:00 МСК', $announcement['text']);
+        self::assertStringContainsString('🗓 23.11.2026 ⏰ 20:00 МСК', $announcement['text']);
         self::assertStringContainsString('средний (10 баллов на троих)', $announcement['text']);
-        self::assertStringContainsString('Занято 0/24, резерв 0', $announcement['text']);
+        self::assertStringContainsString('Занято 0/24 · резерв 0', $announcement['text']);
         self::assertSame('solo:1', $announcement['reply_markup']['inline_keyboard'][0][0]['callback_data']);
 
         $t = $this->app->tournamentRepo->find(1);
@@ -313,7 +313,9 @@ final class AdminCommandsTest extends IntegrationTestCase
         $this->dispatch($this->groupMessage($this->owner, '/new 23.11 20:00 | Кубок | 3 | 3,3,4'));
         $this->confirmCard($this->owner);
         $this->dispatch($this->groupMessage($vasya, '/tournaments'));
-        self::assertStringContainsString('№1 Кубок — 23.11.2026 20:00 МСК, команды по 3', $this->http->lastText());
+        $list = $this->http->lastText();
+        self::assertStringStartsWith("📋 <b>Турниры</b>\n\n🏆 <b>Кубок</b> · №1\n🗓 23.11.2026 ⏰ 20:00 МСК", $list);
+        self::assertStringContainsString('<i>Пока никто не записался.</i>', $list);
 
         $this->dispatch($this->groupMessage($vasya, '/help'));
         self::assertStringNotContainsString('Для админов', $this->http->lastText());
@@ -331,5 +333,101 @@ final class AdminCommandsTest extends IntegrationTestCase
         foreach ($this->http->sent('sendMessage') as $message) {
             self::assertDoesNotMatchRegularExpression('~https?://~', $message['text']);
         }
+    }
+
+    public function testTournamentsListShowsLineupsAndDraftsForAdmins(): void
+    {
+        $this->dispatch($this->groupMessage($this->owner, '/new 23.11 20:00 | Кубок <1> | 2 | 3,4'));
+        $this->confirmCard($this->owner);
+        $cap = $this->player('cap');
+        $this->app->teams->createTeam(1, $cap->id, 'Wolves & Co', [$this->player('mate')->id]);
+        $this->app->teams->joinSolo(1, $this->player('solo')->id);
+        $this->dispatch($this->groupMessage($this->owner, '/new 24.11 21:00 | Черновой | 2 | 3,3'));
+
+        $vasya = $this->player('vasya');
+        $this->http->reset();
+        $this->dispatch($this->groupMessage($vasya, '/tournaments'));
+        $text = $this->http->lastText();
+        self::assertCount(1, $this->http->sent('sendMessage'));
+        self::assertStringContainsString('🏆 <b>Кубок &lt;1&gt;</b> · №1', $text);
+        self::assertStringContainsString('👤 Организатор: @andrey', $text);
+        self::assertStringContainsString('🟢 Идёт регистрация', $text);
+        self::assertStringContainsString('🎟 Занято 3/24 · резерв 0', $text);
+        self::assertStringContainsString("🛡 <b>Команды:</b>\n1. <b>Wolves &amp; Co</b> — 👑 @cap (кэп), @mate", $text);
+        self::assertStringContainsString("🙋 <b>Ищут команду:</b>\n@solo", $text);
+        self::assertStringNotContainsString('Черновой', $text, 'players do not see drafts');
+
+        $this->dispatch($this->groupMessage($this->owner, '/tournaments'));
+        $text = $this->http->lastText();
+        self::assertStringContainsString("➖➖➖➖➖\n\n🏆 <b>Черновой</b> · №2", $text);
+        self::assertStringContainsString('Черновик. Опубликовать: /open 2', $text);
+    }
+
+    public function testLongTournamentListIsSplitIntoMessages(): void
+    {
+        for ($i = 1; $i <= 3; $i++) {
+            $this->dispatch($this->groupMessage($this->owner, sprintf('/new 2%d.11 20:00 | Кубок %d | 4 | 3,3,3,3 | 200', $i, $i)));
+            $this->confirmCardOf($i);
+            for ($k = 0; $k < 25; $k++) {
+                $ids = [];
+                for ($m = 0; $m < 3; $m++) {
+                    $ids[] = $this->player(sprintf('p%d_%d_%d_long_username', $i, $k, $m))->id;
+                }
+                $this->app->teams->createTeam($i, $this->player(sprintf('cap%d_%d_long_username', $i, $k))->id, 'Team ' . $i . '-' . $k, $ids);
+            }
+        }
+        $this->http->reset();
+        $this->dispatch($this->groupMessage($this->player('vasya'), '/tournaments'));
+        $sent = $this->http->sent('sendMessage');
+        self::assertGreaterThan(1, count($sent));
+        foreach ($sent as $message) {
+            self::assertLessThanOrEqual(4096, mb_strlen($message['text']));
+        }
+        $all = implode("\n", array_column($sent, 'text'));
+        foreach ([1, 2, 3] as $i) {
+            self::assertStringContainsString('🏆 <b>Кубок ' . $i . '</b>', $all);
+        }
+    }
+
+    private function confirmCardOf(int $id): void
+    {
+        $this->dispatch($this->groupMessage($this->owner, 'да', ['reply_to_message' => [
+            'message_id' => $this->app->tournamentRepo->find($id)->cardMsgId,
+            'from' => ['id' => self::BOT_ID, 'is_bot' => true, 'first_name' => 'Bot'],
+        ]]));
+    }
+
+    public function testShortNumbersFollowStartOrderAndShift(): void
+    {
+        // Real ids: 1 = later tournament, 2 = earlier one. Users see №1 = earlier, №2 = later.
+        $this->dispatch($this->groupMessage($this->owner, '/new 25.11 20:00 | Поздний | 2 | 3,3'));
+        $this->confirmCardOf(1);
+        $this->dispatch($this->groupMessage($this->owner, '/new 23.11 20:00 | Ранний | 2 | 3,3'));
+        self::assertStringContainsString('Турнир №1 (черновик)', $this->http->lastText());
+        $this->confirmCardOf(2);
+
+        $later = $this->app->tournamentRepo->find(1);
+        $edits = array_values(array_filter($this->http->sent('editMessageText'), static fn (array $e): bool => $e['message_id'] === $later->announceMsgId));
+        self::assertStringContainsString('🏆 <b>Поздний</b> · №2', end($edits)['text'], 'the older announcement was renumbered');
+
+        $this->http->reset();
+        $this->dispatch($this->groupMessage($this->owner, '/info 1'));
+        self::assertStringContainsString('🏆 <b>Ранний</b> · №1', $this->http->lastText());
+        $this->dispatch($this->groupMessage($this->owner, '/edit 2 лимит 30'));
+        self::assertSame(30, $this->app->tournamentRepo->find(1)->maxPlayers, '№2 is real id 1');
+        self::assertStringContainsString('№2 Поздний', $this->http->lastText());
+
+        $this->dispatch($this->groupMessage($this->owner, '/tournaments'));
+        $list = $this->http->lastText();
+        self::assertLessThan(strpos($list, 'Поздний'), strpos($list, 'Ранний'));
+
+        // Cancelling №1 shifts the later one to №1 and refreshes its announcement.
+        $this->http->reset();
+        $this->dispatch($this->groupMessage($this->owner, '/cancel 1'));
+        self::assertSame(TournamentStatus::CANCELLED, $this->app->tournamentRepo->find(2)->status);
+        $edits = array_values(array_filter($this->http->sent('editMessageText'), static fn (array $e): bool => $e['message_id'] === $later->announceMsgId));
+        self::assertStringContainsString('🏆 <b>Поздний</b> · №1', end($edits)['text']);
+        $this->dispatch($this->groupMessage($this->owner, '/info 2'));
+        self::assertStringContainsString('Турнира №2 сейчас нет', $this->http->lastText());
     }
 }

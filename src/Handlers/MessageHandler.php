@@ -7,6 +7,7 @@ namespace P1Bot\Handlers;
 use P1Bot\Ai\Assistant;
 use P1Bot\App\Confirmation;
 use P1Bot\App\DraftCards;
+use P1Bot\App\TournamentListing;
 use P1Bot\Domain\Exception\DomainError;
 use P1Bot\Domain\TournamentService;
 use P1Bot\Domain\TournamentStatus;
@@ -27,6 +28,7 @@ final class MessageHandler
         private Logger $logger,
         private ?TournamentService $tournaments = null,
         private ?DraftCards $drafts = null,
+        private ?TournamentListing $listing = null,
     ) {
     }
 
@@ -61,7 +63,16 @@ final class MessageHandler
                 // The draft was published or cancelled meanwhile: fall back to the model's text.
             }
         }
-        $messageId = $this->api->sendMessage($chatId, Html::e($reply['text']), $replyTo);
+        $messageId = null;
+        if (!empty($reply['list']) && $this->listing !== null) {
+            // The pretty list goes as is; the model only adds a short phrase.
+            foreach ($this->listing->messages($chatId, $ctx->isAdmin) as $list) {
+                $messageId = $this->api->sendMessage($chatId, $list, $replyTo);
+            }
+        }
+        if ($reply['text'] !== '' || $messageId === null) {
+            $messageId = $this->api->sendMessage($chatId, Html::e($reply['text'] !== '' ? $reply['text'] : 'Готово!'), $replyTo);
+        }
         ($reply['remember'])($messageId);
     }
 
@@ -91,7 +102,7 @@ final class MessageHandler
         if ($this->assistant === null) {
             $this->api->sendMessage(
                 $ctx->chatId(),
-                'Не публикую, пока ты явно не подтвердишь. Поправить можно командой, например: /edit ' . $t->id . ' время 23.11 21:00. Если всё верно — ответь «да» или нажми «Публикуем».',
+                'Не публикую, пока ты явно не подтвердишь. Поправить можно командой, например: /edit ' . (int) $this->drafts->numberOf($t) . ' время 23.11 21:00. Если всё верно — ответь «да» или нажми «Публикуем».',
                 $ctx->message->messageId,
             );
             return true;

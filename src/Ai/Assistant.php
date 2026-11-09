@@ -38,7 +38,9 @@ final class Assistant
      * 'card' is a draft id when the turn ended with a created/edited draft: the caller shows
      * the card «Публикуем или что-то поправить?» instead of the model's text.
      *
-     * @return array{text: string, remember: callable(int): void, card: ?int, history: list<array<string, mixed>>}
+     * 'list' = the model asked for the tournament list: the caller sends the pretty list before the text.
+     *
+     * @return array{text: string, remember: callable(int): void, card: ?int, history: list<array<string, mixed>>, list: bool}
      */
     public function reply(Context $ctx): array
     {
@@ -65,6 +67,7 @@ final class Assistant
         $allowed = Tools::names($ctx->isAdmin);
 
         $card = null;
+        $list = false;
         $response = $this->ai->createResponse($this->systemPrompt, $input, $tools);
         for ($round = 0; $response->toolCalls !== [] && $round < self::MAX_ROUNDS; $round++) {
             $outputs = [];
@@ -74,6 +77,9 @@ final class Assistant
                     ? $this->dispatcher->dispatch($call['name'], $call['arguments'], $ctx)
                     : ['ok' => false, 'error' => 'Это действие недоступно.'];
                 $this->logger->info('tool ' . $call['name'], ['args' => $call['arguments'], 'ok' => $result['ok'] ?? false]);
+                if (!empty($result['show_list'])) {
+                    $list = true;
+                }
                 if (isset($result['show_card'])) {
                     $card = (int) $result['show_card'];
                 } elseif (!empty($result['published'])) {
@@ -91,7 +97,11 @@ final class Assistant
             $response = $this->ai->createResponse($this->systemPrompt, $outputs, $tools, $response->id);
         }
 
-        $text = $card === null && $response->text !== '' ? $response->text : 'Готово!';
+        if ($card === null && $response->text !== '') {
+            $text = $response->text;
+        } else {
+            $text = $list && $card === null ? '' : 'Готово!'; // the list speaks for itself
+        }
         $newHistory = array_slice(array_merge($history, [
             ['role' => 'user', 'content' => $userText],
             ['role' => 'assistant', 'content' => $text],
@@ -113,6 +123,7 @@ final class Assistant
             'text' => $text,
             'remember' => $remember,
             'card' => $card,
+            'list' => $list,
             'history' => array_slice(array_merge($history, [['role' => 'user', 'content' => $userText]]), -self::MAX_HISTORY),
         ];
     }

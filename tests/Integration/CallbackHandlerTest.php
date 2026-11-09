@@ -22,7 +22,7 @@ final class CallbackHandlerTest extends IntegrationTestCase
         self::assertStringContainsString('Записал тебя соло', $answer['text']);
         self::assertTrue($answer['show_alert']);
         $edit = $this->http->sent('editMessageText')[0];
-        self::assertStringContainsString("<b>Соло, ищут команду:</b>\n@vasya", $edit['text']);
+        self::assertStringContainsString("🙋 <b>Ищут команду:</b>\n@vasya", $edit['text']);
 
         $this->dispatch($this->press($vasya, 'solo:' . $t->id));
         self::assertStringContainsString('уже записан', $this->lastAnswer());
@@ -54,7 +54,7 @@ final class CallbackHandlerTest extends IntegrationTestCase
         $t = $this->openTournament(2, null);
         $this->app->teams->createTeam($t->id, $this->player('cap')->id, 'Wolves', [$this->player('mate')->id]);
         $this->dispatch($this->groupMessage($this->player('vasya'), '/info'));
-        self::assertStringContainsString('1. <b>Wolves</b> — @cap (кэп), @mate', $this->http->lastText());
+        self::assertStringContainsString('1. <b>Wolves</b> — 👑 @cap (кэп), @mate', $this->http->lastText());
     }
 
     public function testPublishAndFixButtonsOnDraftCard(): void

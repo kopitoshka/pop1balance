@@ -31,6 +31,12 @@ final class Tournament
     ) {
     }
 
+    /**
+     * Short per-chat number users see and type (№1, №2, ...), set by TournamentResolver::number().
+     * Not stored: it is the position among the chat's not finished/cancelled tournaments.
+     */
+    public ?int $number = null;
+
     /** @param array<string, mixed> $row */
     public static function fromRow(array $row): self
     {

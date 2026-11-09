@@ -53,8 +53,14 @@ final class CronRunner
         }
 
         $changed = $this->tournaments->autoAdvance($this->finishAfterHours);
+        $chats = [];
         foreach ($changed as $t) {
             $this->announcer->refresh($t->id);
+            $chats[$t->chatId] = true;
+        }
+        foreach (array_keys($chats) as $chatId) {
+            // Finished tournaments drop out of the numbering: others may get new numbers.
+            $this->announcer->renumber((int) $chatId);
         }
 
         return [

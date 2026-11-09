@@ -66,7 +66,11 @@ final class Dispatcher
             }
             $result = $this->run($tool, $args, $ctx);
             if (in_array($tool, Tools::MUTATING, true) && isset($result['tournament_id'])) {
-                $this->announcer->refresh((int) $result['tournament_id']);
+                // tournament_id in results is the short number the user sees; map it back.
+                $realId = array_search((int) $result['tournament_id'], $this->resolver->numbers($ctx->chatId()), true);
+                if ($realId !== false) {
+                    $this->announcer->refresh((int) $realId);
+                }
             }
             return ['ok' => true] + $result;
         } catch (DomainError $e) {
@@ -86,13 +90,22 @@ final class Dispatcher
         $actor = $ctx->actor;
         switch ($tool) {
             case 'list_tournaments':
-                return ['tournaments' => array_map(function (Tournament $t): string {
-                    return $this->line($t);
-                }, $this->tournaments->listActive($ctx->chatId()))];
+                $active = $this->tournaments->listActive($ctx->chatId());
+                if ($active === []) {
+                    return ['tournaments' => []];
+                }
+                return [
+                    'tournaments' => array_map(function (Tournament $t): string {
+                        return $this->line($t);
+                    }, $active),
+                    // The pretty list with lineups is sent to the chat by the bot itself.
+                    'show_list' => true,
+                    'note' => 'Красивый список турниров с составами бот отправит в чат сам. Не пересказывай его: ответь одной короткой фразой (или ничего не добавляй, если нечего).',
+                ];
 
             case 'tournament_info':
                 $t = $this->tournament($ctx, $a, TournamentStatus::active());
-                return ['tournament_id' => $t->id, 'info' => $this->line($t), 'lineup' => self::plain($this->announcer->lineupText($t))];
+                return ['tournament_id' => $this->no($t), 'info' => $this->line($t), 'lineup' => self::plain($this->announcer->lineupText($t))];
 
             case 'register_team':
                 $t = $this->tournament($ctx, $a);
@@ -131,7 +144,7 @@ final class Dispatcher
             case 'withdraw_team':
                 [$t, $entry] = $this->team($ctx, $a);
                 $this->teams->withdrawTeam($actor->id, $entry->team->id);
-                return ['tournament_id' => $t->id, 'message' => sprintf('Команда «%s» снята с турнира.', $entry->team->name), 'summary' => $this->tournaments->lineup($t->id)->summary()];
+                return ['tournament_id' => $this->no($t), 'message' => sprintf('Команда «%s» снята с турнира.', $entry->team->name), 'summary' => $this->tournaments->lineup($t->id)->summary()];
 
             case 'leave_team':
                 $t = $this->tournament($ctx, $a);
@@ -141,12 +154,12 @@ final class Dispatcher
             case 'join_solo':
                 $t = $this->tournament($ctx, $a);
                 $this->teams->joinSolo($t->id, $actor->id);
-                return ['tournament_id' => $t->id, 'placement' => $this->placementLabel($t, $actor->id), 'summary' => $this->tournaments->lineup($t->id)->summary()];
+                return ['tournament_id' => $this->no($t), 'placement' => $this->placementLabel($t, $actor->id), 'summary' => $this->tournaments->lineup($t->id)->summary()];
 
             case 'leave_solo':
                 $t = $this->tournament($ctx, $a);
                 $this->teams->leaveSolo($t->id, $actor->id);
-                return ['tournament_id' => $t->id, 'message' => 'Соло-заявка снята.'];
+                return ['tournament_id' => $this->no($t), 'message' => 'Соло-заявка снята.'];
 
             case 'my_status':
                 return ['status' => $this->statusLines($ctx)];
@@ -168,6 +181,7 @@ final class Dispatcher
                     isset($a['balance_id']) ? (int) $a['balance_id'] : null,
                     isset($a['max_players']) ? (int) $a['max_players'] : null,
                 ));
+                $this->announcer->renumber($t->chatId, $t->id);
                 return $this->cardResult($t, 'Черновик создан.');
 
             case 'edit_tournament':
@@ -182,10 +196,11 @@ final class Dispatcher
                     isset($a['max_players']) ? (int) $a['max_players'] : null,
                     false,
                 ));
+                $this->announcer->renumber($t->chatId, $t->id); // a new start time may change the order
                 if ($t->status === TournamentStatus::DRAFT) {
                     return $this->cardResult($t, 'Черновик обновлён.');
                 }
-                return ['tournament_id' => $t->id, 'info' => $this->line($t)];
+                return ['tournament_id' => $this->no($t), 'info' => $this->line($t)];
 
             case 'publish_tournament':
                 if ($this->drafts === null) {
@@ -202,11 +217,15 @@ final class Dispatcher
                     return $this->cardResult($t, 'Пользователь не подтвердил публикацию однозначно, турнир НЕ опубликован.') + ['published' => false];
                 }
                 $t = $this->drafts->publish($actor->id, $t->id);
-                return ['tournament_id' => $t->id, 'published' => true, 'message' => 'Опубликовано: регистрация открыта, анонс в чате.'];
+                return ['tournament_id' => $this->no($t), 'published' => true, 'message' => 'Опубликовано: регистрация открыта, анонс в чате.'];
 
             case 'cancel_tournament':
-                $t = $this->tournaments->cancel($actor->id, $this->tournament($ctx, $a, [TournamentStatus::DRAFT, TournamentStatus::REGISTRATION, TournamentStatus::CLOSED])->id);
-                return ['tournament_id' => $t->id, 'message' => 'Турнир отменён.'];
+                $target = $this->tournament($ctx, $a, [TournamentStatus::DRAFT, TournamentStatus::REGISTRATION, TournamentStatus::CLOSED]);
+                $number = $this->no($target);
+                $t = $this->tournaments->cancel($actor->id, $target->id);
+                $this->announcer->refresh($t->id);
+                $this->announcer->renumber($t->chatId, $t->id);
+                return ['tournament_id' => $number, 'message' => sprintf('Турнир «%s» отменён. Номера остальных турниров могли сдвинуться.', $t->title)];
 
             case 'open_registration':
                 // Drafts are published only through publish_tournament after confirmation.
@@ -218,15 +237,15 @@ final class Dispatcher
                 }
                 $t = $this->tournaments->openRegistration($actor->id, $t->id);
                 $this->announcer->publish($t->id);
-                return ['tournament_id' => $t->id, 'message' => 'Регистрация снова открыта, анонс опубликован в чате.'];
+                return ['tournament_id' => $this->no($t), 'message' => 'Регистрация снова открыта, анонс опубликован в чате.'];
 
             case 'close_registration':
                 $t = $this->tournaments->closeRegistration($actor->id, $this->tournament($ctx, $a, [TournamentStatus::REGISTRATION])->id);
-                return ['tournament_id' => $t->id, 'message' => 'Регистрация закрыта.'];
+                return ['tournament_id' => $this->no($t), 'message' => 'Регистрация закрыта.'];
 
             case 'set_max_players':
                 $t = $this->tournaments->setMaxPlayers($actor->id, $this->tournament($ctx, $a)->id, (int) ($a['max_players'] ?? 0));
-                return ['tournament_id' => $t->id, 'summary' => $this->tournaments->lineup($t->id)->summary()];
+                return ['tournament_id' => $this->no($t), 'summary' => $this->tournaments->lineup($t->id)->summary()];
 
             case 'set_level':
                 $player = $this->playerResolver->fromReference((string) ($a['player'] ?? ''), $actor);
@@ -305,7 +324,7 @@ final class Dispatcher
             $placement = $this->tournaments->lineup($t->id)->placementOf($entry->team->captainId) === 'reserve' ? 'резерв' : 'основной состав';
         }
         return [
-            'tournament_id' => $t->id,
+            'tournament_id' => $this->no($t),
             'message' => $message,
             'team' => $entry->team->name,
             'members' => $members,
@@ -325,12 +344,18 @@ final class Dispatcher
     private function cardResult(Tournament $t, string $message): array
     {
         return [
-            'tournament_id' => $t->id,
+            'tournament_id' => $this->no($t),
             'show_card' => $t->id,
             'message' => $message,
             'card' => $this->drafts !== null ? self::plain($this->drafts->cardText($t)) : $this->line($t),
             'note' => 'Карточка с вопросом «Публикуем или что-то поправить?» и кнопками будет показана автоматически. Публикуй только после явного «да».',
         ];
+    }
+
+    /** Short per-chat number the user sees (null once finished/cancelled). */
+    private function no(Tournament $t): ?int
+    {
+        return $this->resolver->number($t)->number;
     }
 
     private function botUsername(): string
@@ -356,7 +381,7 @@ final class Dispatcher
             if ($t->organizerId !== $ctx->actor->id && $t->cardShownTo !== $ctx->actor->id) {
                 continue;
             }
-            $lines[] = '№' . $t->id . ' ' . Messages::tournamentLine($t, $this->tournaments->lineup($t->id))
+            $lines[] = '№' . $this->no($t) . ' ' . Messages::tournamentLine($t, $this->tournaments->lineup($t->id))
                 . ($t->cardMsgId !== null ? ' — карточка показана, ждём ответа «Публикуем или что-то поправить?»' : ' — карточка ещё не показана');
         }
         return $lines;
@@ -375,14 +400,14 @@ final class Dispatcher
             $where = $entry !== null
                 ? sprintf('в команде «%s»%s', $entry->team->name, $entry->team->captainId === $ctx->actor->id ? ' (капитан)' : '')
                 : 'соло';
-            $lines[] = sprintf('№%d «%s»: %s, %s', $t->id, $t->title, $where, $this->placementLabel($t, $ctx->actor->id));
+            $lines[] = sprintf('№%d «%s»: %s, %s', (int) $this->no($t), $t->title, $where, $this->placementLabel($t, $ctx->actor->id));
         }
         return $lines === [] ? ['Нигде не заявлен.'] : $lines;
     }
 
     private function line(Tournament $t): string
     {
-        return '№' . $t->id . ' ' . Messages::tournamentLine($t, $this->tournaments->lineup($t->id)) . ', ' . TournamentStatus::label($t->status);
+        return '№' . $this->no($t) . ' ' . Messages::tournamentLine($t, $this->tournaments->lineup($t->id)) . ', ' . TournamentStatus::label($t->status);
     }
 
     private static function plain(string $html): string

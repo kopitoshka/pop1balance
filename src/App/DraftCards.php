@@ -39,8 +39,15 @@ final class DraftCards
     ) {
     }
 
+    /** Short per-chat number users type (/edit N). */
+    public function numberOf(Tournament $t): ?int
+    {
+        return $this->announcer->number($t)->number;
+    }
+
     public function cardText(Tournament $t): string
     {
+        $this->announcer->number($t);
         return TournamentCard::render(
             $t,
             $this->players->find($t->organizerId),
@@ -100,6 +107,7 @@ final class DraftCards
         $card = $this->cardText($t);
         $published = $this->tournaments->openRegistration($actorId, $t->id);
         $this->announcer->publish($published->id);
+        $this->announcer->renumber($t->chatId, $t->id);
         try {
             $this->api->editMessageText($t->chatId, (int) $t->cardMsgId, TournamentCard::published($card), ['reply_markup' => ['inline_keyboard' => []]]);
         } catch (Throwable $e) {

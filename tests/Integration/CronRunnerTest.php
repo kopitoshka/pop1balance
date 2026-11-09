@@ -60,7 +60,7 @@ final class CronRunnerTest extends IntegrationTestCase
         self::assertSame(TournamentStatus::RUNNING, $this->app->tournamentRepo->find($t->id)->status);
         self::assertSame(TournamentStatus::DRAFT, $this->app->tournamentRepo->find($draft->id)->status, 'drafts untouched');
         $edits = $this->http->sent('editMessageText');
-        self::assertStringContainsString('📌 Идёт', end($edits)['text']);
+        self::assertStringContainsString('🎮 Идёт', end($edits)['text']);
 
         $this->clock->advance('+3 hours');
         self::assertSame(0, $cron->run()['status_changes']);
