@@ -105,6 +105,7 @@ class RegistrationCloseTest extends IntegrationTestCase {
 		}
 		self::assertContains('tcard:' . $entry->team->id, $callbacks, 'organizer still reaches own team');
 		self::assertContains('oteams:' . $t->id, $callbacks, 'organizer keeps team list');
+		self::assertContains('tcancel:' . $t->id, $callbacks, 'organizer can cancel from card');
 		self::assertNotContains('pdissolve:' . $entry->team->id, $callbacks, 'dissolve not on tournament card');
 	}
 

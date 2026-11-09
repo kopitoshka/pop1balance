@@ -16,7 +16,7 @@ use P1Bot\View\Html;
 /**
 	What the private chat shows: a tournament with buttons for the player's state and the list of
 	tournaments with «open» buttons. Tournament card: psolo/punsolo/pteam, «🛡 Моя команда» (tcard),
-	«👥 Команды» (oteams). Team manage buttons only on the team card (TeamCards).
+	«👥 Команды» (oteams), «❌ Отменить турнир» (tcancel) for author/owner. Team manage on TeamCards.
 */
 class PrivateViews {
 
@@ -64,39 +64,38 @@ class PrivateViews {
 		@return list<list<array<string, string>>>
 	*/
 	public function rows(Tournament $t, Player $player): array {
-		if (!in_array($t->status, TournamentStatus::active(), true)) {
+		if (in_array($t->status, TournamentStatus::past(), true)) {
 			return [];
 		}
-		$time_locked = $this->tournaments->isRegistrationTimeLocked($t);
 		$can_manage = $this->access->canManageTournament($t, $player->id);
-		// Time lock: regular players cannot change lineups; organizer/admins still can.
-		if ($time_locked && !$can_manage) {
-			return [];
+		$rows = [];
+		if (in_array($t->status, TournamentStatus::active(), true)) {
+			$time_locked = $this->tournaments->isRegistrationTimeLocked($t);
+			// Time lock: regular players cannot change lineups; organizer/owner still can.
+			if (!($time_locked && !$can_manage)) {
+				// Tournament info card: only tournament-level actions. Team manage lives on team cards.
+				$team = $this->teams->teamOf($t->id, $player->id);
+				if ($team !== null) {
+					$rows[] = [[
+						'text' => '🛡 Моя команда «' . mb_substr($team->team->name, 0, 40) . '»',
+						'callback_data' => 'tcard:' . $team->team->id,
+					]];
+				} elseif (($placement = $this->tournaments->lineup($t->id)->placementOf($player->id)) !== null) {
+					$rows[] = [['text' => '❌ Отписаться', 'callback_data' => 'punsolo:' . $t->id]];
+				} elseif ($this->tournaments->isUserRegistrationOpen($t)) {
+					$rows[] = [['text' => '🙋 Записаться соло', 'callback_data' => 'psolo:' . $t->id]];
+					$rows[] = [['text' => '👥 Собрать команду', 'callback_data' => 'pteam:' . $t->id]];
+				}
+			}
+			if (
+				$can_manage
+				&& in_array($t->status, [TournamentStatus::REGISTRATION, TournamentStatus::CLOSED], true)
+			) {
+				$rows[] = [['text' => '👥 Команды', 'callback_data' => 'oteams:' . $t->id]];
+			}
 		}
-		// Tournament info card: only tournament-level actions. Team manage buttons live on team cards.
-		$team = $this->teams->teamOf($t->id, $player->id);
-		if ($team !== null) {
-			$rows = [[
-				[
-					'text' => '🛡 Моя команда «' . mb_substr($team->team->name, 0, 40) . '»',
-					'callback_data' => 'tcard:' . $team->team->id,
-				],
-			]];
-		} elseif (($placement = $this->tournaments->lineup($t->id)->placementOf($player->id)) !== null) {
-			$rows = [[['text' => '❌ Отписаться', 'callback_data' => 'punsolo:' . $t->id]]];
-		} elseif (!$this->tournaments->isUserRegistrationOpen($t)) {
-			$rows = [];
-		} else {
-			$rows = [
-				[['text' => '🙋 Записаться соло', 'callback_data' => 'psolo:' . $t->id]],
-				[['text' => '👥 Собрать команду', 'callback_data' => 'pteam:' . $t->id]],
-			];
-		}
-		if (
-			$can_manage
-			&& in_array($t->status, [TournamentStatus::REGISTRATION, TournamentStatus::CLOSED], true)
-		) {
-			$rows[] = [['text' => '👥 Команды', 'callback_data' => 'oteams:' . $t->id]];
+		if ($can_manage) {
+			$rows[] = [['text' => '❌ Отменить турнир', 'callback_data' => 'tcancel:' . $t->id]];
 		}
 		return $rows;
 	}

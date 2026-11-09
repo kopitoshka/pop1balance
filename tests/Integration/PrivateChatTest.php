@@ -96,7 +96,7 @@ class PrivateChatTest extends IntegrationTestCase {
 		$this->say($this->owner, '/start t_' . $t->id);
 		$buttons = $this->lastButtons();
 		self::assertSame(
-			['tcard:' . $entry->team->id, 'oteams:' . $t->id],
+			['tcard:' . $entry->team->id, 'oteams:' . $t->id, 'tcancel:' . $t->id],
 			$buttons,
 		);
 		foreach (['padd:', 'prem:', 'pdissolve:', 'otren:', 'otcap:', 'otdel:'] as $prefix) {

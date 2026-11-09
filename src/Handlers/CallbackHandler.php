@@ -33,7 +33,7 @@ use P1Bot\View\Messages;
 
 /**
 	Inline buttons. In private: psolo:<t>, punsolo:<t>, pteam:<t>, pleave:<team>, pdissolve:<team>,
-	popen:<t>, grp:<chat id>, pub:<t> / fix:<t>, oteams/otnew/otren/otcap/otsetc/otdel/otdelo/otcc
+	popen:<t>, grp:<chat id>, pub:<t> / fix:<t>, tcancel/tcancely/tcanceln,<t>, oteams/otnew/otren/otcap/otsetc/otdel/otdelo/otcc
 	(organizer team manage), padd/prem/tadd/trem/tcard. Old group buttons only point to private.
 */
 class CallbackHandler {
@@ -209,6 +209,52 @@ class CallbackHandler {
 				$this->api->sendMessage($chat_id, sprintf('Черновик #%d удалён', $snap['id']), $query->message_id);
 				return;
 			case 'ddeln':
+				$this->api->answerCallbackQuery($query->id, 'Оставила');
+				return;
+			case 'tcancel':
+				$t = $this->tournaments->get($id);
+				$this->tournaments->assertCanManage($player->id, $t->id);
+				if (in_array($t->status, TournamentStatus::past(), true)) {
+					$this->api->answerCallbackQuery($query->id, 'Этот турнир уже завершён или отменён.', true);
+					return;
+				}
+				$this->api->answerCallbackQuery($query->id);
+				$hint = $t->status === TournamentStatus::DRAFT
+					? 'Точно удалить черновик #' . $t->id . '?'
+					: 'Точно отменить турнир «' . Html::e($t->title) . '» (№' . $t->id . ')?';
+				$this->api->sendMessage(
+					$chat_id,
+					$hint,
+					$query->message_id,
+					['reply_markup' => ['inline_keyboard' => [[
+						['text' => 'Да, отменить', 'callback_data' => 'tcancely:' . $t->id],
+						['text' => 'Нет', 'callback_data' => 'tcanceln:' . $t->id],
+					]]]],
+				);
+				return;
+			case 'tcancely':
+				$t = $this->tournaments->get($id);
+				if ($t->status === TournamentStatus::DRAFT) {
+					$snap = $this->tournaments->deleteDraft($player->id, $id);
+					$this->api->answerCallbackQuery($query->id, 'Удалила');
+					$this->api->sendMessage(
+						$chat_id,
+						sprintf('Черновик #%d удалён', $snap['id']),
+						$query->message_id,
+					);
+					return;
+				}
+				$t = $this->tournaments->cancel($player->id, $id);
+				$this->announcer->refresh($t->id);
+				$this->announcer->renumber($t->id);
+				$this->api->answerCallbackQuery($query->id, 'Отменила');
+				$this->api->sendMessage(
+					$chat_id,
+					sprintf('Турнир %s отменён. Жаль!', Html::b($t->title)),
+					$query->message_id,
+				);
+				return;
+			case 'tcanceln':
 				$this->api->answerCallbackQuery($query->id, 'Оставила');
 				return;
 			case 'popen':
