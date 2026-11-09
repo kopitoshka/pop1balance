@@ -178,13 +178,46 @@ class TournamentService {
 			$actor_id,
 			$tournament_id,
 			[
-				TournamentStatus::DRAFT,
 				TournamentStatus::REGISTRATION,
 				TournamentStatus::CLOSED,
 				TournamentStatus::RUNNING,
 			],
 			TournamentStatus::CANCELLED,
 		);
+	}
+
+	/**
+		Hard-delete an unpublished draft (author or owner). Cascades teams/solos/announcements/notices.
+		@return array{id: int, title: string} snapshot before delete
+	*/
+	public function deleteDraft(int $actor_id, int $tournament_id): array {
+		$t = $this->get($tournament_id);
+		$this->access->assertCanManageTournament($t, $actor_id);
+		if ($t->status !== TournamentStatus::DRAFT) {
+			throw new ValidationError(sprintf(
+				'Турнир «%s» уже не черновик (%s) — удалить можно только черновик.',
+				$t->title,
+				TournamentStatus::label($t->status),
+			));
+		}
+		$snap = ['id' => $t->id, 'title' => $t->title];
+		$this->tournaments->delete($t->id);
+		return $snap;
+	}
+
+	/**
+		Cron: drop unpublished drafts whose starts_at has already passed.
+		@return list<array{id: int, title: string}>
+	*/
+	public function purgeExpiredDrafts(): array {
+		$now = $this->clock->now();
+		$past = new DateTimeImmutable('2000-01-01 00:00:00', new \DateTimeZone('UTC'));
+		$deleted = [];
+		foreach ($this->tournaments->listStartingBetween([TournamentStatus::DRAFT], $past, $now) as $t) {
+			$deleted[] = ['id' => $t->id, 'title' => $t->title];
+			$this->tournaments->delete($t->id);
+		}
+		return $deleted;
 	}
 
 	/**

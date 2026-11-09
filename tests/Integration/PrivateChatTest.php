@@ -272,7 +272,7 @@ class PrivateChatTest extends IntegrationTestCase {
 		$this->app->chats->ensure(self::SECOND_CHAT, 'Вторая группа');
 		$reply = $this->say($this->owner, '/new 23.11 20:00 | Кубок | 2 | 3,4');
 		self::assertStringContainsString('Публикуем', $reply);
-		self::assertSame(['pub:1', 'fix:1'], $this->lastButtons());
+		self::assertSame(['pub:1', 'fix:1', 'ddel:1'], $this->lastButtons());
 		$t = $this->app->tournament_repo->find(1);
 		self::assertNotNull($t);
 		self::assertContains($t->chat_id, [self::CHAT_ID, self::SECOND_CHAT]);
@@ -302,7 +302,7 @@ class PrivateChatTest extends IntegrationTestCase {
 		$card = $this->say($this->owner, 'создай кубок 23.11 в 20, двойки, уровень 7');
 		self::assertStringContainsString('Публикуем или что-то поправить?', $card);
 		self::assertNotNull($this->app->tournament_repo->find(1));
-		self::assertSame(['pub:1', 'fix:1'], $this->lastButtons());
+		self::assertSame(['pub:1', 'fix:1', 'ddel:1'], $this->lastButtons());
 	}
 
 	public function testAiCreationRefusesWithoutSharedOwnerGroup(): void {

@@ -77,9 +77,15 @@ class CronRunner {
 			$this->announcer->renumber();
 		}
 
+		$purged = $this->tournaments->purgeExpiredDrafts();
+		foreach ($purged as $snap) {
+			$this->logger->info(sprintf('purged expired draft #%d «%s»', $snap['id'], $snap['title']));
+		}
+
 		return [
 			'reminders' => $reminders,
 			'status_changes' => count($changed),
+			'drafts_purged' => count($purged),
 			'conversations_deleted' => $this->conversations->deleteExpired($this->clock->now()),
 		];
 	}

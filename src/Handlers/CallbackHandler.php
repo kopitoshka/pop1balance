@@ -164,6 +164,39 @@ class CallbackHandler {
 					true,
 				);
 				return;
+			case 'ddel':
+				$t = $this->tournaments->get($id);
+				if (!$this->drafts->canConfirm($t, $player->id)) {
+					$this->api->answerCallbackQuery(
+						$query->id,
+						'Удалить черновик может только его автор или главный админ.',
+						true,
+					);
+					return;
+				}
+				if ($t->status !== TournamentStatus::DRAFT) {
+					$this->api->answerCallbackQuery($query->id, 'Это уже не черновик.', true);
+					return;
+				}
+				$this->api->answerCallbackQuery($query->id);
+				$this->api->sendMessage(
+					$chat_id,
+					'Точно удалить черновик #' . $t->id . '?',
+					$query->message_id,
+					['reply_markup' => ['inline_keyboard' => [[
+						['text' => 'Да', 'callback_data' => 'ddelo:' . $t->id],
+						['text' => 'Нет', 'callback_data' => 'ddeln:' . $t->id],
+					]]]],
+				);
+				return;
+			case 'ddelo':
+				$snap = $this->tournaments->deleteDraft($player->id, $id);
+				$this->api->answerCallbackQuery($query->id, 'Удалила');
+				$this->api->sendMessage($chat_id, sprintf('Черновик #%d удалён', $snap['id']), $query->message_id);
+				return;
+			case 'ddeln':
+				$this->api->answerCallbackQuery($query->id, 'Оставила');
+				return;
 			case 'popen':
 				$this->open($query, $player, $this->tournaments->get($id));
 				return;

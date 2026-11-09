@@ -64,13 +64,11 @@ class CronRunnerTest extends IntegrationTestCase {
 		$cron = $this->app->cron();
 
 		$this->clock->advance('+5 days +4 hours'); // start time
-		self::assertSame(1, $cron->run()['status_changes']);
+		$stats = $cron->run();
+		self::assertSame(1, $stats['status_changes']);
+		self::assertSame(1, $stats['drafts_purged']);
 		self::assertSame(TournamentStatus::RUNNING, $this->app->tournament_repo->find($t->id)->status);
-		self::assertSame(
-			TournamentStatus::DRAFT,
-			$this->app->tournament_repo->find($draft->id)->status,
-			'drafts untouched',
-		);
+		self::assertNull($this->app->tournament_repo->find($draft->id), 'expired draft hard-deleted');
 		$edits = $this->http->sent('editMessageText');
 		self::assertStringContainsString('🎮 Идёт', end($edits)['text']);
 

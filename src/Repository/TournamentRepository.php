@@ -56,6 +56,10 @@ class TournamentRepository {
 	/**
 		@param array<string, scalar|null|DateTimeImmutable> $fields
 	*/
+	public function delete(int $id): void {
+		$this->db->run('DELETE FROM tournaments WHERE id = :id', ['id' => $id]);
+	}
+
 	public function update(int $id, array $fields): void {
 		if ($fields === []) {
 			return;

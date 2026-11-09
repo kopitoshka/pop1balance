@@ -82,7 +82,11 @@ class Dispatcher {
 				throw new PermissionDenied(CreateAccess::REFUSAL);
 			}
 			$result = $this->run($tool, $args, $ctx);
-			if (in_array($tool, Tools::MUTATING, true) && isset($result['tournament_id'])) {
+			if (
+				in_array($tool, Tools::MUTATING, true)
+				&& isset($result['tournament_id'])
+				&& empty($result['deleted'])
+			) {
 				// tournament_id in results is the global number (= database id).
 				$this->announcer->refresh((int) $result['tournament_id']);
 			}
@@ -486,6 +490,14 @@ class Dispatcher {
 					[TournamentStatus::DRAFT, TournamentStatus::REGISTRATION, TournamentStatus::CLOSED],
 				);
 				$number = $this->no($target);
+				if ($target->status === TournamentStatus::DRAFT) {
+					$snap = $this->tournaments->deleteDraft($actor->id, $target->id);
+					return [
+						'tournament_id' => $number,
+						'deleted' => true,
+						'message' => sprintf('Черновик #%d удалён', $snap['id']),
+					];
+				}
 				$t = $this->tournaments->cancel($actor->id, $target->id);
 				$this->announcer->refresh($t->id);
 				$this->announcer->renumber($t->id);

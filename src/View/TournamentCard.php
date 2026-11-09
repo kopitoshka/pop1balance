@@ -53,9 +53,14 @@ class TournamentCard {
 		@return array<string, mixed>
 	*/
 	public static function buttons(int $tournament_id): array {
-		return ['reply_markup' => ['inline_keyboard' => [[
-			['text' => '✅ Публикуем', 'callback_data' => 'pub:' . $tournament_id],
-			['text' => '✏️ Поправить', 'callback_data' => 'fix:' . $tournament_id],
-		]]]];
+		return ['reply_markup' => ['inline_keyboard' => [
+			[
+				['text' => '✅ Публикуем', 'callback_data' => 'pub:' . $tournament_id],
+				['text' => '✏️ Поправить', 'callback_data' => 'fix:' . $tournament_id],
+			],
+			[
+				['text' => '🗑 Удалить', 'callback_data' => 'ddel:' . $tournament_id],
+			],
+		]]];
 	}
 }

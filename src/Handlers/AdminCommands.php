@@ -176,7 +176,12 @@ class AdminCommands {
 			case 'team':
 				return $this->showTeam($ctx);
 			case 'cancel':
-				$t = $this->tournaments->cancel($ctx->actor->id, $this->target($ctx, $args)->id);
+				$target = $this->target($ctx, $args);
+				if ($target->status === TournamentStatus::DRAFT) {
+					$snap = $this->tournaments->deleteDraft($ctx->actor->id, $target->id);
+					return sprintf('Черновик #%d удалён', $snap['id']);
+				}
+				$t = $this->tournaments->cancel($ctx->actor->id, $target->id);
 				$this->announcer->refresh($t->id);
 				$this->announcer->renumber($t->id);
 				return sprintf('Турнир %s отменён. Жаль!', Html::b($t->title));
