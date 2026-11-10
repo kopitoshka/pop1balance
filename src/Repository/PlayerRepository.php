@@ -415,7 +415,35 @@ class PlayerRepository {
 		return array_map([Player::class, 'fromRow'], $merged);
 	}
 
+	/**
+		Recent known players (have a Telegram id), for an empty Mini App search.
+		@param list<int> $exclude_ids
+		@return list<Player>
+	*/
+	public function listKnown(int $limit = 20, array $exclude_ids = []): array {
+		$limit = max(1, min(40, $limit));
+		$rows = $this->db->fetchAll(
+			'SELECT * FROM players WHERE tg_user_id IS NOT NULL
+				AND (username IS NOT NULL OR display_name <> \'\' OR ign_norm IS NOT NULL)
+				ORDER BY id DESC LIMIT 200',
+		);
+		$skip = array_fill_keys($exclude_ids, true);
+		$out = [];
+		foreach ($rows as $row) {
+			$pid = (int) $row['id'];
+			if (isset($skip[$pid])) {
+				continue;
+			}
+			$out[] = Player::fromRow($row);
+			if (count($out) >= $limit) {
+				break;
+			}
+		}
+		return $out;
+	}
+
 	public function fuzzySuggest(string $needle, int $limit = 5): array {
+
 		$needle = mb_strtolower(ltrim(trim($needle), '@'));
 		$limit = max(1, min(10, $limit));
 		if ($needle === '' || mb_strlen($needle) < 2) {

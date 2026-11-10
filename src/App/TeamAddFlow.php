@@ -34,7 +34,12 @@ class TeamAddFlow {
 		protected Clock $clock,
 		protected Announcer $announcer,
 		protected TeamCards $cards,
+		protected ?WebAppPicker $picker = null,
 	) {
+	}
+
+	public function setPicker(?WebAppPicker $picker): void {
+		$this->picker = $picker;
 	}
 
 	/**
@@ -74,6 +79,10 @@ class TeamAddFlow {
 		$text = 'Кого добавить в «' . Html::e($entry->team->name) . '»?'
 			. ($candidates === [] ? '' : "\nВыбери из тех, с кем уже играли, или из общих групп:")
 			. "\n<i>или напиши часть ника</i>";
+		$web = $this->picker !== null ? $this->picker->teamAddButton($actor, $chat_id, $team_id) : null;
+		if ($web !== null) {
+			$rows[] = [$web];
+		}
 		$extra = [
 			'reply_markup' => [
 				'inline_keyboard' => PendingTextGuard::withCancel($rows),
@@ -148,6 +157,10 @@ class TeamAddFlow {
 				'text' => $this->buttonLabel($player),
 				'callback_data' => 'tadd:' . $team_id . ':' . $player->id,
 			]];
+		}
+		$web = $this->picker !== null ? $this->picker->teamAddButton($actor, $chat_id, $team_id) : null;
+		if ($web !== null) {
+			$rows[] = [$web];
 		}
 		$this->api->sendMessage(
 			$chat_id,
@@ -229,6 +242,10 @@ class TeamAddFlow {
 				'text' => $this->buttonLabel($player),
 				'callback_data' => 'tadd:' . $team_id . ':' . $player->id,
 			]];
+		}
+		$web = $this->picker !== null ? $this->picker->teamAddButton($actor, $chat_id, $team_id) : null;
+		if ($web !== null) {
+			$rows[] = [$web];
 		}
 		return ['reply_markup' => ['inline_keyboard' => PendingTextGuard::withCancel($rows)]];
 	}

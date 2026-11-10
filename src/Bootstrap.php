@@ -25,6 +25,7 @@ use P1Bot\App\TeamCards;
 use P1Bot\App\PrivateGroups;
 use P1Bot\App\PrivateViews;
 use P1Bot\App\TournamentListing;
+use P1Bot\App\WebAppPicker;
 use P1Bot\App\TournamentResolver;
 use P1Bot\Domain\AccessPolicy;
 use P1Bot\Domain\BalanceService;
@@ -50,6 +51,7 @@ use P1Bot\Repository\SoloPlayerRepository;
 use P1Bot\Repository\TeamRepository;
 use P1Bot\Repository\TournamentAnnouncementRepository;
 use P1Bot\Repository\TournamentRepository;
+use P1Bot\Repository\WebAppContextRepository;
 use P1Bot\Support\Clock;
 use P1Bot\Support\RandomSource;
 use P1Bot\Support\SystemRandom;
@@ -106,6 +108,8 @@ class Bootstrap {
 	public GroupRedirect $group_redirect;
 	public ?GroupChat $group_chat = null;
 	public TournamentAnnouncementRepository $announcements;
+	public WebAppContextRepository $webapp_contexts;
+	public WebAppPicker $webapp_picker;
 
 	/**
 		@var array<string, mixed>
@@ -312,6 +316,23 @@ class Bootstrap {
 			$this->organizer_teams,
 			$this->team_cards,
 		);
+		$this->webapp_contexts = new WebAppContextRepository($db);
+		$this->webapp_picker = new WebAppPicker(
+			$this->webapp_contexts,
+			$this->players,
+			$this->teams,
+			$this->tournaments,
+			$this->balances,
+			$this->access,
+			$this->telegram,
+			$this->announcer,
+			$this->team_cards,
+			$pending_actions,
+			$clock,
+			(string) ($config['telegram']['token'] ?? ''),
+			(string) ($config['telegram']['webhook_url'] ?? ''),
+		);
+		$this->team_add->setPicker($this->webapp_picker);
 		$commands = new AdminCommands(
 			$this->telegram,
 			$this->bot,
@@ -330,6 +351,7 @@ class Bootstrap {
 			$this->nicks,
 			$this->team_cards,
 			$this->team_repo,
+			$this->webapp_picker,
 		);
 
 		$this->dispatcher = new Dispatcher(

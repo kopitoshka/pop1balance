@@ -87,6 +87,14 @@ server {
         fastcgi_param SCRIPT_FILENAME $document_root/webhook.php;
         include fastcgi_params;
     }
+    location = /webapp_api.php {
+        fastcgi_pass unix:/run/php-fpm/www.sock;
+        fastcgi_param SCRIPT_FILENAME $document_root/webapp_api.php;
+        include fastcgi_params;
+    }
+    location /webapp/ {
+        try_files $uri =404;
+    }
     location / { return 404; }
 }
 ```

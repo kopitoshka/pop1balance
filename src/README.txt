@@ -81,7 +81,11 @@ App/ — сценарии над доменом
     PendingTextGuard.php
         Сброс текстовых pending по чужой кнопке/команде; «✖️ Отмена»
     TeamAddFlow.php
-        Капитан добавляет игрока (поиск / Telegram picker)
+        Капитан добавляет игрока (поиск / Telegram picker /
+        Mini App «Подобрать игрока»)
+    WebAppPicker.php
+        Mini App: токен контекста, поиск, добавление /
+        показ уровня (initData HMAC)
     TeamCards.php
         Карточка команды в личке
     WebhookGate.php
@@ -131,7 +135,8 @@ Repository/ — SQL к таблицам
 
 PlayerRepository, TournamentRepository, TeamRepository, SoloPlayerRepository,
 BalanceRepository, ChatRepository, AdminRepository, ConversationRepository,
-TournamentAnnouncementRepository, GroupNoticeRepository, EditedReplyRepository.
+TournamentAnnouncementRepository, GroupNoticeRepository, EditedReplyRepository,
+PendingActionRepository, WebAppContextRepository.
 
 View/ — тексты и разметка для пользователя
 
@@ -147,6 +152,8 @@ HTML-сообщения, кнопки, карточки. Без записи в 
         Карточка турнира в личке
     DeepLink.php
         t.me/bot?start=…
+    WebAppUrl.php
+        URL Mini App из WEBHOOK_URL (без хардкода домена)
     Html.php
         Экранирование
 
@@ -154,6 +161,8 @@ Telegram/ — клиент Telegram Bot API
 
     Update.php / Message.php / TgUser.php / CallbackQuery.php
         Разбор JSON апдейта
+    WebAppInitData.php
+        Проверка подписи initData Mini App
     BotApi.php / TelegramApi.php
         Вызовы API
     DialogLoggingApi.php
@@ -203,3 +212,10 @@ DateFormat, RuPlural, Redact, …
   поля турнира.
 - Ai/AiClient.php vs OpenAiClient.php — тонкий интерфейс + одна реализация;
   оставлять имеет смысл для тестов.
+
+PUBLIC/ — то, что отдает веб-сервер
+----------------------------------
+
+webhook.php     приём апдейтов Telegram
+webapp_api.php  API Mini App (поиск и выбор игрока)
+webapp/         страница подбора (HTML/JS/CSS, без сборки)

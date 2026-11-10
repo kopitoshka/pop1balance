@@ -6,6 +6,7 @@ namespace P1Bot\Handlers;
 
 use P1Bot\App\Announcer;
 use P1Bot\App\CreateAccess;
+use P1Bot\App\WebAppPicker;
 use P1Bot\App\DraftCards;
 use P1Bot\App\NeedGroupChoice;
 use P1Bot\App\PrivateGroups;
@@ -88,6 +89,7 @@ class AdminCommands {
 		protected ?NickService $nicks = null,
 		protected ?\P1Bot\App\TeamCards $team_cards = null,
 		protected ?\P1Bot\Repository\TeamRepository $team_repo = null,
+		protected ?WebAppPicker $webapp = null,
 	) {
 	}
 
@@ -129,6 +131,9 @@ class AdminCommands {
 		} catch (PlayerSuggestError $e) {
 			$reply = Html::e($e->getMessage());
 			$this->reply_extra = $e->replyMarkup();
+			if ($command === 'level' && $ctx->isPrivate()) {
+				$this->attachLevelPicker($ctx);
+			}
 		} catch (DomainError $e) {
 			$reply = Html::e($e->getMessage());
 		}
@@ -463,7 +468,11 @@ class AdminCommands {
 		} else {
 			$own = $target->id === $ctx->actor->id;
 		}
-		return $this->showPlayerLevel($ctx, $target, $own);
+		$text = $this->showPlayerLevel($ctx, $target, $own);
+		if ($ctx->isPrivate() && $args === '') {
+			$this->attachLevelPicker($ctx);
+		}
+		return $text;
 	}
 
 	/**
@@ -558,6 +567,18 @@ class AdminCommands {
 			$footer .= "\nПоставить: /level @ник 4";
 		}
 		return $footer;
+	}
+
+	protected function attachLevelPicker(Context $ctx): void {
+		if ($this->webapp === null) {
+			return;
+		}
+		$this->reply_extra = $this->webapp->appendLevelButton(
+			$this->reply_extra,
+			$ctx->actor,
+			$ctx->chatId(),
+			$ctx->is_owner,
+		);
 	}
 
 

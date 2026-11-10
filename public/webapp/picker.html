@@ -1,0 +1,23 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+	<meta charset="utf-8">
+	<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+	<title>Подобрать игрока</title>
+	<script src="https://telegram.org/js/telegram-web-app.js"></script>
+	<link rel="stylesheet" href="picker.css">
+</head>
+<body>
+	<div id="app">
+		<p id="hint" class="hint">Найди игрока по нику, @username или имени</p>
+		<input id="q" type="search" enterkeyhint="search" autocomplete="off" placeholder="Поиск…">
+		<div id="err" class="err" hidden></div>
+		<div id="list"></div>
+		<div id="level-box" hidden>
+			<p class="hint" id="level-title">Уровень выбранного игрока</p>
+			<div id="levels" class="levels"></div>
+		</div>
+	</div>
+	<script src="picker.js"></script>
+</body>
+</html>

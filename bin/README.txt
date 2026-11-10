@@ -6,6 +6,7 @@
 migrate.php
   Применяет новые migrations/*.sql по порядку.
   013: все турниры на шкалу по умолчанию.
+  015: таблица webapp_contexts для Mini App.
 
 diag.php
   Здоровье бота / БД. Также:

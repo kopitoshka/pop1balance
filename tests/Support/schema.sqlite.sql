@@ -148,3 +148,13 @@ CREATE TABLE pending_player_actions (
 );
 CREATE INDEX idx_pending_expires ON pending_player_actions(expires_at);
 
+CREATE TABLE webapp_contexts (
+	token           TEXT NOT NULL PRIMARY KEY,
+	actor_player_id INTEGER NOT NULL REFERENCES players(id) ON DELETE CASCADE,
+	chat_id         INTEGER NOT NULL,
+	action          TEXT NOT NULL,
+	payload_json    TEXT NOT NULL,
+	expires_at      TEXT NOT NULL,
+	created_at      TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX idx_webapp_ctx_expires ON webapp_contexts(expires_at);
