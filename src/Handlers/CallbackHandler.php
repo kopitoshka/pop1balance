@@ -13,6 +13,7 @@ use P1Bot\App\PrivateViews;
 use P1Bot\App\OrganizerTeams;
 use P1Bot\App\PendingTextGuard;
 use P1Bot\App\TeamAddFlow;
+use P1Bot\App\RegistrationFillFlow;
 use P1Bot\App\TeamCards;
 use P1Bot\Domain\Exception\DomainError;
 use P1Bot\Domain\Model\Player;
@@ -58,6 +59,7 @@ class CallbackHandler {
 		protected ?PlayerRepository $players = null,
 		protected ?OrganizerTeams $organizer = null,
 		protected ?PendingTextGuard $pending_guard = null,
+		protected ?RegistrationFillFlow $reg_fill = null,
 	) {
 	}
 
@@ -65,7 +67,7 @@ class CallbackHandler {
 		For the update log: how the button is treated.
 	*/
 	public function describe(CallbackQuery $query): string {
-		if (str_starts_with($query->data, 'sug:')) {
+		if (str_starts_with($query->data, 'sug:') || str_starts_with($query->data, 'rfill:')) {
 			return 'suggest pick ' . $query->data;
 		}
 		if (preg_match('/^(padd|prem|tadd|trem|tcard|oteams|otnew|otren|otcap|otsetc|otdel|otdelo|otcc):/', $query->data)) {
@@ -81,11 +83,21 @@ class CallbackHandler {
 	public function handle(CallbackQuery $query, Player $player): void {
 		if (
 			$query->chat_id !== null
-			&& $query->chat_id > 0
 			&& $query->data === PendingTextGuard::CANCEL_DATA
 			&& $this->pending_guard !== null
 		) {
 			$this->pending_guard->handleCancel($query, $player);
+			return;
+		}
+		if (preg_match('/^rfill:(\d+):(\d+)$/', $query->data, $rm) && $this->reg_fill !== null && $query->chat_id !== null) {
+			$this->reg_fill->handlePick(
+				(int) $rm[1],
+				(int) $rm[2],
+				$player,
+				(int) $query->chat_id,
+				$query->id,
+				$query->message_id,
+			);
 			return;
 		}
 		if (preg_match('/^sug:(\d+):(\d+)$/', $query->data, $sm) && $this->pending_runner !== null) {

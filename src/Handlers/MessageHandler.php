@@ -96,6 +96,15 @@ class MessageHandler {
 				$extra,
 			);
 		}
+		$followup = $reply['followup'] ?? null;
+		if (is_array($followup) && trim((string) ($followup['text'] ?? '')) !== '') {
+			$this->api->sendMessage(
+				$chat_id,
+				Html::e((string) $followup['text']),
+				null,
+				is_array($followup['extra'] ?? null) ? $followup['extra'] : [],
+			);
+		}
 		($reply['remember'])($message_id);
 	}
 

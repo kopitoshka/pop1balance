@@ -40,7 +40,12 @@ class OrganizerTeams {
 		protected Announcer $announcer,
 		protected TeamCards $cards,
 		protected TeamDisbandNotifier $disband_notifier,
+		protected ?WebAppPicker $picker = null,
 	) {
+	}
+
+	public function setPicker(?WebAppPicker $picker): void {
+		$this->picker = $picker;
 	}
 
 	public function canManage(Tournament $t, Player $actor): bool {
@@ -319,9 +324,13 @@ class OrganizerTeams {
 				'callback_data' => 'otcc:' . $tournament_id . ':' . $player->id,
 			]];
 		}
+		$web = $this->picker !== null ? $this->picker->orgCaptainButton($actor, $chat_id, $tournament_id, $name) : null;
+		if ($web !== null) {
+			$rows[] = [$web];
+		}
 		$this->api->sendMessage(
 			$chat_id,
-			'Кто капитан команды «' . Html::e($name) . '»? Выбери, напиши часть ника или из Telegram:',
+			'Кто капитан команды «' . Html::e($name) . '»? Выбери, напиши часть ника, открой подбор или из Telegram:',
 			$reply_to,
 			['reply_markup' => ['inline_keyboard' => PendingTextGuard::withCancel($rows)]],
 		);
@@ -357,9 +366,15 @@ class OrganizerTeams {
 		}
 		$taken = $this->players->playersOnTeamsOfTournament($tournament_id);
 		$found = $this->players->searchPartial($query, 8, $taken);
-		if ($found === []) {
-			$this->api->sendMessage($chat_id, 'Никого не нашла по «' . Html::e($query) . '».', $reply_to);
-			return true;
+		if ($found === [] && mb_strlen($query) >= 2) {
+			$seen = array_fill_keys($taken, true);
+			foreach ($this->players->fuzzySuggest($query, 5) as $player) {
+				if (isset($seen[$player->id])) {
+					continue;
+				}
+				$seen[$player->id] = true;
+				$found[] = $player;
+			}
 		}
 		$rows = [];
 		foreach ($found as $player) {
@@ -368,9 +383,16 @@ class OrganizerTeams {
 				'callback_data' => 'otcc:' . $tournament_id . ':' . $player->id,
 			]];
 		}
+		$web = $this->picker !== null ? $this->picker->orgCaptainButton($actor, $chat_id, $tournament_id, $name) : null;
+		if ($web !== null) {
+			$rows[] = [$web];
+		}
+		$text = $found === []
+			? 'Никого не нашла по «' . Html::e($query) . '». Выбери из подбора или напиши иначе.'
+			: 'Капитан для «' . Html::e($name) . '» — выбери:';
 		$this->api->sendMessage(
 			$chat_id,
-			'Капитан для «' . Html::e($name) . '» — выбери:',
+			$text,
 			$reply_to,
 			['reply_markup' => ['inline_keyboard' => PendingTextGuard::withCancel($rows)]],
 		);

@@ -198,7 +198,7 @@
 		state.maxSelect = data.max_select || 1;
 		state.canSetLevel = !!data.can_set_level;
 		state.levels = data.levels || [];
-		if (state.action === 'team_add' && state.maxSelect > 1) {
+		if (state.maxSelect > 1) {
 			document.getElementById('hint').textContent =
 				'Можно выбрать до ' + state.maxSelect + ' игроков. Ищи по нику, @username или имени.';
 		}

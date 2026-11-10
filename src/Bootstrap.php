@@ -21,6 +21,7 @@ use P1Bot\App\PendingPlayerRunner;
 use P1Bot\App\OrganizerTeams;
 use P1Bot\App\PendingTextGuard;
 use P1Bot\App\TeamAddFlow;
+use P1Bot\App\RegistrationFillFlow;
 use P1Bot\App\TeamCards;
 use P1Bot\App\PrivateGroups;
 use P1Bot\App\PrivateViews;
@@ -110,6 +111,7 @@ class Bootstrap {
 	public TournamentAnnouncementRepository $announcements;
 	public WebAppContextRepository $webapp_contexts;
 	public WebAppPicker $webapp_picker;
+	public RegistrationFillFlow $reg_fill;
 
 	/**
 		@var array<string, mixed>
@@ -332,7 +334,23 @@ class Bootstrap {
 			(string) ($config['telegram']['token'] ?? ''),
 			(string) ($config['telegram']['webhook_url'] ?? ''),
 		);
+		$this->reg_fill = new RegistrationFillFlow(
+			$this->telegram,
+			$this->tournaments,
+			$this->teams,
+			$this->players,
+			$this->player_resolver,
+			$pending_actions,
+			$clock,
+			$this->announcer,
+			$this->team_cards,
+			$this->bot->username,
+			$this->webapp_picker,
+		);
 		$this->team_add->setPicker($this->webapp_picker);
+		$this->organizer_teams->setPicker($this->webapp_picker);
+		$this->webapp_picker->setRegistrationFill($this->reg_fill);
+		$this->webapp_picker->setOrganizer($this->organizer_teams);
 		$commands = new AdminCommands(
 			$this->telegram,
 			$this->bot,
@@ -372,6 +390,7 @@ class Bootstrap {
 			$this->disband_notifier,
 			$this->nicks,
 			$this->team_add,
+			$this->reg_fill,
 		);
 		$ai = $this->makeAiClient();
 		if ($ai !== null) {
@@ -419,6 +438,7 @@ class Bootstrap {
 			$this->logger,
 			$this->announcer,
 		);
+		$this->group_chat->setRegFill($this->reg_fill);
 		$pending_runner = new PendingPlayerRunner(
 			$this->telegram,
 			$pending_actions,
@@ -461,6 +481,7 @@ class Bootstrap {
 				$this->players,
 				$this->organizer_teams,
 				$this->pending_guard,
+				$this->reg_fill,
 			),
 			new EditedReplyRepository($db),
 			$this->logger,
@@ -481,6 +502,7 @@ class Bootstrap {
 				$this->team_add,
 				$this->organizer_teams,
 				$this->pending_guard,
+				$this->reg_fill,
 			),
 			$this->group_redirect,
 			$this->dialogs,

@@ -47,7 +47,12 @@ class GroupChat {
 		protected RandomSource $random,
 		protected Logger $logger,
 		protected ?Announcer $announcer = null,
+		protected ?RegistrationFillFlow $reg_fill = null,
 	) {
+	}
+
+	public function setRegFill(?RegistrationFillFlow $reg_fill): void {
+		$this->reg_fill = $reg_fill;
 	}
 
 	/**
@@ -88,6 +93,15 @@ class GroupChat {
 			}
 			// /history /nick /adduser /team /new /edit /open /cancel → private redirect
 			$this->redirectManage($message, $command['name']);
+			return;
+		}
+
+		if (
+			$command === null
+			&& $this->reg_fill !== null
+			&& $message->text !== ''
+			&& $this->reg_fill->handleSearchText($ctx->chatId(), $ctx->actor, $message->textWithoutMention($this->bot->username), $message->message_id)
+		) {
 			return;
 		}
 

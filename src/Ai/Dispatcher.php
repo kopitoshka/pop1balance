@@ -8,6 +8,7 @@ use P1Bot\App\Announcer;
 use P1Bot\App\CreateAccess;
 use P1Bot\App\TeamDisbandNotifier;
 use P1Bot\App\TeamAddFlow;
+use P1Bot\App\RegistrationFillFlow;
 use P1Bot\App\Confirmation;
 use P1Bot\App\DraftCards;
 use P1Bot\App\NeedGroupChoice;
@@ -66,6 +67,7 @@ class Dispatcher {
 		protected ?TeamDisbandNotifier $disband_notifier = null,
 		protected ?NickService $nicks = null,
 		protected ?TeamAddFlow $team_add = null,
+		protected ?RegistrationFillFlow $reg_fill = null,
 	) {
 	}
 
@@ -287,17 +289,17 @@ class Dispatcher {
 
 			case 'register_team':
 				$t = $this->tournament($ctx, $a);
-				$ids = [];
-				foreach ((array) ($a['players'] ?? []) as $i => $ref) {
-					$ids[] = $this->resolvePlayer((string) $ref, $actor, $ctx, 'register_team', $a, 'players.' . $i)->id;
+				$fill = $this->collectRegisterTeam($ctx, $actor, $t, $a);
+				if ($fill !== null) {
+					return $fill;
 				}
-				$captain_ref = trim((string) ($a['captain'] ?? ''));
-				if ($captain_ref !== '') {
-					$captain = $this->resolvePlayer($captain_ref, $actor, $ctx, 'register_team', $a, 'captain');
+				$ids = $a['_resolved_ids'] ?? [];
+				$captain_id = $a['_captain_id'] ?? null;
+				if ($captain_id !== null) {
 					$entry = $this->teams->createTeamAsOrganizer(
 						$actor->id,
 						$t->id,
-						$captain->id,
+						(int) $captain_id,
 						(string) ($a['team_name'] ?? ''),
 						$ids,
 					);
@@ -563,6 +565,86 @@ class Dispatcher {
 	/**
 		@param array<string, mixed> $tool_args full tool args for resume
 	*/
+	/**
+		Resolve every name on register_team. When some are missing, start the fill UI
+		instead of failing the first one (and letting the model invent a button-less ask).
+		@param array<string, mixed> $a
+		@return array<string, mixed>|null fill-UI result, or null when everyone is resolved ($a is then annotated)
+	*/
+	protected function collectRegisterTeam(Context $ctx, Player $actor, Tournament $t, array &$a): ?array {
+		$exclude = $this->players->playersOnTeamsOfTournament($t->id);
+		$resolved = [];
+		$missing = [];
+		$captain_id = null;
+		$captain_missing = null;
+		$organizer_mode = false;
+
+		$captain_ref = trim((string) ($a['captain'] ?? ''));
+		if ($captain_ref !== '') {
+			$organizer_mode = true;
+			$probe = $this->player_resolver->tryResolve($captain_ref, $actor, $exclude);
+			if ($probe['player'] !== null) {
+				$captain_id = $probe['player']->id;
+				$exclude[] = $captain_id;
+			} else {
+				$captain_missing = [
+					'label' => $captain_ref,
+					'role' => 'captain',
+					'suggestion_ids' => array_map(static fn (Player $p): int => $p->id, $probe['suggestions']),
+				];
+			}
+		} else {
+			$exclude[] = $actor->id;
+		}
+
+		foreach ((array) ($a['players'] ?? []) as $ref) {
+			$ref = trim((string) $ref);
+			if ($ref === '') {
+				continue;
+			}
+			$probe = $this->player_resolver->tryResolve($ref, $actor, $exclude);
+			if ($probe['player'] !== null) {
+				$pid = $probe['player']->id;
+				if ($pid === $actor->id && !$organizer_mode) {
+					continue;
+				}
+				if ($captain_id !== null && $pid === $captain_id) {
+					continue;
+				}
+				$resolved[] = $pid;
+				$exclude[] = $pid;
+				continue;
+			}
+			$missing[] = [
+				'label' => $ref,
+				'role' => 'player',
+				'suggestion_ids' => array_map(static fn (Player $p): int => $p->id, $probe['suggestions']),
+			];
+		}
+
+		if ($missing === [] && $captain_missing === null) {
+			$a['_resolved_ids'] = $resolved;
+			$a['_captain_id'] = $captain_id;
+			return null;
+		}
+		if ($this->reg_fill === null) {
+			$first = $captain_missing['label'] ?? ($missing[0]['label'] ?? '');
+			throw new ValidationError(sprintf(
+				'Не могу найти игрока «%s». Укажи @username человека, который уже писал мне, или игровой ник.',
+				$first,
+			));
+		}
+		return $this->reg_fill->start($ctx, $actor, [
+			'tournament_id' => $t->id,
+			'team_name' => (string) ($a['team_name'] ?? ''),
+			'organizer_mode' => $organizer_mode,
+			'captain_id' => $captain_id,
+			'resolved_ids' => $resolved,
+			'missing' => $missing,
+			'captain_missing' => $captain_missing,
+		]);
+	}
+
 	protected function resolvePlayer(string $ref, Player $actor, Context $ctx, string $tool, array $tool_args, string $player_arg, bool $owner_only = false): Player {
 		$resume = [
 			'kind' => 'tool',

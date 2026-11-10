@@ -29,6 +29,8 @@ use P1Bot\View\WebAppUrl;
 class WebAppPicker {
 	public const ACTION_TEAM_ADD = 'team_add';
 	public const ACTION_SHOW_LEVEL = 'show_level';
+	public const ACTION_REG_FILL = 'registration_fill';
+	public const ACTION_ORG_CAPTAIN = 'org_captain';
 	public const TTL_SECONDS = 600;
 	public const SEARCH_LIMIT = 20;
 	public const BUTTON_TEXT = '🔎 Подобрать игрока';
@@ -47,7 +49,17 @@ class WebAppPicker {
 		protected Clock $clock,
 		protected string $bot_token,
 		protected string $webhook_url,
+		protected ?RegistrationFillFlow $reg_fill = null,
+		protected ?OrganizerTeams $organizer = null,
 	) {
+	}
+
+	public function setRegistrationFill(?RegistrationFillFlow $reg_fill): void {
+		$this->reg_fill = $reg_fill;
+	}
+
+	public function setOrganizer(?OrganizerTeams $organizer): void {
+		$this->organizer = $organizer;
 	}
 
 	public function isAvailable(): bool {
@@ -98,6 +110,57 @@ class WebAppPicker {
 			[
 				'max_select' => 1,
 				'can_set_level' => $can_set_level,
+			],
+		);
+		$url = WebAppUrl::picker($this->webhook_url, $token);
+		if ($url === null) {
+			return null;
+		}
+		return ['text' => self::BUTTON_TEXT, 'web_app' => ['url' => $url]];
+	}
+
+	/**
+		Inline web_app button to fill missing players of a pending team registration.
+		@return array<string, mixed>|null
+	*/
+	public function regFillButton(Player $actor, int $chat_id, int $max_select, int $tournament_id): ?array {
+		if (!$this->isAvailable() || $actor->tg_user_id === null || $max_select < 1) {
+			return null;
+		}
+		$token = $this->issue(
+			$actor,
+			$chat_id,
+			self::ACTION_REG_FILL,
+			[
+				'tournament_id' => $tournament_id,
+				'max_select' => $max_select,
+				'can_set_level' => false,
+			],
+		);
+		$url = WebAppUrl::picker($this->webhook_url, $token);
+		if ($url === null) {
+			return null;
+		}
+		return ['text' => RegistrationFillFlow::BUTTON_TEXT, 'web_app' => ['url' => $url]];
+	}
+
+	/**
+		Inline web_app button to pick a captain when the organizer creates a team.
+		@return array<string, mixed>|null
+	*/
+	public function orgCaptainButton(Player $actor, int $chat_id, int $tournament_id, string $team_name): ?array {
+		if (!$this->isAvailable() || $actor->tg_user_id === null) {
+			return null;
+		}
+		$token = $this->issue(
+			$actor,
+			$chat_id,
+			self::ACTION_ORG_CAPTAIN,
+			[
+				'tournament_id' => $tournament_id,
+				'team_name' => $team_name,
+				'max_select' => 1,
+				'can_set_level' => false,
 			],
 		);
 		$url = WebAppUrl::picker($this->webhook_url, $token);
@@ -174,6 +237,17 @@ class WebAppPicker {
 			$entry = $this->teams->get($team_id);
 			$tournament_id = $entry->team->tournament_id;
 			$exclude = $this->players->playersOnTeamsOfTournament($tournament_id);
+		} elseif (in_array($ctx['action'], [self::ACTION_REG_FILL, self::ACTION_ORG_CAPTAIN], true)) {
+			$tournament_id = (int) ($ctx['payload']['tournament_id'] ?? 0);
+			if ($tournament_id > 0) {
+				$exclude = $this->players->playersOnTeamsOfTournament($tournament_id);
+			}
+			if ($ctx['action'] === self::ACTION_REG_FILL) {
+				$exclude = array_values(array_unique(array_merge(
+					$exclude,
+					$this->pendingResolvedIds($actor->id, $ctx['chat_id']),
+				)));
+			}
 		}
 		$found = $this->lookupPlayers($query, $actor->id, $tournament_id, $exclude);
 		$players = [];
@@ -211,10 +285,29 @@ class WebAppPicker {
 				$ids = array_slice($ids, 0, $max);
 			}
 			$this->submitTeamAdd($actor, $ctx['chat_id'], $team_id, $ids);
+			$this->pending->clearChat($actor->id, $ctx['chat_id']);
+		} elseif ($ctx['action'] === self::ACTION_REG_FILL) {
+			$max_sel = (int) ($ctx['payload']['max_select'] ?? 1);
+			if (count($ids) > max(1, $max_sel)) {
+				$ids = array_slice($ids, 0, max(1, $max_sel));
+			}
+			if ($this->reg_fill === null) {
+				throw new ValidationError('Подбор для записи команды недоступен.');
+			}
+			$done = $this->reg_fill->applyFromWebApp($ctx['chat_id'], $actor, $ids);
+			unset($done);
+		} elseif ($ctx['action'] === self::ACTION_ORG_CAPTAIN) {
+			$this->submitOrgCaptain(
+				$actor,
+				$ctx['chat_id'],
+				(int) ($ctx['payload']['tournament_id'] ?? 0),
+				(string) ($ctx['payload']['team_name'] ?? ''),
+				$ids[0],
+			);
+			$this->pending->clearChat($actor->id, $ctx['chat_id']);
 		} else {
 			throw new ValidationError('Неизвестный сценарий подбора.');
 		}
-		$this->pending->clearChat($actor->id, $ctx['chat_id']);
 		$this->contexts->delete($token);
 		return ['ok' => true, 'close' => true];
 	}
@@ -382,6 +475,44 @@ class WebAppPicker {
 			'level_name' => Levels::name($level),
 			'level_explicit' => $explicit !== null,
 		];
+	}
+
+	/**
+		Already chosen members of a pending registration (captain + resolved).
+		@return list<int>
+	*/
+	protected function pendingResolvedIds(int $actor_id, int $chat_id): array {
+		$row = $this->pending->peekLatest($actor_id, $chat_id, $this->clock->now(), RegistrationFillFlow::OP);
+		if ($row === null) {
+			return [];
+		}
+		$ids = array_map('intval', $row['action']['resolved_ids'] ?? []);
+		$cap = (int) ($row['action']['captain_id'] ?? 0);
+		if ($cap > 0) {
+			$ids[] = $cap;
+		}
+		return array_values(array_filter($ids, static fn (int $id): bool => $id > 0));
+	}
+
+	protected function submitOrgCaptain(Player $actor, int $chat_id, int $tournament_id, string $name, int $captain_id): void {
+		if ($this->organizer === null) {
+			throw new ValidationError('Создание команды организатором недоступно.');
+		}
+		$t = $this->tournaments->get($tournament_id);
+		if (!$this->organizer->canManage($t, $actor)) {
+			throw new DomainError('Уже нельзя создавать команды на этот турнир.');
+		}
+		$entry = $this->teams->createTeamAsOrganizer($actor->id, $t->id, $captain_id, $name, []);
+		$this->announcer->refresh($t->id);
+		$cap = $this->players->find($captain_id);
+		$label = $cap !== null ? $cap->plainLabel() : ('#' . $captain_id);
+		$this->api->sendMessage(
+			$chat_id,
+			'Создала команду «' . Html::e($entry->team->name) . '», капитан — ' . Html::e($label) . '.',
+			null,
+			['reply_markup' => ['remove_keyboard' => true]],
+		);
+		$this->cards->send($chat_id, $t, $entry, $actor);
 	}
 
 	protected function freeSlots(int $team_id, int $fallback): int {

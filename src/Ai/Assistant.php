@@ -46,6 +46,8 @@ class Assistant {
 
 		'suggest_markup' = fuzzy player pick keyboard from a failed @username resolve.
 
+		'followup' = optional second message (e.g. Telegram request_users keyboard).
+
 		@return array{text: string, remember: callable(int): void, card: ?int, history: list<array<string, mixed>>, list: bool, past_list: bool, levels: bool, groups: array<int, string>, suggest_markup: array<string, mixed>}
 	*/
 	public function reply(Context $ctx): array {
@@ -84,6 +86,8 @@ class Assistant {
 		$levels = false;
 		$groups = [];
 		$suggest_markup = [];
+		$say = null;
+		$followup = null;
 		$response = $this->ai->createResponse($this->system_prompt, $input, $tools);
 		for ($round = 0; $response->tool_calls !== [] && $round < self::MAX_ROUNDS; $round++) {
 			$outputs = [];
@@ -113,6 +117,14 @@ class Assistant {
 					$suggest_markup = $result['suggest_markup'];
 					unset($result['suggest_markup']);
 				}
+				if (!empty($result['say']) && is_string($result['say'])) {
+					$say = $result['say'];
+					unset($result['say']);
+				}
+				if (!empty($result['followup']) && is_array($result['followup'])) {
+					$followup = $result['followup'];
+					unset($result['followup']);
+				}
 				if (isset($result['show_card'])) {
 					$card = (int) $result['show_card'];
 				} elseif (!empty($result['published'])) {
@@ -124,13 +136,15 @@ class Assistant {
 					'output' => (string) json_encode($result, JSON_UNESCAPED_UNICODE),
 				];
 			}
-			if ($card !== null) {
-				break; // the card is the answer; no need for another model round
+			if ($card !== null || $say !== null) {
+				break; // the card or a fixed prompt is the answer; no extra model round
 			}
 			$response = $this->ai->createResponse($this->system_prompt, $outputs, $tools, $response->id);
 		}
 
-		if ($card === null && $response->text !== '') {
+		if ($say !== null) {
+			$text = $say;
+		} elseif ($card === null && $response->text !== '') {
 			$text = $response->text;
 		} else {
 			$text = ($list || $past_list || $levels) && $card === null ? '' : 'Готово!'; // the list / help speaks for itself
@@ -161,6 +175,7 @@ class Assistant {
 			'levels' => $levels,
 			'groups' => $groups,
 			'suggest_markup' => $suggest_markup,
+			'followup' => $followup,
 			'history' => array_slice(
 				array_merge($history, [['role' => 'user', 'content' => $user_text]]),
 				-self::MAX_HISTORY,

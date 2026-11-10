@@ -20,7 +20,7 @@ class PendingTextGuard {
 	public const CANCEL_DATA = 'pcancel';
 
 	/** @var list<string> */
-	public const TEXT_OPS = ['org_team_name', 'org_team_captain', 'org_rename', 'team_add'];
+	public const TEXT_OPS = ['org_team_name', 'org_team_captain', 'org_rename', 'team_add', 'reg_fill'];
 
 	public function __construct(
 		protected PendingActionRepository $pending,
@@ -66,7 +66,7 @@ class PendingTextGuard {
 		Before handling a private callback: drop pendings unless this button belongs to them.
 	*/
 	public function abortIfForeignCallback(int $actor_id, int $chat_id, string $data): void {
-		if ($data === self::CANCEL_DATA || str_starts_with($data, 'sug:')) {
+		if ($data === self::CANCEL_DATA || str_starts_with($data, 'sug:') || str_starts_with($data, 'rfill:')) {
 			return;
 		}
 		$row = $this->pending->peekLatest($actor_id, $chat_id, $this->clock->now());
@@ -118,6 +118,7 @@ class PendingTextGuard {
 				preg_match('/^tadd:(\d+):(\d+)$/', $data, $m)
 				&& (int) $m[1] === (int) ($action['team_id'] ?? 0)
 			),
+			'reg_fill' => (bool) preg_match('/^rfill:(\d+):(\d+)$/', $data),
 			'org_team_captain' => (bool) (
 				preg_match('/^otcc:(\d+):(\d+)$/', $data, $m)
 				&& (int) $m[1] === (int) ($action['tournament_id'] ?? 0)

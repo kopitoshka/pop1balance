@@ -10,6 +10,7 @@ use P1Bot\App\PrivateGroups;
 use P1Bot\App\OrganizerTeams;
 use P1Bot\App\PendingTextGuard;
 use P1Bot\App\TeamAddFlow;
+use P1Bot\App\RegistrationFillFlow;
 use P1Bot\App\PrivateViews;
 use P1Bot\Domain\AccessPolicy;
 use P1Bot\Domain\Exception\DomainError;
@@ -89,6 +90,7 @@ class PrivateChatHandler {
 		protected ?TeamAddFlow $team_add = null,
 		protected ?OrganizerTeams $organizer = null,
 		protected ?PendingTextGuard $pending_guard = null,
+		protected ?RegistrationFillFlow $reg_fill = null,
 	) {
 	}
 
@@ -114,6 +116,9 @@ class PrivateChatHandler {
 				}
 				if ($payload['group'] !== null) {
 					return ['kind' => self::START_GROUP, 'group' => $payload['group']] + $decision;
+				}
+				if (($payload['reg_fill'] ?? null) !== null) {
+					return ['kind' => self::START, 'command' => 'start', 'args' => 'rf_' . (int) $payload['reg_fill'], 'tournament' => null, 'group' => null];
 				}
 				return ['kind' => self::START] + $decision;
 			}
@@ -158,6 +163,9 @@ class PrivateChatHandler {
 		if ($this->team_add !== null && $this->team_add->hasPending($actor->id, $message->chat_id)) {
 			return 'team_add';
 		}
+		if ($this->reg_fill !== null && $this->reg_fill->hasPending($actor->id, $message->chat_id)) {
+			return 'reg_fill';
+		}
 		return null;
 	}
 
@@ -185,8 +193,11 @@ class PrivateChatHandler {
 	public function handle(Message $message, Player $actor, array $decision): void {
 		$this->players->markDmStarted($actor->id, $this->clock->now());
 		$chat_id = $message->chat_id;
+		$rf_start = $decision['kind'] === self::START
+			&& str_starts_with((string) ($decision['args'] ?? ''), 'rf_');
 		if (
 			$this->pending_guard !== null
+			&& !$rf_start
 			&& in_array($decision['kind'], [
 				self::COMMAND,
 				self::UNKNOWN_COMMAND,
@@ -208,6 +219,12 @@ class PrivateChatHandler {
 				$this->views->list($chat_id, $actor, $is_owner, Texts::welcome($first_name));
 				return;
 			case self::START:
+				if (
+					$this->reg_fill !== null
+					&& $this->reg_fill->continueFromStart($chat_id, $actor, (string) ($decision['args'] ?? ''))
+				) {
+					return;
+				}
 				$this->views->list($chat_id, $actor, $is_owner, Texts::welcome($first_name));
 				return;
 			case self::UNKNOWN_COMMAND:
@@ -250,6 +267,14 @@ class PrivateChatHandler {
 			&& in_array($decision['kind'], [self::AI, self::FALLBACK, self::PENDING], true)
 			&& $message->text !== ''
 			&& $this->team_add->handleSearchText($chat_id, $actor, $message->text, $message->message_id)
+		) {
+			return;
+		}
+		if (
+			$this->reg_fill !== null
+			&& in_array($decision['kind'], [self::AI, self::FALLBACK, self::PENDING], true)
+			&& $message->text !== ''
+			&& $this->reg_fill->handleSearchText($chat_id, $actor, $message->text, $message->message_id)
 		) {
 			return;
 		}
@@ -361,6 +386,13 @@ class PrivateChatHandler {
 			$this->team_add !== null
 			&& (int) ($shared['request_id'] ?? 0) === TeamAddFlow::REQUEST_USERS_ID
 			&& $this->team_add->handleUsersShared($chat_id, $actor, $shared['users'], $message->message_id)
+		) {
+			return;
+		}
+		if (
+			$this->reg_fill !== null
+			&& (int) ($shared['request_id'] ?? 0) === RegistrationFillFlow::REQUEST_USERS_ID
+			&& $this->reg_fill->handleUsersShared($chat_id, $actor, $shared['users'], $message->message_id)
 		) {
 			return;
 		}
