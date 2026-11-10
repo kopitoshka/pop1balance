@@ -96,13 +96,14 @@ class PlayerResolver {
 		try {
 			$player = $this->fromReference($ref, $actor, null, null);
 		} catch (PlayerSuggestError $e) {
-			return ['player' => null, 'suggestions' => $this->filterExcluded($e->suggestions, $exclude_ids)];
+			$suggestions = $this->filterExcluded($e->suggestions, $exclude_ids);
+			return $this->uniqueOrSuggest($ref, $suggestions, $exclude_ids);
 		} catch (ValidationError $e) {
 			unset($e);
-			return ['player' => null, 'suggestions' => $this->suggestFor($ref, $exclude_ids)];
+			return $this->uniqueOrSuggest($ref, $this->suggestFor($ref, $exclude_ids), $exclude_ids);
 		}
 		if (in_array($player->id, $exclude_ids, true)) {
-			return ['player' => null, 'suggestions' => $this->suggestFor($ref, $exclude_ids)];
+			return $this->uniqueOrSuggest($ref, $this->suggestFor($ref, $exclude_ids), $exclude_ids);
 		}
 		return ['player' => $player, 'suggestions' => []];
 	}
@@ -151,6 +152,7 @@ class PlayerResolver {
 	*/
 	protected function uniqueExact(string $ref): ?Player {
 		$needle = mb_strtolower(ltrim(trim($ref), '@'));
+		$compact = \P1Bot\Repository\PlayerRepository::compactKey($ref);
 		if ($needle === '') {
 			return null;
 		}
@@ -161,11 +163,55 @@ class PlayerResolver {
 				mb_strtolower((string) ($player->ign ?? '')),
 				mb_strtolower((string) ($player->username ?? '')),
 			];
-			if (in_array($needle, $fields, true)) {
+			$exact = in_array($needle, $fields, true);
+			if (!$exact && $compact !== '') {
+				foreach ($fields as $field) {
+					if (\P1Bot\Repository\PlayerRepository::compactKey($field) === $compact) {
+						$exact = true;
+						break;
+					}
+				}
+			}
+			if ($exact) {
 				$hits[$player->id] = $player;
 			}
 		}
 		return count($hits) === 1 ? array_values($hits)[0] : null;
+	}
+
+	/**
+		A single strong partial/compact match (stas66 → rustas66) is treated as resolved.
+		@param list<Player> $suggestions
+		@param list<int> $exclude_ids
+		@return array{player: ?Player, suggestions: list<Player>}
+	*/
+	protected function uniqueOrSuggest(string $ref, array $suggestions, array $exclude_ids): array {
+		$partial = $this->players->searchPartial($ref, 8, $exclude_ids);
+		if (count($partial) === 1 && $this->isStrongUnique($ref, $partial[0])) {
+			return ['player' => $partial[0], 'suggestions' => []];
+		}
+		return ['player' => null, 'suggestions' => $suggestions !== [] ? $suggestions : $partial];
+	}
+
+	/**
+		Unique compact match on username or IGN (stas66 → rustas66, tired angel → just_tired_angel).
+		Display-name prefixes like «Ксюш» → «Ксюша» stay as suggestions.
+	*/
+	protected function isStrongUnique(string $ref, Player $player): bool {
+		$compact = \P1Bot\Repository\PlayerRepository::compactKey($ref);
+		if (mb_strlen($compact) < 4) {
+			return false;
+		}
+		foreach ([$player->username, $player->ign, $player->hasIgn() ? (string) $player->ign : null] as $field) {
+			if (!is_string($field) || $field === '') {
+				continue;
+			}
+			$field_c = \P1Bot\Repository\PlayerRepository::compactKey($field);
+			if ($field_c === $compact || str_contains($field_c, $compact)) {
+				return true;
+			}
+		}
+		return \P1Bot\Repository\PlayerRepository::compactKey($player->display_name) === $compact;
 	}
 
 	protected function filterExcluded(array $players, array $exclude_ids): array {

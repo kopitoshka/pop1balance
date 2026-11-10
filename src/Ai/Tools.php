@@ -8,6 +8,8 @@ namespace P1Bot\Ai;
 	Function tools offered to the model. Admin tools are offered to admins only (PHP re-checks anyway).
 */
 class Tools {
+	public const PLAYER_REF = 'Игрок как в сообщении: имя, игровой ник, @username, часть ника, или «я». Не переспрашивай, что это за ник — передай текст как есть.';
+
 	/**
 		Owner only for now: scales are hidden from users (see AccessPolicy::LEVELS_OWNER_ONLY).
 	*/
@@ -57,7 +59,7 @@ class Tools {
 	protected static function ownerTools(): array {
 		return [
 			self::fn('set_level', 'Поставить игроку уровень (только главный админ).', [
-				'player' => ['type' => 'string', 'description' => '"@username".'],
+				'player' => ['type' => 'string', 'description' => self::PLAYER_REF],
 				'level' => [
 					'type' => 'string',
 					'description' => '1–6 или название: начальный, начальный+, средний, средний+, высокий, высокий+.',
@@ -67,7 +69,7 @@ class Tools {
 				'assign_nick',
 				'Поставить игровой ник любому игроку (только главный админ); если ник занят — забрать.',
 				[
-					'player' => ['type' => 'string', 'description' => '"@username".'],
+					'player' => ['type' => 'string', 'description' => self::PLAYER_REF],
 					'nick' => ['type' => 'string', 'description' => 'Ник в игре.'],
 				],
 				['player', 'nick'],
@@ -93,7 +95,7 @@ class Tools {
 			'type' => 'string',
 			'description' => 'Название команды. Не указывай, если речь о команде, где автор сообщения капитан.',
 		];
-		$player = ['type' => 'string', 'description' => 'Игрок: "@username" или "я" для автора сообщения.'];
+		$player = ['type' => 'string', 'description' => self::PLAYER_REF];
 
 		return [
 			self::fn(
@@ -118,8 +120,8 @@ class Tools {
 			),
 			self::fn(
 				'player_level',
-				'Показать уровень игрока: себя (без player) или @username. Список всех выставленных — list_player_levels (только в личке).',
-				['player' => ['type' => 'string', 'description' => '"@username" или пусто для автора.']],
+				'Показать уровень игрока: себя (без player) или любого названного игрока. Список всех выставленных — list_player_levels (только в личке).',
+				['player' => ['type' => 'string', 'description' => self::PLAYER_REF . ' Пусто — автор.']],
 			),
 			self::fn(
 				'list_player_levels',
@@ -134,20 +136,20 @@ class Tools {
 			),
 			self::fn(
 				'show_nick',
-				'Показать свой игровой ник или ник @username.',
-				['player' => ['type' => 'string', 'description' => '"@username" или пусто для себя.']],
+				'Показать свой игровой ник или ник названного игрока.',
+				['player' => ['type' => 'string', 'description' => self::PLAYER_REF . ' Пусто — автор.']],
 			),
-			self::fn('register_team', 'Записать новую команду. По умолчанию автор — капитан и в составе. Организатор/владелец может указать другого капитана (сам в команду не попадает).', [
+			self::fn('register_team', 'Записать новую команду. По умолчанию автор — капитан и в составе. Организатор/владелец может указать другого капитана (сам в команду не попадает). Вызывай сразу, как только известны название и кто играет; игроков передавай теми словами, что сказал человек, не прося @username.', [
 				'tournament_id' => $tid,
 				'team_name' => ['type' => 'string', 'description' => 'Название команды.'],
 				'players' => [
 					'type' => 'array',
 					'items' => ['type' => 'string'],
-					'description' => 'Остальные игроки: "@username". Автора/капитана можно не указывать.',
+					'description' => 'Остальные игроки — как их назвал человек (имя, игровой ник, @username, часть ника). Автора/капитана можно не указывать. Не переспрашивай ники, передай как есть.',
 				],
 				'captain' => [
 					'type' => 'string',
-					'description' => 'Капитан "@username" — только для организатора/владельца; иначе автор сам капитан.',
+					'description' => 'Капитан — как его назвал человек. Только для организатора/владельца; иначе автор сам капитан.',
 				],
 			], ['team_name']),
 			self::fn(
@@ -164,8 +166,8 @@ class Tools {
 			),
 			self::fn('replace_player', 'Капитан меняет одного игрока на другого, команда сохраняет место в очереди.', [
 				'tournament_id' => $tid,
-				'out_player' => ['type' => 'string', 'description' => 'Кто выходит: "@username".'],
-				'in_player' => ['type' => 'string', 'description' => 'Кто заходит: "@username".'],
+				'out_player' => ['type' => 'string', 'description' => 'Кто выходит: ' . self::PLAYER_REF],
+				'in_player' => ['type' => 'string', 'description' => 'Кто заходит: ' . self::PLAYER_REF],
 				'team_name' => $team,
 			], ['out_player', 'in_player']),
 			self::fn('rename_team', 'Капитан переименовывает команду.', [

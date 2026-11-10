@@ -296,6 +296,79 @@ class RegistrationFillTest extends IntegrationTestCase {
 		self::assertSame('А', RegistrationFillFlow::joinNames(['А']));
 	}
 
+	public function testCompactMatchTiredAngelAndStas66(): void {
+		$angel = $this->named('just_tired_angel', 'Angel');
+		$stas = $this->named('rustas66', 'Stas');
+		$cap = $this->player('sectacap8');
+		$angel_hit = $this->app->player_resolver->tryResolve('tired angel', $cap);
+		self::assertNotNull($angel_hit['player']);
+		self::assertSame($angel->id, $angel_hit['player']->id);
+		$stas_hit = $this->app->player_resolver->tryResolve('stas66', $cap);
+		self::assertNotNull($stas_hit['player']);
+		self::assertSame($stas->id, $stas_hit['player']->id);
+	}
+
+	public function testSafetyNetConvertsExactUsernameAskIntoRegistration(): void {
+		$t = $this->openTournament(3, '3,3,4');
+		$cap = $this->player('sectacap9');
+		$angel = $this->named('just_tired_angel', 'Angel');
+		$stas = $this->named('rustas66', 'Stas');
+		$this->ownerAbsentFromGroups();
+		$this->http->queueOpenAi($this->text(
+			'resp_1',
+			'Для команды «секта» нужны Telegram-ники Ксюши и Стаса в формате @username. «tired angel» и «stas66» — это их ники в игре или Telegram-ники?',
+		));
+		$this->dispatch($this->privateMessage(
+			$cap,
+			'запиши команду «секта» с Ксюшей и Стасом, ники tired angel и stas66',
+		));
+		$plain = $this->sentPlain();
+		self::assertStringNotContainsString('это их ники в игре или Telegram-ники', $plain);
+		$entry = $this->app->teams->findByName($t->id, 'секта');
+		if ($entry !== null) {
+			$ids = array_map(static fn ($m) => $m->player_id, $entry->members);
+			self::assertEqualsCanonicalizing([$cap->id, $angel->id, $stas->id], $ids);
+			return;
+		}
+		self::assertStringContainsString('Не нашла', $plain);
+		$texts = $this->buttonTexts($this->firstInlineKeyboard());
+		self::assertContains(\P1Bot\App\RegistrationFillFlow::BUTTON_TEXT, $texts);
+		self::assertContains('✖️ Отмена', $texts);
+	}
+
+	public function testSafetyNetShowsButtonsWhenNicksAreUnknown(): void {
+		$t = $this->openTournament(3, '3,3,4');
+		$cap = $this->player('sectacap10');
+		$this->ownerAbsentFromGroups();
+		$this->http->queueOpenAi($this->text(
+			'resp_1',
+			'Для команды «секта» нужны Telegram-ники Ксюши и Стаса в формате @username. «tired angel» и «stas66» — это их ники в игре или Telegram-ники?',
+		));
+		$this->dispatch($this->privateMessage(
+			$cap,
+			'запиши команду «секта» с Ксюшей и Стасом',
+		));
+		$plain = $this->sentPlain();
+		self::assertStringNotContainsString('это их ники в игре или Telegram-ники', $plain);
+		self::assertNull($this->app->teams->findByName($t->id, 'секта'));
+		self::assertStringContainsString('Не нашла', $plain);
+		$texts = $this->buttonTexts($this->firstInlineKeyboard());
+		self::assertContains(\P1Bot\App\RegistrationFillFlow::BUTTON_TEXT, $texts);
+		self::assertContains('✖️ Отмена', $texts);
+		self::assertTrue($this->app->reg_fill->hasPending($cap->id, $this->tgIdOf($cap)));
+	}
+
+	/**
+		@return array<string, mixed>
+	*/
+	protected function text(string $id, string $text): array {
+		return ['id' => $id, 'output' => [[
+			'type' => 'message',
+			'role' => 'assistant',
+			'content' => [['type' => 'output_text', 'text' => $text]],
+		]]];
+	}
+
 	/**
 		@param list<string> $players
 	*/

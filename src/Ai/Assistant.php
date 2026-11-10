@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace P1Bot\Ai;
 
 use P1Bot\Domain\MoscowTime;
+use P1Bot\App\TeamRegistrationGuard;
 use P1Bot\Handlers\Context;
 use P1Bot\Repository\ConversationRepository;
 use P1Bot\Support\Clock;
@@ -149,6 +150,17 @@ class Assistant {
 		} else {
 			$text = ($list || $past_list || $levels) && $card === null ? '' : 'Готово!'; // the list / help speaks for itself
 		}
+		$recovered = $say === null && $card === null
+			? $this->recoverUsernameAsk($ctx, $user_text, $text)
+			: null;
+		if ($recovered !== null) {
+			$text = $recovered['text'];
+			$suggest_markup = $recovered['suggest_markup'];
+			$followup = $recovered['followup'];
+			if ($recovered['groups'] !== []) {
+				$groups = $recovered['groups'];
+			}
+		}
 		$new_history = array_slice(array_merge($history, [
 			['role' => 'user', 'content' => $user_text],
 			['role' => 'assistant', 'content' => $text],
@@ -181,6 +193,50 @@ class Assistant {
 				-self::MAX_HISTORY,
 			),
 		];
+	}
+
+	/**
+		If the model asked for @usernames instead of calling register_team, run the
+		registration (and the missing-player buttons) from the user's original text.
+		@return array{text: string, suggest_markup: array<string, mixed>, followup: ?array, groups: array<int, string>}|null
+	*/
+	protected function recoverUsernameAsk(Context $ctx, string $user_text, string $model_text): ?array {
+		if (!TeamRegistrationGuard::isUsernameAsk($model_text) || !TeamRegistrationGuard::isTeamRegistrationIntent($user_text)) {
+			return null;
+		}
+		$parsed = TeamRegistrationGuard::parse($user_text);
+		if ($parsed === null) {
+			return null;
+		}
+		$this->logger->info('intercepted username-ask, dispatching register_team', [
+			'team_name' => $parsed['team_name'],
+			'players' => $parsed['players'],
+		]);
+		$result = $this->dispatcher->dispatch('register_team', [
+			'team_name' => $parsed['team_name'],
+			'players' => $parsed['players'],
+		], $ctx);
+		if (!empty($result['say']) && is_string($result['say'])) {
+			return [
+				'text' => $result['say'],
+				'suggest_markup' => is_array($result['suggest_markup'] ?? null) ? $result['suggest_markup'] : [],
+				'followup' => is_array($result['followup'] ?? null) ? $result['followup'] : null,
+				'groups' => is_array($result['choose_group_ids'] ?? null) ? $result['choose_group_ids'] : [],
+			];
+		}
+		if (!empty($result['ok']) && empty($result['error'])) {
+			$team = trim((string) ($result['team'] ?? $parsed['team_name']));
+			$text = $team !== ''
+				? 'Записала команду «' . $team . '».'
+				: (string) ($result['message'] ?? 'Команда создана.');
+			return [
+				'text' => $text,
+				'suggest_markup' => [],
+				'followup' => null,
+				'groups' => [],
+			];
+		}
+		return null;
 	}
 
 	/**

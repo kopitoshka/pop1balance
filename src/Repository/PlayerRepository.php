@@ -368,6 +368,7 @@ class PlayerRepository {
 			return [];
 		}
 		$q = mb_strtolower(ltrim($query, '@'));
+		$q_compact = self::compactKey($query);
 		$exclude = array_fill_keys($exclude_ids, true);
 		$rows = $this->db->fetchAll(
 			'SELECT * FROM players WHERE tg_user_id IS NOT NULL ORDER BY id DESC LIMIT 3000',
@@ -391,11 +392,12 @@ class PlayerRepository {
 				if ($field === '') {
 					continue;
 				}
-				if (str_starts_with($field, $q)) {
+				$compact = self::compactKey($field);
+				if (str_starts_with($field, $q) || ($q_compact !== '' && str_starts_with($compact, $q_compact))) {
 					$is_prefix = true;
 					break;
 				}
-				if (str_contains($field, $q)) {
+				if (str_contains($field, $q) || ($q_compact !== '' && str_contains($compact, $q_compact))) {
 					$is_contains = true;
 				}
 			}
@@ -483,11 +485,20 @@ class PlayerRepository {
 			if ($candidate === '') {
 				continue;
 			}
-			if ($candidate === $needle) {
+			$needle_c = self::compactKey($needle);
+			$cand_c = self::compactKey($candidate);
+			if ($candidate === $needle || ($needle_c !== '' && $cand_c === $needle_c)) {
 				return 100.0;
 			}
 			similar_text($needle, $candidate, $pct);
 			$best = max($best, (float) $pct);
+			if ($needle_c !== '' && $cand_c !== '') {
+				similar_text($needle_c, $cand_c, $pct_c);
+				$best = max($best, (float) $pct_c);
+				if (str_starts_with($cand_c, $needle_c) || str_contains($cand_c, $needle_c)) {
+					$best = max($best, 80.0);
+				}
+			}
 			$max_len = max(mb_strlen($needle), mb_strlen($candidate));
 			if ($max_len <= 32) {
 				$dist = levenshtein(
@@ -504,6 +515,15 @@ class PlayerRepository {
 			}
 		}
 		return $best;
+	}
+
+	/**
+		Lowercase key without @, spaces, underscores, dots or hyphens:
+		«tired angel» and «just_tired_angel» share the core «tiredangel».
+	*/
+	public static function compactKey(string $value): string {
+		$value = mb_strtolower(ltrim(trim($value), '@'));
+		return (string) preg_replace('/[\s_\-\.]+/u', '', $value);
 	}
 
 	protected static function likeEscape(string $value): string {
