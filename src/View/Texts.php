@@ -4,7 +4,6 @@ declare(strict_types=1);
 
 namespace P1Bot\View;
 
-use P1Bot\Support\RuPlural;
 
 /**
 	Fixed user-facing texts (HTML).
@@ -24,43 +23,40 @@ class Texts {
 	*/
 	public static function groupHelp(string $bot_username): string {
 		unset($bot_username);
-		return "В этом чате я публикую анонсы турниров (они общие для всех групп) и напоминаю о старте.\n"
-			. "Можно спросить про турниры и уровни, а ещё «запиши меня» / «удали меня» — если турнир один или назвал номер.\n\n"
+		return "В этом чате я публикую анонсы турниров (они общие для всех групп) и напоминаю о старте. "
+			. "Записаться — кнопкой под анонсом.\n\n"
 			. "Команды здесь:\n"
 			. "/tournaments — все активные турниры\n"
 			. "/info 2 — состав турнира (номер — из /tournaments)\n"
 			. "/level — свой уровень (или /level @ник — чужой)\n"
-			. "/levels — справка по уровням\n"
+			. "/players — все игроки: уровень и игровой ник\n"
 			. "/help — эта подсказка\n\n"
 			. Messages::GROUP_HELP_HINT;
 	}
 
 	/**
-		/help in private: everything works here.
+		/help in private: commands, then how levels work (the old /levels reference).
 		Tournament numbers (№N) are global — the same in every group.
 	*/
 	public static function help(string $bot_username, bool $is_admin, bool $is_owner = false): string {
-		$text = "Я помогаю записываться на турниры по Population: One. Пиши мне обычным языком, например:\n"
-			. "• <i>какие турниры скоро?</i>\n"
-			. "• <i>запиши команду Wolves на субботу: я, @vasya и @petya</i>\n"
-			. "• <i>хочу участвовать, но без команды</i>\n"
-			. ($is_admin ? "• <i>создай турнир на субботу в 20:00, тройки, уровень средний, средний, средний+</i>\n" : '')
-			. "\n"
+		unset($bot_username);
+		$text = "Я помогаю записываться на турниры по Population: One. Записаться соло, собрать "
+			. "или поправить команду — кнопками на карточке турнира (/tournaments).\n\n"
 			. "Команды:\n"
 			. "/tournaments — активные турниры (кнопка открывает состав)\n"
 			. "/history — прошедшие турниры (последние 10)\n"
 			. "/team — карточка твоей команды на ближайших турнирах\n"
+			. "/players — все игроки: уровень и игровой ник\n"
 			. "/level — свой уровень; /level @ник — чужой; /level all — у кого уже поставлен\n"
 			. "/nick — свой игровой ник; <code>/nick игровой_ник</code> — поставить или сменить\n"
-			. "/adduser — добавить игроков через выбор в Telegram (до 10 за раз)\n"
-			. "/levels — справка по уровням игроков и уровню турнира\n"
+			. "/addplayer — добавить игроков через выбор в Telegram (до 10 за раз)\n"
 			. '/help — эта подсказка';
 		if ($is_admin || $is_owner) {
 			$text .= "\n\nСоздание турниров и управление своим:\n"
 				. "/create_tournament — создать турнир через форму\n"
-				. "/edit <code>номер</code> — редактировать турнир\n"
-				. "/cancel <code>номер</code> — отменить турнир (черновик удаляется навсегда)\n"
-				. 'Править и отменять турнир могут только его автор и главный админ.';
+				. "Черновик правится и удаляется кнопками на его карточке («✏️ Поправить», «🗑 Удалить»), "
+				. "опубликованный турнир — кнопками «✏️ Изменить турнир» и «❌ Отменить турнир» на карточке турнира. "
+				. 'Это могут только автор турнира и главный админ.';
 		}
 		if ($is_owner) {
 			// Owner only for now (see AccessPolicy::LEVELS_OWNER_ONLY); not shown to anyone else.
@@ -68,7 +64,7 @@ class Texts {
 				. "/level @user 4 — поставить уровень игроку (1–6 или название: начальный, начальный+, средний, средний+, высокий, высокий+; «танк» = высокий)\n"
 				. "/nick @user НикВИгре — поставить игровой ник любому (даже если занят)";
 		}
-		return $text;
+		return $text . "\n\n" . self::levels();
 	}
 
 	/**
@@ -77,7 +73,7 @@ class Texts {
 	public static function welcome(string $first_name): string {
 		$name = trim($first_name) !== '' ? ', ' . Html::e(trim($first_name)) : '';
 		return "Привет{$name}! 👋 Я помогаю с турнирами по Population: One. "
-			. "Здесь можно записаться соло, собрать команду, задать вопрос — просто пиши обычным языком.\n"
+			. "Записаться соло или собрать команду можно кнопками на карточке турнира.\n"
 			. 'Подсказка: /help';
 	}
 
@@ -86,60 +82,30 @@ class Texts {
 	*/
 	public static function welcomeTournament(string $first_name): string {
 		$name = trim($first_name) !== '' ? ', ' . Html::e(trim($first_name)) : '';
-		return "Привет{$name}! 👋 Вот этот турнир. Кнопки ниже — или просто напиши, что нужно.";
+		return "Привет{$name}! 👋 Вот этот турнир, кнопки — ниже.";
 	}
 
 	/**
-		/levels: basic reference for everyone; management command examples only for the owner in private.
-		@param bool $with_management owner + private only
+		How levels work: the player scale 1–6, the tournament level, the default level.
+		Part of /help (the old /levels reference); the AI levels_help reply sends the same text.
 	*/
-	public static function levels(bool $with_management = false): string {
-		$text = "📊 <b>Уровни игроков</b>\n"
+	public static function levels(): string {
+		return "📊 <b>Уровни игроков</b>\n"
 			. "1 — начальный (1 балл). Синонимы: базовый, начинающий\n"
 			. "2 — начальный+ (2 балла). Также: базовый+, начинающий+\n"
 			. "3 — средний (3 балла)\n"
 			. "4 — средний+ (4 балла)\n"
 			. "5 — высокий (5 баллов). Синоним: танк\n"
 			. "6 — высокий+ (6 баллов). Также: танк+\n"
-			. "«+» можно писать словом: «средний плюс». Регистр не важен, небольшие опечатки я пойму. "
 			. "Игрок, которому ещё не поставили уровень, считается средним (3).\n\n"
 			. "⚖️ <b>Уровень турнира</b> — это максимальная сумма баллов команды "
 			. "(баллы = уровни игроков 1–6). Команду примут, если сумма не больше этого числа.\n"
-			. "Задают так:\n"
-			. "• одним числом — суммой баллов на команду (от размера команды до размера × 6; в тройках от 3 до 18), "
-			. "например «10» — средний, средний и средний+;\n"
-			. "• уровнями всех игроков через запятую, ровно по числу мест: «средний, средний, высокий» = 3+3+5 = 11 "
-			. "(можно цифрами: 3, 3, 5).\n"
+			. "Его задают в форме турнира:\n"
+			. "• «Суммой» — максимум баллов на команду (от размера команды до размера × 6; в тройках от 3 до 18), "
+			. "например 10 — средний, средний и средний+;\n"
+			. "• «По игрокам» — уровни всех игроков самой сильной допустимой команды: "
+			. "средний, средний, высокий = 3+3+5 = 11.\n"
 			. "Подпись уровня турнира — среднее по команде с округлением: 10 баллов в тройках — «средний».";
-		if ($with_management) {
-			$text .= "\n\nПримеры команд:\n"
-				. "/edit 1 уровень 10\n"
-				. "/edit 1 уровень средний, средний, высокий\n\n"
-				. "Поставить уровень игроку: /level @user 4";
-		}
-		return $text;
-	}
-
-	/**
-		Usage help added when a tournament level was not understood (/edit).
-	*/
-	public static function levelUsage(?int $tournament_number = null, ?int $team_size = null): string {
-		$n = $tournament_number ?? 1;
-		$range = $team_size !== null
-			? sprintf(
-				'от %d до %d для команды из %d %s',
-				$team_size,
-				$team_size * 6,
-				$team_size,
-				RuPlural::choose($team_size, ['игрока', 'игроков', 'игроков']),
-			)
-			: 'от размера команды до размера × 6';
-		$examples = "/edit {$n} уровень 10\n/edit {$n} уровень средний, средний, высокий";
-		return "Уровень турнира можно указать так:\n"
-			. "• одним числом — суммой баллов на команду ({$range});\n"
-			. "• уровнями всех игроков через запятую, ровно по числу игроков (названия или цифры 1–6).\n"
-			. "Например:\n{$examples}\n"
-			. "Все уровни и баллы: /levels";
 	}
 
 	/**

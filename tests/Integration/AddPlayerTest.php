@@ -7,11 +7,11 @@ namespace P1Bot\Tests\Integration;
 use P1Bot\Tests\Support\IntegrationTestCase;
 use P1Bot\View\Messages;
 
-class AddUserTest extends IntegrationTestCase {
+class AddPlayerTest extends IntegrationTestCase {
 
 	public function testAnyPrivateUserGetsPickerKeyboard(): void {
 		$vasya = $this->player('vasya');
-		$this->dispatch($this->privateMessage($vasya, '/adduser'));
+		$this->dispatch($this->privateMessage($vasya, '/addplayer'));
 		$sent = $this->http->sent('sendMessage');
 		$last = end($sent);
 		self::assertStringContainsString('добавлю их в базу', (string) ($last['text'] ?? ''));
@@ -26,23 +26,29 @@ class AddUserTest extends IntegrationTestCase {
 	}
 
 	public function testAdminAlsoGetsPicker(): void {
-		$this->dispatch($this->privateMessage($this->admin, '/adduser'));
+		$this->dispatch($this->privateMessage($this->admin, '/addplayer'));
 		self::assertStringContainsString('добавлю их в базу', $this->http->lastText());
 	}
 
-	public function testPrivateHelpListsAdduserForEveryone(): void {
+	public function testPrivateHelpListsAddplayerForEveryone(): void {
 		$vasya = $this->player('help_user');
 		$this->withoutSharedOwnerGroup($vasya);
 		$this->dispatch($this->privateMessage($vasya, '/help'));
-		self::assertStringContainsString('/adduser', $this->http->lastText());
+		self::assertStringContainsString('/addplayer', $this->http->lastText());
 		self::assertStringNotContainsString('Только для главного админа', $this->http->lastText());
 		$this->http->reset();
 		$this->dispatch($this->privateMessage($this->owner, '/help'));
 		$owner_help = $this->http->lastText();
-		self::assertStringContainsString('/adduser', $owner_help);
+		self::assertStringContainsString('/addplayer', $owner_help);
 		self::assertStringContainsString('Только для главного админа', $owner_help);
-		// Owner block must not list /adduser twice as owner-only.
-		self::assertSame(1, substr_count($owner_help, '/adduser'));
+		// Owner block must not list /addplayer twice as owner-only.
+		self::assertSame(1, substr_count($owner_help, '/addplayer'));
+	}
+
+	public function testOldAdduserIsUnknown(): void {
+		$this->dispatch($this->privateMessage($this->player('old_cmd'), '/adduser'));
+		self::assertSame('Такой команды я не знаю 🤔 Подсказка: /help', $this->http->lastText());
+		self::assertStringNotContainsString('/adduser', \P1Bot\View\Texts::help('pop1_bot', true, true));
 	}
 
 	public function testUsersSharedUpsertsForNonOwner(): void {
@@ -91,8 +97,8 @@ class AddUserTest extends IntegrationTestCase {
 		self::assertTrue($last['reply_markup']['remove_keyboard'] ?? false);
 	}
 
-	public function testGroupAdduserRedirectsToPrivate(): void {
-		$this->dispatch($this->groupMessage($this->player('grp_user'), '/adduser'));
+	public function testGroupAddplayerRedirectsToPrivate(): void {
+		$this->dispatch($this->groupMessage($this->player('grp_user'), '/addplayer'));
 		$text = $this->http->lastText();
 		self::assertTrue(
 			str_contains($text, Messages::GROUP_REDIRECT)

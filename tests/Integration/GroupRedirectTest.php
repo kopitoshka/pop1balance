@@ -47,8 +47,12 @@ class GroupRedirectTest extends IntegrationTestCase {
 		self::assertStringContainsString('@cap</a>', $this->http->lastText());
 		$this->dispatch($this->groupMessage($vasya, '/tournaments'));
 		self::assertStringContainsString('Субботний кубок', $this->http->lastText());
-		$this->dispatch($this->groupMessage($vasya, '/levels'));
-		self::assertStringContainsString('Уровни игроков', $this->http->lastText());
+		$this->http->reset();
+		$this->dispatch($this->groupMessage($vasya, '@pop1_bot какие уровни'));
+		self::assertStringContainsString('📊 <b>Уровни игроков</b>', $this->http->lastText());
+		$this->http->reset();
+		$this->dispatch($this->groupMessage($vasya, '/players'));
+		self::assertStringContainsString('📋 <b>Игроки</b>', $this->http->lastText(), 'same access as /levels: anyone in groups too');
 		$this->dispatch($this->groupMessage($vasya, '/help'));
 		$help = $this->http->lastText();
 		self::assertStringContainsString(Messages::GROUP_HELP_HINT, $help);
@@ -138,10 +142,12 @@ class GroupRedirectTest extends IntegrationTestCase {
 		self::assertStringContainsString('start=g_', (string) $reply['url']);
 		self::assertNull($this->app->tournament_repo->find(2));
 
-		$reply = $this->groupReply($this->admin, '/edit 1 лимит 30');
+		$reply = $this->groupReply($this->admin, '/open 1');
 		self::assertSame(Messages::MANAGE_REDIRECTS[0], $reply['text']);
-		self::assertSame(24, $this->app->tournament_repo->find(1)->max_players);
 		self::assertStringContainsString('start=t_1', (string) $reply['url']);
+		$this->http->reset();
+		$this->dispatch($this->groupMessage($this->admin, '/edit 1 лимит 30'));
+		self::assertSame(24, $this->app->tournament_repo->find(1)->max_players);
 
 		$reply = $this->groupReply($this->player('vasya'), '@pop1_bot создай турнир на субботу');
 		self::assertSame(Messages::MANAGE_REDIRECTS[0], $reply['text']);

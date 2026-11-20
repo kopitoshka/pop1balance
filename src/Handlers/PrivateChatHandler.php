@@ -213,7 +213,8 @@ class PrivateChatHandler {
 				);
 				return;
 			case self::LEVELS:
-				$this->commands->handle($this->context($message, $actor), 'levels', '');
+				// «уровни»: how levels work (the /help reference); /levels itself is gone.
+				$this->api->sendMessage($chat_id, Texts::levels(), $message->message_id);
 				return;
 			case self::TOURNAMENTS:
 				$this->views->list($chat_id, $actor, $is_owner);
@@ -314,7 +315,7 @@ class PrivateChatHandler {
 
 
 	/**
-		User picked contacts via KeyboardButtonRequestUsers (/adduser).
+		User picked contacts via KeyboardButtonRequestUsers (/addplayer).
 	*/
 	protected function onUsersShared(Message $message, Player $actor): void {
 		$chat_id = $message->chat_id;

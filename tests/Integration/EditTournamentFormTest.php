@@ -32,6 +32,11 @@ class EditTournamentFormTest extends IntegrationTestCase {
 		return $q['ctx'];
 	}
 
+	protected function publish(): void {
+		$this->dispatch($this->press($this->owner, 'pub:1', (int) $this->app->tournament_repo->find(1)->card_msg_id));
+		self::assertSame(TournamentStatus::REGISTRATION, $this->app->tournament_repo->find(1)->status);
+	}
+
 	protected function form(array $override = []): array {
 		return $override + [
 			'title' => 'Обновлённый кубок <тест>',
@@ -99,7 +104,7 @@ class EditTournamentFormTest extends IntegrationTestCase {
 	public function testBootstrapPrefillsSumAndLoadsCurrentRatherThanTokenSnapshot(): void {
 		$this->newDraft($this->owner, '23.11 20:00 | Кубок | 3 | 10 | 24');
 		$token = $this->token();
-		$this->dispatch($this->privateMessage($this->owner, '/edit 1 название Новое название'));
+		$this->app->tournaments->edit($this->owner->id, 1, new \P1Bot\Domain\EditTournament('Новое название'));
 		$boot = $this->app->create_form->editBootstrap($this->initDataFor($this->owner), $token);
 		self::assertSame('Новое название', $boot['tournament']['title']);
 		self::assertSame('sum', $boot['tournament']['level_mode']);
@@ -163,14 +168,110 @@ class EditTournamentFormTest extends IntegrationTestCase {
 		self::assertSame('Кубок', $this->app->tournaments->get(1)->title);
 	}
 
-	public function testNoLongerDraftCannotBootstrapOrSubmit(): void {
+	public function testFinishedOrCancelledCannotBootstrapOrSubmit(): void {
 		$this->newDraft($this->owner, '23.11 20:00 | Кубок | 3 | 10 | 24');
 		$token = $this->token();
 		$this->app->tournaments->openRegistration($this->owner->id, 1);
+		$this->app->tournament_repo->update(1, ['status' => TournamentStatus::FINISHED]);
 		$e = $this->errorFrom(fn() => $this->app->create_form->editBootstrap($this->initDataFor($this->owner), $token), WebAppFormError::NOT_DRAFT);
-		self::assertStringContainsString('уже не черновик', $e->getMessage());
+		self::assertSame('Турнир «Кубок» уже завершён, менять его в форме нельзя.', $e->getMessage());
 		$this->errorFrom(fn() => $this->app->create_form->editSubmit($this->initDataFor($this->owner), $token, $this->form()), WebAppFormError::NOT_DRAFT);
 		self::assertSame('Кубок', $this->app->tournaments->get(1)->title);
+	}
+
+	public function testPublishedCardHasEditButtonForAuthorAndOwnerOnly(): void {
+		$author = $this->player('author');
+		$vasya = $this->player('vasya');
+		$this->newDraft($this->owner, '23.11 20:00 | Кубок | 3 | 10 | 24');
+		$this->publish();
+		$this->db->run('UPDATE tournaments SET organizer_id = :id WHERE id = 1', ['id' => $author->id]);
+		$t = $this->app->tournaments->get(1);
+		foreach ([$this->owner, $author] as $manager) {
+			$rows = $this->app->private_views->rows($t, $manager);
+			$texts = array_column(array_merge([], ...$rows), 'text');
+			self::assertContains(CreateTournamentForm::EDIT_PUBLISHED_BUTTON, $texts);
+			self::assertContains('❌ Отменить турнир', $texts);
+			$edit = array_values(array_filter(array_merge([], ...$rows), static fn (array $b): bool => $b['text'] === CreateTournamentForm::EDIT_PUBLISHED_BUTTON))[0];
+			self::assertStringContainsString('mode=edit', $edit['web_app']['url']);
+		}
+		$texts = array_column(array_merge([], ...$this->app->private_views->rows($t, $vasya)), 'text');
+		self::assertNotContains(CreateTournamentForm::EDIT_PUBLISHED_BUTTON, $texts);
+		self::assertNotContains('❌ Отменить турнир', $texts);
+	}
+
+	public function testPublishedEditUpdatesAnnouncementAndSendsFreshCard(): void {
+		$this->newDraft($this->owner, '23.11 20:00 | Кубок | 3 | 10 | 24');
+		$this->publish();
+		$this->db->run("UPDATE tournaments SET reminded_at = '2026-11-09 10:00:00' WHERE id = 1");
+		$token = $this->token();
+		$boot = $this->app->create_form->editBootstrap($this->initDataFor($this->owner), $token);
+		self::assertTrue($boot['published']);
+		self::assertFalse($boot['level_locked']);
+		$this->http->reset();
+		$this->app->create_form->editSubmit($this->initDataFor($this->owner), $token, [
+			'title' => 'Кубок плюс', 'date' => '2026-11-23', 'time' => '20:00', 'team_size' => 3,
+			'level_mode' => 'sum', 'points' => 11, 'max_players' => 30,
+		]);
+		$t = $this->app->tournament_repo->find(1);
+		self::assertSame(['Кубок плюс', 30, 11, TournamentStatus::REGISTRATION], [$t->title, $t->max_players, $t->max_points, $t->status]);
+		self::assertNotNull($t->reminded_at, 'the same start keeps the reminder state');
+		$edits = $this->http->sent('editMessageText');
+		self::assertNotSame([], $edits, 'the announcement is updated in place');
+		self::assertStringContainsString('Кубок плюс', end($edits)['text']);
+		self::assertStringContainsString('Занято 0/30', end($edits)['text']);
+		$texts = array_column($this->http->sent('sendMessage'), 'text');
+		self::assertContains('Обновила турнир «Кубок плюс», анонсы поправила.', $texts);
+		$sent = $this->http->sent('sendMessage');
+		$buttons = array_column(array_merge([], ...(end($sent)['reply_markup']['inline_keyboard'] ?? [])), 'text');
+		self::assertContains(CreateTournamentForm::EDIT_PUBLISHED_BUTTON, $buttons, 'fresh tournament card');
+
+		$this->app->create_form->editSubmit($this->initDataFor($this->owner), $this->token(), [
+			'title' => 'Кубок плюс', 'date' => '2026-11-24', 'time' => '21:00', 'team_size' => 3,
+			'level_mode' => 'sum', 'points' => 11, 'max_players' => 30,
+		]);
+		$t = $this->app->tournament_repo->find(1);
+		self::assertSame('2026-11-24 18:00:00', DateFormat::toDb($t->starts_at));
+		self::assertNull($t->reminded_at, 'a new start time resets reminders');
+	}
+
+	public function testRegistrationsLockTeamSizeAndLevel(): void {
+		$this->newDraft($this->owner, '23.11 20:00 | Кубок | 3 | 10 | 24');
+		$this->publish();
+		$this->app->teams->joinSolo(1, $this->player('vasya')->id);
+		$token = $this->token();
+		$boot = $this->app->create_form->editBootstrap($this->initDataFor($this->owner), $token);
+		self::assertTrue($boot['level_locked']);
+		self::assertSame(CreateTournamentForm::LEVEL_LOCKED_HINT, $boot['level_locked_text']);
+		$e = $this->errorFrom(fn() => $this->app->create_form->editSubmit($this->initDataFor($this->owner), $token, [
+			'title' => 'Кубок', 'date' => '2026-11-23', 'time' => '20:00', 'team_size' => 2,
+			'level_mode' => 'sum', 'points' => 7, 'max_players' => 40,
+		]), WebAppFormError::INVALID);
+		self::assertStringContainsString('Уровень турнира и размер команды уже не поменять', $e->getMessage());
+		self::assertSame(24, $this->app->tournament_repo->find(1)->max_players, 'a tampered form rolls back the whole save');
+		$this->app->create_form->editSubmit($this->initDataFor($this->owner), $token, [
+			'title' => 'Кубок', 'date' => '2026-11-23', 'time' => '20:00', 'team_size' => 3,
+			'level_mode' => 'sum', 'points' => 10, 'max_players' => 40,
+		]);
+		$t = $this->app->tournament_repo->find(1);
+		self::assertSame([3, 10, 40], [$t->team_size, $t->max_points, $t->max_players], 'size and level are kept, the limit changes');
+	}
+
+	public function testDraftEditShowsNewCardAndOldCardIsOutdated(): void {
+		$this->newDraft($this->owner, '23.11 20:00 | Кубок | 3 | 3,3,4');
+		$old_card = $this->app->tournament_repo->find(1)->card_msg_id;
+		$this->app->create_form->editSubmit($this->initDataFor($this->owner), $this->token(), [
+			'title' => 'Кубок', 'date' => '2026-11-23', 'time' => '20:00', 'team_size' => 3,
+			'level_mode' => 'players', 'levels' => [3, 3, 5], 'max_players' => 24,
+		]);
+		$t = $this->app->tournament_repo->find(1);
+		self::assertSame(11, $t->max_points);
+		self::assertNotSame($old_card, $t->card_msg_id);
+		self::assertStringContainsString('Публикуем или что-то поправить?', $this->http->lastText());
+		$this->dispatch($this->privateMessage($this->owner, 'да', ['reply_to_message' => [
+			'message_id' => $old_card,
+			'from' => ['id' => self::BOT_ID, 'is_bot' => true, 'first_name' => 'Bot'],
+		]]));
+		self::assertSame(TournamentStatus::DRAFT, $this->app->tournament_repo->find(1)->status, 'old card is not a confirmation');
 	}
 
 	public function testDeletedDraftAndForeignUserAndWrongModeFailSafely(): void {
@@ -193,7 +294,8 @@ class EditTournamentFormTest extends IntegrationTestCase {
 		self::assertSame('Кубок', $this->app->tournaments->get(1)->title);
 		$this->clock->advance('+7 hours');
 		$e = $this->errorFrom(fn() => $this->app->create_form->editBootstrap($this->initDataFor($this->owner), $token), WebAppFormError::EXPIRED);
-		self::assertStringContainsString('/open', $e->getMessage());
+		self::assertStringContainsString('«✏️ Изменить турнир»', $e->getMessage());
+		self::assertStringNotContainsString('/edit', $e->getMessage());
 	}
 
 	public function testOldFixCallbackOffersFormRatherThanAskingForText(): void {
@@ -203,5 +305,24 @@ class EditTournamentFormTest extends IntegrationTestCase {
 		$messages = $this->http->sent('sendMessage');
 		$button = end($messages)['reply_markup']['inline_keyboard'][0][0];
 		self::assertStringEndsWith('&mode=edit', $button['web_app']['url']);
+	}
+
+	public function testRunningTournamentKeepsPastStartAndCanBeEdited(): void {
+		$this->newDraft($this->owner, '23.11 20:00 | Кубок | 3 | 10 | 24');
+		$this->publish();
+		$this->app->tournament_repo->update(1, ['status' => TournamentStatus::RUNNING]);
+		$this->clock->advance('+15 days');
+		$texts = array_column(array_merge([], ...$this->app->private_views->rows($this->app->tournaments->get(1), $this->owner)), 'text');
+		self::assertContains(CreateTournamentForm::EDIT_PUBLISHED_BUTTON, $texts);
+		$this->app->create_form->editSubmit($this->initDataFor($this->owner), $this->token(), [
+			'title' => 'Кубок идёт', 'date' => '2026-11-23', 'time' => '20:00', 'team_size' => 3,
+			'level_mode' => 'sum', 'points' => 10, 'max_players' => 24,
+		]);
+		self::assertSame('Кубок идёт', $this->app->tournament_repo->find(1)->title);
+		$e = $this->errorFrom(fn() => $this->app->create_form->editSubmit($this->initDataFor($this->owner), $this->token(), [
+			'title' => 'Кубок идёт', 'date' => '2026-11-22', 'time' => '20:00', 'team_size' => 3,
+			'level_mode' => 'sum', 'points' => 10, 'max_players' => 24,
+		]), WebAppFormError::INVALID);
+		self::assertSame('start', $e->field, 'a new time must be in the future');
 	}
 }

@@ -43,18 +43,18 @@ try {
 		['command' => 'tournaments', 'description' => 'Активные турниры'],
 		['command' => 'create_tournament', 'description' => 'Создать турнир (форма в личке)'],
 		['command' => 'level', 'description' => 'Свой или чужой уровень'],
-		['command' => 'levels', 'description' => 'Справка по уровням'],
-		['command' => 'help', 'description' => 'Подсказка по командам'],
+		['command' => 'players', 'description' => 'Все игроки: уровень и ник'],
+		['command' => 'help', 'description' => 'Команды и как устроены уровни'],
 	];
-	// Private: no /start (Telegram has Start); no /history|/info|/adduser in menu.
+	// Private: no /start (Telegram has Start); no /history|/info|/addplayer in menu.
 	$private = [
 		['command' => 'tournaments', 'description' => 'Активные турниры'],
 		['command' => 'create_tournament', 'description' => 'Создать турнир через форму'],
 		['command' => 'team', 'description' => 'Карточка твоей команды'],
 		['command' => 'level', 'description' => 'Свой или чужой уровень'],
 		['command' => 'nick', 'description' => 'Свой игровой ник'],
-		['command' => 'levels', 'description' => 'Справка по уровням'],
-		['command' => 'help', 'description' => 'Подсказка по командам'],
+		['command' => 'players', 'description' => 'Все игроки: уровень и ник'],
+		['command' => 'help', 'description' => 'Команды и как устроены уровни'],
 	];
 	$api->setMyCommands($common);
 	$api->setMyCommands($common, ['type' => 'all_group_chats']);
@@ -64,7 +64,7 @@ try {
 		$api->setMyCommands($private, ['type' => 'chat', 'chat_id' => $owner_tg_id]);
 		fwrite(STDOUT, "Owner private commands refreshed (chat {$owner_tg_id})\n");
 	}
-	fwrite(STDOUT, "Bot commands updated (menus without /history|/info|/adduser)\n");
+	fwrite(STDOUT, "Bot commands updated (menus without /history|/info|/addplayer)\n");
 } catch (Throwable $e) {
 	fwrite(STDERR, 'Error: ' . $e->getMessage() . "\n");
 	exit(1);

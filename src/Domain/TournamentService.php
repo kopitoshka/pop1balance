@@ -28,7 +28,7 @@ class TournamentService {
 
 	public const LEVEL_LOCKED = 'Уровень турнира и размер команды уже не поменять: на турнир есть заявки, '
 		. 'и их проверяли по текущим правилам. Название, время и лимит участников менять можно. '
-		. 'Если нужен другой уровень — отмени этот турнир (/cancel с его номером) и создай новый (/create_tournament).';
+		. 'Если нужен другой уровень — отмени этот турнир кнопкой «❌ Отменить турнир» на его карточке и создай новый (/create_tournament).';
 
 	public function __construct(
 		protected TournamentRepository $tournaments,
@@ -444,7 +444,10 @@ class TournamentService {
 		}
 	}
 
-	protected function hasEntries(int $tournament_id): bool {
+	/**
+		Teams or solo players registered: team size and level are locked (LEVEL_LOCKED).
+	*/
+	public function hasEntries(int $tournament_id): bool {
 		return $this->teams->listByTournament($tournament_id) !== [] || $this->solos->listByTournament($tournament_id) !== [];
 	}
 

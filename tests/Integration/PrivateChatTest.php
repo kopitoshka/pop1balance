@@ -169,23 +169,25 @@ class PrivateChatTest extends IntegrationTestCase {
 		$vasya = $this->player('vasya');
 		$this->withoutSharedOwnerGroup($vasya);
 		$reply = $this->say($vasya, '/help');
-		self::assertStringContainsString('Пиши мне обычным языком', $reply);
+		self::assertStringNotContainsString('обычным языком', $reply);
+		self::assertStringContainsString('📊 <b>Уровни игроков</b>', $reply, 'levels reference lives in /help');
 		self::assertStringNotContainsString('Создание турниров', $reply);
 		self::assertStringNotContainsString('/level @user 4', $reply);
 		self::assertStringNotContainsString('/group', $reply);
 		$this->everyoneIsGroupMember();
 		$admin_help = $this->say($this->admin, '/help');
 		self::assertStringContainsString('Создание турниров', $admin_help);
-		self::assertStringContainsString('только его автор и главный админ', $admin_help);
+		self::assertStringContainsString('только автор турнира и главный админ', $admin_help);
 		self::assertStringNotContainsString('Только для главного админа', $admin_help);
 		$owner_help = $this->say($this->owner, '/help');
 		self::assertStringContainsString('Только для главного админа', $owner_help);
 		self::assertStringContainsString('/level @user 4', $owner_help);
-		self::assertStringContainsString('Уровни игроков', $this->say($vasya, '/levels'));
+		self::assertStringContainsString('Такой команды я не знаю', $this->say($vasya, '/levels'));
+		self::assertStringContainsString('📋 <b>Игроки</b>', $this->say($vasya, '/players'));
 	}
 
 	/**
-		Plain «help» (and synonyms) must return full /help, not /levels — and never go through the AI.
+		Plain «help» (and synonyms) must return full /help (with the levels reference) — and never go through the AI.
 	*/
 	public function testPlainHelpTextReturnsFullHelpNotLevels(): void {
 		$vasya = $this->player('vasya');
@@ -195,7 +197,7 @@ class PrivateChatTest extends IntegrationTestCase {
 			$this->http->reset();
 			$reply = $this->say($vasya, $phrase);
 			self::assertSame($slash, $reply, 'phrase: ' . $phrase);
-			self::assertStringNotContainsString('Уровни игроков', $reply, 'phrase: ' . $phrase);
+			self::assertStringContainsString('/players', $reply, 'phrase: ' . $phrase);
 			self::assertSame([], array_filter($this->http->requests, static function (array $r): bool {
 				return str_contains($r['url'], '/responses') || str_contains($r['url'], 'api.openai.com');
 			}), 'AI must not run for: ' . $phrase);
@@ -268,15 +270,16 @@ class PrivateChatTest extends IntegrationTestCase {
 		self::assertSame('closed', $this->app->tournament_repo->find(1)->status);
 
 		$vasya = $this->player('vasya');
-		self::assertStringContainsString('автор или главный админ', $this->say($vasya, '/cancel 1'));
-		self::assertSame('closed', $this->app->tournament_repo->find(1)->status);
+		self::assertStringContainsString('Такой команды я не знаю', $this->say($vasya, '/cancel 1'));
+		$this->dispatch($this->press($vasya, 'tcancely:1'));
+		self::assertSame('closed', $this->app->tournament_repo->find(1)->status, 'the button checks rights too');
 	}
 
 	public function testOwnerCommandsWorkInPrivate(): void {
 		$vasya = $this->player('vasya');
 		self::assertSame('Записала: @vasya — высокий (5).', $this->say($this->owner, '/level @vasya 5'));
 		self::assertSame(5, $this->app->balances->levelOf($this->app->balances->findDefault()->id, $vasya->id));
-		self::assertStringContainsString('@vasya', $this->say($this->owner, '/levels'));
+		self::assertStringContainsString('@vasya', $this->say($this->owner, '/players'));
 		self::assertStringContainsString('высокий', $this->http->lastText());
 		self::assertStringContainsString('только главный админ', $this->say($this->admin, '/level @vasya 2'));
 	}

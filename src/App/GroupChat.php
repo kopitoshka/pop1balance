@@ -78,7 +78,7 @@ class GroupChat {
 		$message = $ctx->message;
 		if ($command !== null) {
 			$name = mb_strtolower($command['name']);
-			if (in_array($name, ['help', 'start', 'tournaments', 'info', 'level', 'levels', 'create_tournament'], true)) {
+			if (in_array($name, ['help', 'start', 'tournaments', 'info', 'level', 'players', 'create_tournament'], true)) {
 				if ($name === 'level' && preg_match('/^all\b/ui', $command['args'])) {
 					$this->redirectManage($message, 'level');
 					return;
@@ -86,7 +86,7 @@ class GroupChat {
 				$this->commands->handle($ctx, $name, $command['args']);
 				return;
 			}
-			// /history /nick /adduser /team /edit /open /cancel → private redirect
+			// /history /nick /addplayer /team /open → private redirect
 			$this->redirectManage($message, $command['name']);
 			return;
 		}
@@ -117,7 +117,7 @@ class GroupChat {
 			return;
 		}
 		if ($this->isLevelsHelpAsk($t)) {
-			$this->commands->handle($ctx, 'levels', '');
+			$this->api->sendMessage($ctx->chatId(), Texts::levels(), $ctx->message->message_id);
 			return;
 		}
 		if ($this->isPlayerLevelAsk($t)) {

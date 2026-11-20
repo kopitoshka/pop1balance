@@ -54,8 +54,8 @@ class ScaleHiddenTest extends IntegrationTestCase {
 		$help = $this->http->lastText();
 		self::assertStringContainsString('/create_tournament', $help);
 		self::assertStringNotContainsString('/new', $help);
-		self::assertStringContainsString('/edit <code>номер</code>', $help);
-		self::assertStringContainsString('/cancel <code>номер</code>', $help);
+		self::assertStringNotContainsString('/edit', $help);
+		self::assertStringNotContainsString('/cancel', $help);
 		self::assertStringNotContainsString('/close', $help);
 		self::assertStringNotContainsString('/start —', $help);
 		foreach (['шкал', 'баланс', '/balance', '/level @user 4', 'главного админа'] as $hidden) {
@@ -78,7 +78,7 @@ class ScaleHiddenTest extends IntegrationTestCase {
 		$this->http->reset();
 		$this->dispatch($this->privateMessage($vasya, '/level'));
 		self::assertStringContainsString('Твой уровень: высокий (5)', $this->http->lastText());
-		self::assertStringContainsString('Все уровни — /levels', $this->http->lastText());
+		self::assertStringContainsString('Как устроены уровни — /help', $this->http->lastText());
 		self::assertStringNotContainsString('Поставить:', $this->http->lastText());
 		$this->dispatch($this->privateMessage($this->admin, '/level @vasya'));
 		self::assertStringContainsString('@vasya — высокий (5)', $this->http->lastText());
@@ -106,7 +106,7 @@ class ScaleHiddenTest extends IntegrationTestCase {
 		$default_id = $this->app->balances->findDefault()->id;
 
 		$this->dispatch($this->privateMessage($this->owner, '/edit 1 баланс ' . $other->id));
-		self::assertStringContainsString('Не знаю поле', $this->http->lastText());
+		self::assertStringContainsString('Такой команды я не знаю', $this->http->lastText());
 		self::assertSame($default_id, $this->app->tournament_repo->find(1)->balance_id);
 
 		$t = $this->app->tournaments->create(new CreateTournament(
@@ -148,16 +148,43 @@ class ScaleHiddenTest extends IntegrationTestCase {
 		self::assertStringNotContainsStringIgnoringCase('баланс', $prompt);
 	}
 
-	public function testOwnerLevelsListsPlayersThenHelp(): void {
+	public function testPlayersListsEveryoneWithLevelAndNick(): void {
 		$vasya = $this->player('vasya');
 		$this->rate($vasya, 5);
-		$this->dispatch($this->privateMessage($this->owner, '/levels'));
-		$text = $this->http->lastText();
-		// may be split — check all messages
-		$all = implode("\n", array_column($this->http->sent('sendMessage'), 'text'));
-		self::assertStringContainsString('Уровни игроков', $all);
-		self::assertStringContainsString('высокий', $all);
-		self::assertStringContainsString('@vasya', $all);
-		self::assertStringContainsString('Уровень турнира', $all);
+		$this->app->nicks->setOwn($vasya->id, 'Vasya Pro');
+		$petya = $this->player('petya');
+		$this->app->players->ensureByTelegram(777555, null, 'Без <ника>', $this->clock->now());
+		foreach ([$this->owner, $petya] as $viewer) {
+			$this->http->reset();
+			$this->dispatch($this->privateMessage($viewer, '/players'));
+			$text = $this->http->lastText();
+			self::assertStringStartsWith('📋 <b>Игроки</b> — ', $text);
+			self::assertStringContainsString("<b>высокий (5)</b> — 1\n• <b>Vasya Pro</b> · @vasya", $text);
+			self::assertStringContainsString('<b>Уровень не ставили — считаю средний (3)</b>', $text);
+			self::assertStringContainsString('• Petya · @petya · <i>без ника</i>', $text);
+			self::assertStringContainsString('• Без &lt;ника&gt; · <i>без ника</i>', $text);
+			self::assertLessThan(strpos($text, 'Petya'), strpos($text, 'Vasya Pro'), 'rated levels first');
+			self::assertStringContainsString('Как устроены уровни — /help', $text);
+			self::assertStringNotContainsString('📊 <b>Уровни игроков</b>', $text, 'no level help in /players');
+			self::assertSame(
+				$viewer->id === $this->owner->id,
+				str_contains($text, 'Поставить уровень: /level @ник 4'),
+				'only the owner sees how to set levels',
+			);
+		}
+	}
+
+	public function testLongPlayersListIsSplit(): void {
+		for ($i = 0; $i < 150; $i++) {
+			$this->player(sprintf('player_with_a_long_username_%03d', $i));
+		}
+		$this->http->reset();
+		$this->dispatch($this->privateMessage($this->owner, '/players'));
+		$sent = array_column($this->http->sent('sendMessage'), 'text');
+		self::assertGreaterThan(1, count($sent));
+		foreach ($sent as $text) {
+			self::assertLessThanOrEqual(4096, mb_strlen($text));
+		}
+		self::assertStringContainsString('player_with_a_long_username_149', implode("\n", $sent));
 	}
 }

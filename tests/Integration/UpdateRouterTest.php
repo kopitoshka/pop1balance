@@ -43,7 +43,7 @@ class UpdateRouterTest extends IntegrationTestCase {
 		$this->dispatch($this->privateMessage($vasya, '/help'));
 		self::assertCount(1, $this->http->sent('sendMessage'));
 		self::assertSame($this->tgIdOf($vasya), $this->http->sent('sendMessage')[0]['chat_id']);
-		self::assertStringContainsString('Пиши мне обычным языком', $this->http->lastText());
+		self::assertStringContainsString('/players — все игроки', $this->http->lastText());
 		self::assertSame(
 			[self::CHAT_ID],
 			array_keys($this->app->chats->listActiveGroups()),

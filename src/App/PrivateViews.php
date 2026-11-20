@@ -107,6 +107,12 @@ class PrivateViews {
 			}
 		}
 		if ($can_manage) {
+			if ($t->status !== TournamentStatus::DRAFT && in_array($t->status, CreateTournamentForm::EDITABLE, true)) {
+				$edit = $this->create_form?->editButton($t, (int) $player->tg_user_id, $player->id);
+				if ($edit !== null) {
+					$rows[] = [$edit];
+				}
+			}
 			$rows[] = [['text' => '❌ Отменить турнир', 'callback_data' => 'tcancel:' . $t->id]];
 		}
 		return $rows;

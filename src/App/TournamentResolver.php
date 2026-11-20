@@ -14,7 +14,7 @@ use P1Bot\Repository\TournamentRepository;
 /**
 	Global tournament numbers and lookup.
 
-	The number users see and type (№1, №2, /edit 1, /info 1, /history) is the tournament's
+	The number users see and type (№1, №2, /info 1, /open 1, /history) is the tournament's
 	database id — the same in every group, including finished and cancelled.
 */
 class TournamentResolver {

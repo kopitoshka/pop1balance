@@ -112,6 +112,7 @@ class Bootstrap {
 	public WebAppPicker $webapp_picker;
 	public CreateTournamentForm $create_form;
 	public TeamForm $team_form;
+	public PrivateViews $private_views;
 
 	/**
 		@var array<string, mixed>
@@ -417,7 +418,9 @@ class Bootstrap {
 			$this->access,
 			$this->team_cards,
 		);
+		$this->private_views = $views;
 		$views->setCreateForm($this->create_form);
+		$this->create_form->setViews($views);
 		$views->setTeamForm($this->team_form);
 		$this->team_form->setViews($views);
 		$this->group_chat = new GroupChat(

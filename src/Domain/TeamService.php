@@ -28,6 +28,10 @@ use P1Bot\Support\RuPlural;
 	reaches team_size; dropping below team_size returns it to 'forming' and clears registered_at.
 */
 class TeamService {
+	public const EMPTY_ROSTER = 'В команде должен быть хотя бы один игрок.';
+	public const SELF_REMOVAL = 'Себя из состава не убрать. Чтобы выйти из команды, передай капитана '
+		. 'и нажми «❌ Отменить регистрацию».';
+
 	public const MAX_NAME_LENGTH = 64;
 
 	public function __construct(
@@ -193,8 +197,11 @@ class TeamService {
 			$actor_id, $tournament_id, $team_id, $name, $player_ids, $captain_id, $letter_touched, $letter,
 		): TeamEntry {
 			$this->lockTournament($tournament_id);
+			$ids = array_values(array_unique($player_ids));
+			if ($ids === []) {
+				throw new ValidationError(self::EMPTY_ROSTER);
+			}
 			if ($team_id === null) {
-				$ids = array_values(array_unique($player_ids));
 				if ($captain_id === $actor_id && in_array($actor_id, $ids, true)) {
 					$entry = $this->createTeam($tournament_id, $actor_id, $name, $ids);
 				} else {
@@ -204,7 +211,7 @@ class TeamService {
 						throw new PermissionDenied('Капитан новой команды — тот, кто открыл форму.');
 					}
 					if (!in_array($captain_id, $ids, true)) {
-						throw new ValidationError('Капитан должен быть в составе.');
+						$captain_id = $ids[0]; // default: the first player of the roster
 					}
 					$entry = $this->createTeamAsOrganizer(
 						$actor_id,
@@ -225,9 +232,11 @@ class TeamService {
 			if ($team->tournament_id !== $tournament_id) {
 				throw new PermissionDenied('Эта команда с другого турнира.');
 			}
-			$ids = array_values(array_unique($player_ids));
-			if ($ids === [] || !in_array($captain_id, $ids, true)) {
-				throw new ValidationError('Капитан должен быть в составе. Сначала выбери капитана.');
+			if (!in_array($captain_id, $ids, true)) {
+				if (!$this->access->canManageTournament($t, $actor_id)) {
+					throw new ValidationError('Капитан должен быть в составе. Сначала выбери капитана.');
+				}
+				$captain_id = $ids[0]; // the organizer removed the captain: the first player takes over
 			}
 			if (count($ids) > $t->team_size) {
 				throw new ValidationError(sprintf(
@@ -239,6 +248,13 @@ class TeamService {
 			}
 			$members = $this->teams->members($team->id);
 			$old_ids = array_map(static fn (TeamMember $m): int => $m->player_id, $members);
+			if (
+				in_array($actor_id, $old_ids, true) && !in_array($actor_id, $ids, true)
+				&& !$this->access->canManageTournament($t, $actor_id)
+			) {
+				// Regular players leave through «❌ Отменить регистрацию», not by editing themselves out.
+				throw new ValidationError(self::SELF_REMOVAL);
+			}
 			$add = array_diff($ids, $old_ids);
 			if ($add !== []) {
 				$this->openTournament($tournament_id, $actor_id);

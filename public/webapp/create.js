@@ -49,6 +49,8 @@
 		month_prev: $('month-prev'),
 		month_next: $('month-next'),
 		close_hint: $('close-hint'),
+		lock_hint: $('lock-hint'),
+		level_lock: $('level-lock'),
 		team_size: $('team-size'),
 		help: $('help'),
 		help_toggle: $('help-toggle'),
@@ -247,7 +249,7 @@
 			var start = parseMsk(el.date.value, el.time.value);
 			if (start === null) {
 				errors.start = 'Такой даты нет';
-			} else if (start <= mskNow()) {
+			} else if (start <= mskNow() && !keepsPublishedStart()) {
 				errors.start = 'Это время уже прошло. Выбери будущее время по МСК';
 			}
 		}
@@ -508,6 +510,12 @@
 		});
 	}
 
+	// A published tournament may keep its start even after it passed; only a new time must be future.
+	function keepsPublishedStart() {
+		var t = boot && boot.tournament;
+		return !!(boot && boot.published && t && el.date.value === t.date && el.time.value === t.time);
+	}
+
 	function start(data) {
 		boot = data;
 		clock_offset = Date.parse(data.now_msk.replace(' ', 'T') + 'Z') - Date.now();
@@ -547,6 +555,14 @@
 		if (form_mode === 'edit' && t) {
 			setMode(t.level_mode);
 		}
+		if (data.published) {
+			el.heading.textContent = 'Изменить турнир';
+			document.title = 'Изменить турнир';
+		}
+		// Registrations exist: team size and level stay as they are (TournamentService::edit rule).
+		el.level_lock.disabled = !!data.level_locked;
+		el.lock_hint.hidden = !data.level_locked;
+		el.lock_hint.textContent = data.level_locked_text || '';
 		el.loading.hidden = true;
 		el.fields.disabled = false;
 		render();
@@ -657,7 +673,7 @@
 	el.submit.textContent = SUBMIT_TEXT;
 	if (!tg || !tg.initData) {
 		lockForm(form_mode === 'edit'
-			? 'Открой форму кнопкой «✏️ Поправить» на карточке черновика в личке с ботом.'
+			? 'Открой форму кнопкой «✏️ Поправить» или «✏️ Изменить турнир» на карточке в личке с ботом.'
 			: 'Открой форму из лички с ботом в Telegram: /create_tournament.');
 		return;
 	}

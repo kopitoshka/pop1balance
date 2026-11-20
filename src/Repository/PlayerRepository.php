@@ -444,6 +444,17 @@ class PlayerRepository {
 		return $out;
 	}
 
+	/**
+		Every player with a Telegram id (/players).
+		@return list<Player>
+	*/
+	public function listAllKnown(): array {
+		return array_map(
+			[Player::class, 'fromRow'],
+			$this->db->fetchAll('SELECT * FROM players WHERE tg_user_id IS NOT NULL ORDER BY id'),
+		);
+	}
+
 	public function fuzzySuggest(string $needle, int $limit = 5): array {
 
 		$needle = mb_strtolower(ltrim(trim($needle), '@'));

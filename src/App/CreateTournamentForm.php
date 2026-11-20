@@ -60,20 +60,24 @@ class CreateTournamentForm {
 	public const CANCEL_BUTTON = '✖️ Отмена';
 	public const CANCEL_DATA = 'tcreatex:0';
 	public const EDIT_BUTTON = '✏️ Поправить';
+	public const EDIT_PUBLISHED_BUTTON = '✏️ Изменить турнир';
+	/** Statuses the form edits: the draft and published tournaments (TournamentService::edit). */
+	public const EDITABLE = [TournamentStatus::DRAFT, TournamentStatus::REGISTRATION, TournamentStatus::CLOSED, TournamentStatus::RUNNING];
 
 	public const OFFER_TEXT = 'Открой форму и заполни поля. После создания пришлю карточку черновика: '
 		. 'проверишь и опубликуешь.';
 	public const GROUP_TEXT = 'Создать турнир можно в личке, там откроется форма.';
 	public const CANCELLED_TEXT = 'Хорошо, не создаём. Если передумаешь — /create_tournament.';
-	public const UNAVAILABLE_TEXT = 'Форма создания сейчас недоступна. Напиши мне, какой турнир нужен, '
-		. 'например «создай турнир на субботу в 20:00, тройки, уровень 10», — я соберу черновик.';
+	public const UNAVAILABLE_TEXT = 'Форма создания сейчас недоступна, попробуй чуть позже.';
 	public const EXPIRED_TEXT = 'Форма устарела. Закрой её и открой заново: /create_tournament или кнопка '
 		. '«➕ Создать турнир» под списком турниров.';
-	public const EDIT_EXPIRED_TEXT = 'Форма устарела. Закрой её и покажи карточку черновика заново: '
-		. '/open и номер турнира. На свежей карточке будет кнопка «✏️ Поправить».';
+	public const EDIT_EXPIRED_TEXT = 'Форма устарела. Закрой её и открой заново кнопкой на свежей карточке: '
+		. '«✏️ Поправить» у черновика или «✏️ Изменить турнир» у турнира в /tournaments.';
 	public const EDIT_OFFER_TEXT = 'Открой форму и поправь черновик. Потом пришлю обновлённую карточку.';
-	public const NOT_DRAFT_TEXT = 'Турнир «%s» уже не черновик (%s). В форме правятся только черновики, '
-		. 'остальное — командой /edit %d.';
+	public const NOT_DRAFT_TEXT = 'Турнир «%s» уже %s, менять его в форме нельзя.';
+	public const LEVEL_LOCKED_HINT = 'Размер команды и уровень уже не поменять: на турнир есть заявки, '
+		. 'их проверяли по этим правилам.';
+	public const UPDATED_TEXT = 'Обновила турнир «%s», анонсы поправила.';
 
 	public function __construct(
 		protected WebAppContextRepository $contexts,
@@ -91,6 +95,12 @@ class CreateTournamentForm {
 		protected string $bot_username,
 		protected ?DialogLog $dialogs = null,
 	) {
+	}
+
+	protected ?PrivateViews $views = null;
+
+	public function setViews(?PrivateViews $views): void {
+		$this->views = $views;
 	}
 
 	public function isAvailable(): bool {
@@ -197,12 +207,13 @@ class CreateTournamentForm {
 
 		@return array<string, mixed>|null
 	*/
-	public function editButton(Tournament $t, int $chat_id, int $actor_id): ?array {
+	public function editButton(Tournament $t, int $chat_id, int $actor_id, ?string $text = null): ?array {
 		if (!$this->isAvailable()) {
 			return null;
 		}
+		$text = $text ?? ($t->status === TournamentStatus::DRAFT ? self::EDIT_BUTTON : self::EDIT_PUBLISHED_BUTTON);
 		if ($chat_id < 0) {
-			return ['text' => self::EDIT_BUTTON, 'url' => DeepLink::tournament($this->bot_username, $t->id)];
+			return ['text' => $text, 'url' => DeepLink::tournament($this->bot_username, $t->id)];
 		}
 		$actor = $this->players->find($actor_id);
 		if ($actor === null || $actor->tg_user_id === null) {
@@ -210,7 +221,7 @@ class CreateTournamentForm {
 		}
 		$token = $this->issue($actor, $chat_id, self::ACTION_EDIT, ['tournament_id' => $t->id]);
 		$url = WebAppUrl::editForm($this->webhook_url, $token);
-		return $url === null ? null : ['text' => self::EDIT_BUTTON, 'web_app' => ['url' => $url]];
+		return $url === null ? null : ['text' => $text, 'web_app' => ['url' => $url]];
 	}
 
 	/**
@@ -249,6 +260,10 @@ class CreateTournamentForm {
 		$out['action'] = self::ACTION_EDIT;
 		$out['mode'] = self::MODE_EDIT;
 		$out['tournament'] = $this->values($t);
+		$out['published'] = $t->status !== TournamentStatus::DRAFT;
+		// Teams or solo players are in: team size and level stay as they were checked.
+		$out['level_locked'] = $out['published'] && $this->tournaments->hasEntries($t->id);
+		$out['level_locked_text'] = $out['level_locked'] ? self::LEVEL_LOCKED_HINT : null;
 		return $out;
 	}
 
@@ -359,27 +374,30 @@ class CreateTournamentForm {
 
 	/**
 		Edit mode submit: validates like creation, saves through TournamentService::edit
-		(author or owner, drafts only) and shows the updated draft card again.
+		(author or owner) and shows the updated draft card again.
 
 		@param array<string, mixed> $input the same fields as submit()
 		@return array{ok: true, close: true, tournament_id: int}
 	*/
 	public function editSubmit(string $init_data, string $token, array $input): array {
 		[$actor, $ctx, $user, $t] = $this->authorizeEdit($init_data, $token);
-		$form = $this->parse($input, $actor);
+		$form = $this->parse($input, $actor, $t);
 		$summary = $this->summary($form);
 		$level_same = $form->team_size === $t->team_size
 			&& $form->reference_team === ($t->reference_team ?? ($t->max_points !== null ? (string) $t->max_points : null));
+		$published = $t->status !== TournamentStatus::DRAFT;
+		$start_same = $form->starts_at_msk === MoscowTime::toInput($t->starts_at);
 		$edit = new EditTournament(
 			title: $form->title,
-			starts_at_msk: $form->starts_at_msk,
+			// A published tournament keeps its start (and reminders) unless the time really changed.
+			starts_at_msk: $published && $start_same ? null : $form->starts_at_msk,
 			team_size: $level_same ? null : $form->team_size,
 			reference_team: $level_same ? null : $form->reference_team,
 			max_players: $form->max_players,
 		);
 		if ($this->dialogs !== null) {
 			$this->dialogs->begin($user, $ctx['chat_id'], 'private', '');
-			$this->dialogs->user('[форма] Сохранить черновик №' . $t->id . ': ' . $summary);
+			$this->dialogs->user('[форма] Сохранить ' . ($published ? 'турнир' : 'черновик') . ' №' . $t->id . ': ' . $summary);
 		}
 		try {
 			try {
@@ -393,9 +411,16 @@ class CreateTournamentForm {
 			}
 			$this->announcer->renumber($t->id); // a new start time may change the order
 			$this->pending->clearChat($actor->id, $ctx['chat_id']);
-			$this->drafts->show($t->id, $ctx['chat_id'], null, $actor->id, [
-				['role' => 'user', 'content' => 'Правлю турнир через форму: ' . $summary],
-			]);
+			if ($published) {
+				// Same as the old /edit: announcements are updated in place, then a fresh card.
+				$this->announcer->refresh($t->id);
+				$this->api->sendMessage($ctx['chat_id'], Html::e(sprintf(self::UPDATED_TEXT, $t->title)));
+				$this->views?->tournament($ctx['chat_id'], $t, $actor);
+			} else {
+				$this->drafts->show($t->id, $ctx['chat_id'], null, $actor->id, [
+					['role' => 'user', 'content' => 'Правлю турнир через форму: ' . $summary],
+				]);
+			}
 		} finally {
 			if ($this->dialogs !== null) {
 				$this->dialogs->end();
@@ -409,7 +434,7 @@ class CreateTournamentForm {
 
 		@param array<string, mixed> $input
 	*/
-	public function parse(array $input, Player $actor): CreateTournament {
+	public function parse(array $input, Player $actor, ?Tournament $existing = null): CreateTournament {
 		$errors = [];
 		$title = trim((string) ($input['title'] ?? ''));
 		if ($title === '') {
@@ -418,7 +443,12 @@ class CreateTournamentForm {
 			$errors['title'] = sprintf('Название — не длиннее %d символов', TournamentService::TITLE_MAX_LENGTH);
 		}
 
-		$starts_at = $this->parseStart((string) ($input['date'] ?? ''), (string) ($input['time'] ?? ''), $errors);
+		$date = (string) ($input['date'] ?? '');
+		$time = (string) ($input['time'] ?? '');
+		$same_start = $existing !== null && $existing->status !== TournamentStatus::DRAFT
+			&& $date . ' ' . $time === MoscowTime::toInput($existing->starts_at);
+		// Keep a published tournament's start, even after it has passed. Only a new time must be future.
+		$starts_at = $same_start ? $existing->starts_at : $this->parseStart($date, $time, $errors);
 
 		$team_size = self::intValue($input['team_size'] ?? null);
 		if (
@@ -544,7 +574,7 @@ class CreateTournamentForm {
 	}
 
 	/**
-		Edit mode: the context names the draft; only its author or the owner, only while it is a draft.
+		Edit mode: the context names the tournament; only its author or the owner, until finished/cancelled.
 
 		@return array{0: Player, 1: array{token: string, actor_player_id: int, chat_id: int, action: string, payload: array<string, mixed>}, 2: TgUser, 3: Tournament}
 	*/
@@ -561,9 +591,9 @@ class CreateTournamentForm {
 		} catch (PermissionDenied $e) {
 			throw new WebAppFormError($e->getMessage(), '', WebAppFormError::FORBIDDEN);
 		}
-		if ($t->status !== TournamentStatus::DRAFT) {
+		if (!in_array($t->status, self::EDITABLE, true)) {
 			throw new WebAppFormError(
-				sprintf(self::NOT_DRAFT_TEXT, $t->title, TournamentStatus::label($t->status), $t->id),
+				sprintf(self::NOT_DRAFT_TEXT, $t->title, TournamentStatus::label($t->status)),
 				'',
 				WebAppFormError::NOT_DRAFT,
 			);

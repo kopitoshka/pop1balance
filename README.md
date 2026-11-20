@@ -10,7 +10,7 @@ PHP 8.0+ (tested on 8.0 and 8.3), MySQL 8 / MariaDB 10.5+, no framework.
 ## How it works
 
 - Webhook: `public/webhook.php`. **Everything happens in the private chat with the bot.** The group gets only
-  announcements (cards), reminders and the info commands `/tournaments`, `/info N`, `/level`, `/levels`, `/help`
+  announcements (cards), reminders and the info commands `/tournaments`, `/info N`, `/level`, `/players`, `/help`
   (`/history`, `/level all` and `/nick` are private-only).
   Any other command, @mention or reply to the bot in the group (joining, creating, editing, questions — admins
   included) gets one reply «Давай в личке 👉» with a URL button `https://t.me/<bot>?start=…` (see «Group»).
@@ -203,7 +203,7 @@ Decisions: `ignored: no mention/reply`, `ignored: wrong bot username in mention`
 `ignored: command /x@other_bot is for another bot`, `ignored: unknown command /x`,
 `group: info /tournaments` (info commands answered in the group), `group: redirect (/create_tournament|mention|reply) start=t_5|g_-100…`,
 `group: old button solo:5 -> private`, `private: start t_5`, `private: start g_-100…`, `private: start`,
-`private: command /edit`, `private: unknown command /x`, `private: ask group (/info)`, `private: card reply`,
+`private: command /open`, `private: unknown command /x`, `private: ask group (/info)`, `private: card reply`,
 `private: ai`, `private: help` / `levels` / `tournaments` / `fallback text (AI off…)` (keywords, AI off),
 `private: button psolo:5`, `private: edited: replied once`, `edited: replied once`, `ignored: edited, …`.
 
@@ -219,7 +219,7 @@ buttons as `[кнопка] <label>`) and every reply to that interaction (messag
 [2026-11-09 18:42:07 MSK] группа «P1 турниры» @vasya: @pop1_bot запиши меня
 [2026-11-09 18:42:07 MSK] группа «P1 турниры» бот → @vasya: Давай в личке 👉
 [2026-11-09 18:42:15 MSK] личка @vasya: /start t_3
-[2026-11-09 18:42:15 MSK] личка бот → @vasya: Привет, Vasya! 👋 Вот этот турнир. Кнопки ниже — или просто напиши, что нужно.
+[2026-11-09 18:42:15 MSK] личка бот → @vasya: Привет, Vasya! 👋 Вот этот турнир, кнопки — ниже.
 [2026-11-09 18:42:15 MSK] личка бот → @vasya: 🏆 Субботний кубок · №1
 	🗓 14.11.2026 ⏰ 19:00 МСК
 	…
@@ -254,7 +254,7 @@ for the webhook too, e.g. `sudo -u apache php bin/diag.php`.
   only the **largest** mark (60 = hour before) posts the short «⏰ Через час стартует турнир …» notice into **every**
   active group (deep-link button). The 15-minute mark does **not** broadcast to groups. Deduped via `group_notices`.
   `REMIND_ALL_GROUPS=0` turns group broadcasts off (no private DM reminders yet). `REMINDER_MINUTES` key unchanged.
-- In the group when mentioned/replied: info (`/tournaments`, `/info`, `/level`, `/levels`, `/help`, «какие турниры?»,
+- In the group when mentioned/replied: info (`/tournaments`, `/info`, `/level`, `/help`, «какие турниры?», «какие уровни?»,
   «что нового?», «какой у меня уровень?»…) is answered there (help ends with a private-chat hint + button); «запиши меня» /
   «удали меня» join/leave solo when the tournament is unambiguous; management and private-only (`/create_tournament`, `/history`,
   «прошлые турниры»…) → random private redirect phrase + deep link; anything else → fixed
@@ -270,7 +270,12 @@ for the webhook too, e.g. `sudo -u apache php bin/diag.php`.
 - `/start`, `/start g_<chat>`: greeting + active tournaments of all groups, each with an «open» button.
 - **Team Mini App** (`public/webapp/team.*`, ops `team_bootstrap` / `team_search` / `team_submit` /
   `team_contacts` / `team_leave` / `team_disband`, `webapp_contexts` action `team_form`, TTL 6 h). New team:
-  the opener is captain, the name is prefilled from their last team of an earlier tournament. Edit: captain,
+  the opener is captain, the name is prefilled from their last team of an earlier tournament.
+  The organizer/owner may remove anyone (themselves and the captain included) and build a team of
+  other people: the captain is the one picked with «сделать капитаном», by default the first player
+  of the roster. An organizer who already plays in this tournament gets an empty roster. Regular
+  players cannot remove themselves (they leave with «❌ Отменить регистрацию»). An empty roster is
+  never saved (`TeamService::saveForm`). Edit: captain,
   tournament organizer and owner; a member sees it read-only with «❌ Отменить регистрацию» (captain gets a DM).
   Roster 1…team_size, live level sum with a red over-limit error, search by IGN / @username / name (spaces and
   `_` ignored), players of other teams disabled, «👤 Выбрать из Telegram» (form is saved as a draft, the app
@@ -286,7 +291,7 @@ for the webhook too, e.g. `sudo -u apache php bin/diag.php`.
   `transfer_captain`) never change teams: they prefill the form, answer one short line and send the button;
   unresolved names wait inside the form with suggestions.
 - Plain text: «какие турниры скоро?», «запиши нас: я, tired angel и стас», «хочу участвовать соло»,
-  «замени @vasya на @kolya», «где я записан?». Commands: `/tournaments`, `/info N`, `/levels`, `/help`.
+  «замени @vasya на @kolya», «где я записан?». Commands: `/tournaments`, `/info N`, `/players`, `/help`.
 - Anyone may join (solo/team); no group-membership check for registration. Create still requires a shared active
   group with the owner (or `ANYONE_CAN_CREATE_TOURNAMENT=1`).
 - Every private message marks the player as having started the bot (`players.dm_ok`, `dm_started_at`, migration 006).
@@ -302,7 +307,7 @@ group (legacy), but creating a tournament no longer asks which group it is for.
   with both the bot and the owner (`getChatMember`: member/administrator/creator/restricted-but-member), with a short
   cache. Or anyone if `ANYONE_CAN_CREATE_TOURNAMENT=1` (override, key kept). Refusal (feminine):
   «Создавать турниры могут только участники групп, где есть организатор P1. Записаться на турнир при этом можно 🙂».
-- **Manage** (`/edit`, `/open`, `/close`, `/cancel`, publish): only the tournament's **author** (organizer) and
+- **Manage** (card buttons «✏️ Поправить» / «✏️ Изменить турнир» / «🗑 Удалить» / «❌ Отменить турнир», `/open`, publish): only the tournament's **author** (organizer) and
   the bot **owner** (`BOT_OWNER_TG_ID`). Group admins have no special rights to manage someone else's tournament.
 
 Creating:
@@ -321,23 +326,32 @@ Creating:
   clear confirmation the announcement goes into **every** active group. The form never publishes.
 - «✏️ Поправить» on a draft card opens the same form in edit mode (`create.html?ctx=…&mode=edit`,
   ops `edit_bootstrap` / `edit_submit`): prefilled, heading «Правка турнира», button «Сохранить».
-  It saves through `TournamentService::edit` (author or owner, drafts only) and sends the updated card.
+  It saves through `TournamentService::edit` (author or owner) and sends the updated card.
   A card outside private gets a `?start=t_<id>` deep link instead. Old cards with `fix:<id>` get a form button.
-  Without an https `WEBHOOK_URL` the form is unavailable and the bot suggests plain text instead.
+  Without an https `WEBHOOK_URL` the form is unavailable («попробуй чуть позже»).
+- «✏️ Изменить турнир» on the private tournament card (author and owner, until finished or cancelled)
+  opens the same form for a **published** tournament (heading «Изменить турнир»). Once a team or solo
+  player is registered, team size and level are disabled with an explanation (TournamentService::edit
+  rule). An unchanged start time is not re-sent (reminders stay). After saving the announcements are
+  updated in place, then «Обновила турнир «…», анонсы поправила.» and a fresh tournament card.
+  Finished/cancelled tournaments: «Турнир «…» уже завершён, менять его в форме нельзя.»
 - Plain text in private («создай турнир на субботу в 20:00, тройки, уровень 10») still works via AI.
   `/new` was removed.
-- `/edit [N] время 23.11 21:00` (fields: название, время, размер, уровень, лимит; `баланс N` — owner only). Editing a draft shows a fresh card.
-  `/edit 1 уровень 10`, `/edit 1 уровень средний, средний, высокий`, `/edit 1 размер 2 уровень 7`.
-- `/levels` — the six levels with points and synonyms and how the tournament level works (for everyone).
+- `/edit` and `/cancel` are gone (unknown command): drafts are edited/deleted with «✏️ Поправить» /
+  «🗑 Удалить», published tournaments with «✏️ Изменить турнир» / «❌ Отменить турнир».
+- `/players` (replaces `/levels`, no alias) — every known player grouped by level, highest first, then
+  «Уровень не ставили — считаю средний (3)»; each line is the in-game nick and @username, or the
+  Telegram name/@username marked «без ника». Same access as `/levels` had: anyone in private and groups. The owner also sees how to set levels and nicks.
+- The level reference (scale 1–6 with names, the tournament level, default level 3) is part of `/help`.
 - `/open [id]` — for a draft: shows the same card and publishes only after a clear confirmation (see below);
-  for a closed tournament: reopens registration right away. `/close [id]`; `/cancel [id]`
+  for a closed tournament: reopens registration right away.
 - All of this in plain text too («создай турнир на субботу в 20:00, тройки, уровень 10»).
 
 Owner only (`BOT_OWNER_TG_ID`, shown in `/help` to the owner only):
-- `/level @user 4 [balance]`, `/balance [id]`, `/edit N баланс M`; in plain text: set a player's level, create/show scales,
+- `/level @user 4 [balance]`, `/balance [id]`; in plain text: set a player's level, create/show scales,
   pick a scale for a new tournament.
 
-**Scales are hidden for now** (temporary product decision): cards, announcements, lists, `/help`, `/levels`,
+**Scales are hidden for now** (temporary product decision): cards, announcements, lists, `/help`, `/players`,
 the AI prompt and tool descriptions never mention rating scales. Only the owner changes player levels and a
 tournament's scale; everyone else gets «Уровни игроков меняет только главный админ.» / «Это доступно только главному
 админу.», and tournaments created by others always use the owner's default scale. The scale tables and columns stay
@@ -355,7 +369,7 @@ webhook's `allowed_updates`, so after updating rerun `php bin/set_webhook.php`.
 
 ### Tournament numbers
 
-`№N` everywhere (lists, cards, announcements, `/info N`, `/edit N`, `/open N`, `/close N`, `/cancel N`, the AI's
+`№N` everywhere (lists, cards, announcements, `/info N`, `/open N`, the AI's
 `tournament_id`) is the tournament's **database id** — the same number in every group. Finished and cancelled
 tournaments leave the active `/tournaments` list but keep their № for `/history` and `/info N`. Numbers do **not** shift when
 another tournament finishes. No extra column or migration: the id is the number.
@@ -380,7 +394,7 @@ Every tournament has a level (see below). There is no "no level" option any more
    Player limit defaults to 24, the level scale to the default one.
 2. It creates a draft and shows the card with «Публикуем или что-то поправить?» in private.
 3. Publishing (registration opens, the announcement is posted to the group) happens only on a clear confirmation from the
-   organizer, the admin the current card was shown to (who created it, ran `/edit` or `/open`) or the bot owner: the «Публикуем» button, or a reply to the card like «да», «публикуем», «ок», «всё верно».
+   organizer, the admin the current card was shown to (who created it, edited it or ran `/open`) or the bot owner: the «Публикуем» button, or a reply to the card like «да», «публикуем», «ок», «всё верно».
    The check is done in PHP (`App\Confirmation`), not by the model: anything with a correction, a question,
    a negation or numbers («да, но время 21:00») is not a confirmation — the edits are applied and the card is shown again.
    The model can publish only via the `publish_tournament` tool, which re-checks the user's message.
@@ -390,16 +404,16 @@ Every tournament has a level (see below). There is no "no level" option any more
 ### Levels
 
 `1 начальный, 2 начальный+, 3 средний, 4 средний+, 5 высокий, 6 высокий+`. Parsing synonyms: слабый / базовый /
-начинающий = начальный, танк = высокий («слабый» accepted but not shown in `/levels`). Case-insensitive, «плюс» = «+»
+начинающий = начальный, танк = высокий («слабый» accepted but not shown in `/help`). Case-insensitive, «плюс» = «+»
 («слабый плюс» = 2, «танк+» = 6),
-small typos are tolerated («выскоий» = высокий). Full help for users: `/levels` (the AI sends the same
+small typos are tolerated («выскоий» = высокий). Full help for users: the end of `/help` (the AI sends the same
 text via the `levels_help` tool when asked «какие есть уровни»).
 
 ### Tournament level
 
 «уровень», «уровень турнира», «максимальный уровень», «макс. уровень» are the same thing: the maximum total
 points of a team (`tournaments.max_points`). A team is accepted when the sum of its players' levels fits.
-It is set (in the form, `/edit` and plain text) in one of two ways:
+It is set (in the form and plain text) in one of two ways:
 
 - **one number** — the total itself: `10` for a team of 3 means `max_points = 10`. Allowed range:
   team_size × 1 … team_size × 6 (3–18 for threes). Stored with `reference_team = NULL`.
@@ -408,10 +422,10 @@ It is set (in the form, `/edit` and plain text) in one of two ways:
 
 A single level name («средний») is accepted only for one-player teams (team_size = 1). Anything else (no value, wrong number
 of levels, digit outside 1–6, total out of range, unknown word) is rejected with the reason plus the usage
-help with examples and a pointer to `/levels`. The label («средний (10 баллов на троих)») is
-round(max_points / team_size). Changing the team size needs a new level (`/edit 1 размер 2 уровень 7`).
-After the first sign-up (team or solo) the level and team size are locked; the bot says so and suggests
-cancelling and creating a new tournament. DB columns are unchanged (`reference_team`, `max_points`).
+help. The label («средний (10 баллов на троих)») is
+round(max_points / team_size). Changing the team size needs a new level.
+After the first sign-up (team or solo) the level and team size are locked (disabled in the form); the
+bot says so and suggests «❌ Отменить турнир» and a new tournament. DB columns are unchanged (`reference_team`, `max_points`).
 
 ## Development
 

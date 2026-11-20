@@ -16,4 +16,12 @@ class CommandMenuTest extends TestCase {
 		self::assertSame(2, substr_count($src, "'command' => 'create_tournament'"));
 		self::assertStringNotContainsString("'command' => 'new'", $src);
 	}
+
+	public function testPlayersReplacesLevelsAndManageCommandsAreButtons(): void {
+		$src = (string) file_get_contents(dirname(__DIR__, 2) . '/bin/set_webhook.php');
+		self::assertSame(2, substr_count($src, "'command' => 'players'"), 'common and private menus');
+		foreach (['levels', 'edit', 'cancel', 'adduser', 'addplayer'] as $gone) {
+			self::assertStringNotContainsString("'command' => '" . $gone . "'", $src, $gone);
+		}
+	}
 }

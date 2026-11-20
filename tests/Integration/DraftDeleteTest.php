@@ -70,18 +70,19 @@ class DraftDeleteTest extends IntegrationTestCase {
 		self::assertNull($this->app->tournament_repo->find($t->id));
 	}
 
-	public function testCancelCommandDeletesDraftDirectly(): void {
+	public function testCancelCommandIsGoneButtonsRemain(): void {
 		$t = $this->makeDraft();
 		$this->dispatch($this->privateMessage($this->owner, '/cancel ' . $t->id));
-		self::assertStringContainsString('Черновик #' . $t->id . ' удалён', $this->http->lastText());
+		self::assertSame('Такой команды я не знаю 🤔 Подсказка: /help', $this->http->lastText());
+		self::assertNotNull($this->app->tournament_repo->find($t->id));
+		$this->dispatch($this->press($this->owner, 'ddel:' . $t->id));
 		self::assertNull($this->app->tournament_repo->find($t->id));
-	}
 
-	public function testCancelPublishedStillCancels(): void {
-		$t = $this->openTournament(2, null);
-		$this->dispatch($this->privateMessage($this->owner, '/cancel ' . $t->id));
-		self::assertStringContainsString('отменён', $this->http->lastText());
-		self::assertSame(TournamentStatus::CANCELLED, $this->app->tournament_repo->find($t->id)->status);
+		$published = $this->openTournament(2, null);
+		$this->dispatch($this->privateMessage($this->owner, '/cancel ' . $published->id));
+		self::assertSame(TournamentStatus::REGISTRATION, $this->app->tournament_repo->find($published->id)->status);
+		$this->dispatch($this->press($this->owner, 'tcancely:' . $published->id));
+		self::assertSame(TournamentStatus::CANCELLED, $this->app->tournament_repo->find($published->id)->status);
 	}
 
 	public function testAiCancelDeletesDraft(): void {

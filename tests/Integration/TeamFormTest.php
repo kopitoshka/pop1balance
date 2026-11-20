@@ -561,4 +561,98 @@ class TeamFormTest extends IntegrationTestCase {
 		self::assertSame('K', $entry->team->letter);
 		self::assertNull($this->app->teams->teamOf($t->id, $this->owner->id));
 	}
+
+	public function testOrganizerBuildsTeamWithoutThemselves(): void {
+		$t = $this->openTournament(3);
+		$a = $this->player('aaa');
+		$b = $this->player('bbb');
+		$token = $this->formToken($this->owner, $t, null);
+		$boot = $this->boot($this->owner, $token);
+		self::assertTrue($boot['can_remove_any']);
+		self::assertSame([$this->owner->id], array_column($boot['team']['members'], 'id'), 'not in a team yet: starts with themselves');
+		// Captain left out: the first player of the roster becomes captain.
+		self::assertNull($this->submit($this->owner, $token, ['name' => 'Без меня', 'player_ids' => [$a->id, $b->id], 'captain_id' => $this->owner->id]));
+		$entry = $this->app->teams->findByName($t->id, 'Без меня');
+		self::assertSame($a->id, $entry->team->captain_id);
+		self::assertSame([$a->id, $b->id], array_map(static fn ($m): int => $m->player_id, $entry->members));
+		self::assertNull($this->app->teams->teamOf($t->id, $this->owner->id));
+	}
+
+	public function testOrganizerAlreadyInTeamStartsWithEmptyRoster(): void {
+		$org = $this->player('org');
+		$old = $this->tournamentBy($org, 1, null);
+		$this->app->teams->createTeam($old->id, $org->id, 'Старая', []);
+		$this->app->tournament_repo->update($old->id, ['status' => \P1Bot\Domain\TournamentStatus::FINISHED]);
+		$t = $this->app->tournament_repo->create([
+			'chat_id' => self::CHAT_ID, 'organizer_id' => $org->id, 'title' => 'Новый',
+			'starts_at' => \P1Bot\Domain\MoscowTime::parse('2026-11-21 19:00'), 'team_size' => 3,
+			'balance_id' => null, 'reference_team' => null, 'max_points' => null, 'max_players' => 24,
+			'status' => \P1Bot\Domain\TournamentStatus::DRAFT,
+		], $this->clock->now());
+		$t = $this->app->tournaments->openRegistration($this->owner->id, $t->id);
+		$own = $this->app->teams->createTeam($t->id, $org->id, 'Моя', []);
+		$a = $this->player('aaa');
+		$b = $this->player('bbb');
+
+		$token = $this->formToken($org, $t, null);
+		$boot = $this->boot($org, $token);
+		self::assertSame(['new', 'organizer'], [$boot['mode'], $boot['role']]);
+		self::assertSame([], $boot['team']['members'], 'not pre-inserted as the first member');
+		self::assertSame(0, $boot['team']['captain_id']);
+		self::assertSame('', $boot['team']['name'], 'no prefill from their own old team');
+		self::assertNull($boot['name_hint']);
+
+		$e = $this->submit($org, $token, ['name' => 'Пустая', 'player_ids' => [], 'captain_id' => 0]);
+		self::assertSame('roster', $e?->field);
+		self::assertSame(\P1Bot\Domain\TeamService::EMPTY_ROSTER, $e->getMessage());
+
+		self::assertNull($this->submit($org, $token, ['name' => 'Чужие', 'player_ids' => [$a->id, $b->id], 'captain_id' => $b->id]));
+		$entry = $this->app->teams->findByName($t->id, 'Чужие');
+		self::assertSame($b->id, $entry->team->captain_id, 'picked with «сделать капитаном»');
+		self::assertSame($own->team->id, $this->app->teams->teamOf($t->id, $org->id)->team->id, 'the organizer stays in their own team');
+	}
+
+	public function testOrganizerRemovesCaptainAndFirstPlayerTakesOver(): void {
+		$t = $this->openTournament(3);
+		$cap = $this->player('cap');
+		$a = $this->player('aaa');
+		$b = $this->player('bbb');
+		$entry = $this->app->teams->createTeam($t->id, $cap->id, 'Секта', [$a->id, $b->id]);
+		self::assertNull($this->submit($this->owner, $this->formToken($this->owner, $t, $entry->team->id), [
+			'name' => 'Секта', 'player_ids' => [$b->id, $a->id], 'captain_id' => $cap->id,
+		]));
+		$saved = $this->app->teams->get($entry->team->id);
+		self::assertSame($b->id, $saved->team->captain_id);
+		self::assertSame(2, $saved->size());
+		$e = $this->submit($this->owner, $this->formToken($this->owner, $t, $entry->team->id), [
+			'name' => 'Секта', 'player_ids' => [], 'captain_id' => 0,
+		]);
+		self::assertSame(\P1Bot\Domain\TeamService::EMPTY_ROSTER, $e?->getMessage());
+		self::assertSame(2, $this->app->teams->get($entry->team->id)->size());
+	}
+
+	public function testRegularCaptainCannotRemoveThemselves(): void {
+		$t = $this->openTournament(3);
+		$cap = $this->player('cap');
+		$a = $this->player('aaa');
+		$entry = $this->app->teams->createTeam($t->id, $cap->id, 'Секта', [$a->id]);
+		$boot = $this->boot($cap, $this->formToken($cap, $t, $entry->team->id));
+		self::assertFalse($boot['can_remove_any']);
+		// Even after handing over the crown in the same save.
+		$e = $this->submit($cap, $this->formToken($cap, $t, $entry->team->id), [
+			'name' => 'Секта', 'player_ids' => [$a->id], 'captain_id' => $a->id,
+		]);
+		self::assertSame(\P1Bot\Domain\TeamService::SELF_REMOVAL, $e?->getMessage());
+		self::assertSame('roster', $e->field);
+		$saved = $this->app->teams->get($entry->team->id);
+		self::assertSame([$cap->id, 2], [$saved->team->captain_id, $saved->size()]);
+
+		$new = $this->player('newcap');
+		$token = $this->formToken($new, $t, null);
+		self::assertFalse($this->boot($new, $token)['can_remove_any']);
+		$e = $this->submit($new, $token, ['name' => 'Пусто', 'player_ids' => [], 'captain_id' => 0]);
+		self::assertSame(\P1Bot\Domain\TeamService::EMPTY_ROSTER, $e?->getMessage());
+		$e = $this->submit($new, $token, ['name' => 'Без себя', 'player_ids' => [$this->player('x')->id], 'captain_id' => 0]);
+		self::assertSame(WebAppFormError::FORBIDDEN, $e?->reason);
+	}
 }

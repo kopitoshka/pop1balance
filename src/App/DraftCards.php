@@ -53,7 +53,7 @@ class DraftCards {
 	}
 
 	/**
-		Global tournament number users type (/edit N): the tournament id.
+		Global tournament number users see (№N, /open N): the tournament id.
 	*/
 	public function numberOf(Tournament $t): ?int {
 		return $this->announcer->number($t)->number;

@@ -7,6 +7,7 @@ namespace P1Bot\Tests\Integration;
 use P1Bot\Domain\TournamentStatus;
 use P1Bot\Support\DateFormat;
 use P1Bot\Tests\Support\IntegrationTestCase;
+use P1Bot\View\Texts;
 
 class AdminCommandsTest extends IntegrationTestCase {
 
@@ -79,33 +80,31 @@ class AdminCommandsTest extends IntegrationTestCase {
 		}
 	}
 
-	public function testEditDraftShowsNewCardAndOldCardIsOutdated(): void {
+	public function testEditAndCancelCommandsAreGone(): void {
 		$this->newDraft($this->owner, '23.11 20:00 | Кубок | 3 | 3,3,4');
-		$old_card = $this->app->tournament_repo->find(1)->card_msg_id;
-		$this->http->reset();
-
-		$this->dispatch($this->privateMessage($this->owner, '/edit 1 уровень средний, средний, высокий'));
+		foreach (['/edit 1 лимит 30', '/edit 1 уровень 12', '/cancel 1', '/cancel'] as $command) {
+			$this->dispatch($this->privateMessage($this->owner, $command));
+			self::assertSame('Такой команды я не знаю 🤔 Подсказка: /help', $this->http->lastText(), $command);
+		}
 		$t = $this->app->tournament_repo->find(1);
-		self::assertSame(11, $t->max_points);
-		self::assertNotSame($old_card, $t->card_msg_id);
-		self::assertStringContainsString('Публикуем или что-то поправить?', $this->http->lastText());
-
-		$this->dispatch($this->privateMessage($this->owner, 'да', ['reply_to_message' => [
-			'message_id' => $old_card,
-			'from' => ['id' => self::BOT_ID, 'is_bot' => true, 'first_name' => 'Bot'],
-		]]));
-		self::assertSame(
-			TournamentStatus::DRAFT,
-			$this->app->tournament_repo->find(1)->status,
-			'old card is not a confirmation',
-		);
+		self::assertSame([TournamentStatus::DRAFT, 24, 10], [$t->status, $t->max_players, $t->max_points]);
+		$this->confirmCard($this->owner);
+		$this->dispatch($this->privateMessage($this->owner, '/cancel 1'));
+		self::assertSame(TournamentStatus::REGISTRATION, $this->app->tournament_repo->find(1)->status);
+		foreach ([Texts::help('pop1_bot', true, true), Texts::help('pop1_bot', false)] as $help) {
+			self::assertStringNotContainsString('/edit', $help);
+			self::assertStringNotContainsString('/cancel', $help);
+		}
 	}
 
-	public function testNoBalanceEditIsGone(): void {
-		$this->newDraft($this->owner, '23.11 20:00 | Кубок | 3 | 3,3,4');
-		$this->dispatch($this->privateMessage($this->owner, '/edit 1 без баланса'));
-		self::assertStringContainsString('Не знаю поле', $this->http->lastText());
-		self::assertSame(10, $this->app->tournament_repo->find(1)->max_points);
+	public function testEmptyListsPointToButtonsNotFreeText(): void {
+		$this->dispatch($this->privateMessage($this->owner, '/tournaments'));
+		self::assertStringContainsString('Сейчас активных турниров нет. Создать новый: /create_tournament.', $this->http->lastText());
+		$this->dispatch($this->privateMessage($this->owner, '/team'));
+		self::assertStringEndsWith('открой турнир (/tournaments) → «🛡 Собрать команду».', $this->http->lastText());
+		foreach ([$this->http->lastText(), Texts::welcome('A'), Texts::welcomeTournament('A')] as $text) {
+			self::assertStringNotContainsString('напиши', mb_strtolower($text));
+		}
 	}
 
 	public function testNewCommandIsGone(): void {
@@ -263,36 +262,6 @@ class AdminCommandsTest extends IntegrationTestCase {
 		]]));
 	}
 
-	public function testEditCloseCancelRefreshAnnouncement(): void {
-		$this->newDraft($this->owner, '23.11 20:00 | Кубок | 3 | 3,3,4');
-		$this->confirmCard($this->owner);
-		$this->http->reset();
-
-		$this->dispatch($this->privateMessage($this->owner, '/edit 1 лимит 30'));
-		self::assertSame(30, $this->app->tournament_repo->find(1)->max_players);
-		$edits = $this->http->sent('editMessageText');
-		self::assertCount(1, $edits);
-		self::assertStringContainsString('Занято 0/30', $edits[0]['text']);
-
-		$this->dispatch($this->privateMessage($this->owner, '/edit время 24.11 21:00'));
-		self::assertSame('2026-11-24 18:00:00', DateFormat::toDb($this->app->tournament_repo->find(1)->starts_at));
-
-		$this->dispatch($this->privateMessage($this->owner, '/edit 1 погода хорошая'));
-		self::assertStringContainsString('Не знаю поле', $this->http->lastText());
-
-		$this->app->tournaments->closeRegistration($this->owner->id, 1);
-		self::assertSame(TournamentStatus::CLOSED, $this->app->tournament_repo->find(1)->status);
-		$last = $this->http->sent('editMessageText');
-		self::assertSame(
-			'https://t.me/pop1_bot?start=t_1',
-			end($last)['reply_markup']['inline_keyboard'][0][0]['url'],
-			'questions still go to private',
-		);
-
-		$this->dispatch($this->privateMessage($this->owner, '/cancel 1'));
-		self::assertSame(TournamentStatus::CANCELLED, $this->app->tournament_repo->find(1)->status);
-	}
-
 	public function testAmbiguousTournamentAsksForId(): void {
 		$this->newDraft($this->owner, '23.11 20:00 | Первый | 3 | 3,3,4');
 		$this->newDraft($this->owner, '24.11 20:00 | Второй | 3 | 3,3,4');
@@ -318,14 +287,11 @@ class AdminCommandsTest extends IntegrationTestCase {
 		$this->dispatch($this->privateMessage($this->owner, '/level @vasya 9'));
 		self::assertStringContainsString('Уровень от 1 до 6', $this->http->lastText());
 
-		$this->dispatch($this->privateMessage($this->owner, '/levels'));
-		$all = implode("\n", array_column($this->http->sent('sendMessage'), 'text'));
-		self::assertStringContainsString('Уровни игроков', $all);
-		self::assertStringContainsString('@vasya', $all);
-		self::assertStringContainsString('@petya', $all);
-		self::assertStringContainsString('средний+', $all);
-		self::assertStringContainsString('высокий+', $all);
-		self::assertStringContainsString('Уровень турнира', $all);
+		$this->dispatch($this->privateMessage($this->owner, '/players'));
+		$all = $this->http->lastText();
+		self::assertStringContainsString('<b>средний+ (4)</b> — 1', $all);
+		self::assertStringContainsString('<b>высокий+ (6)</b> — 1', $all);
+		self::assertStringContainsString('Vasya · @vasya · <i>без ника</i>', $all);
 	}
 
 	public function testTournamentsListAndHelp(): void {
@@ -443,16 +409,15 @@ class AdminCommandsTest extends IntegrationTestCase {
 		$this->http->reset();
 		$this->dispatch($this->privateMessage($this->owner, '/info 2'));
 		self::assertStringContainsString('🏆 <b>Ранний</b> · №2', $this->http->lastText());
-		$this->dispatch($this->privateMessage($this->owner, '/edit 1 лимит 30'));
+		$this->app->tournaments->edit($this->owner->id, 1, new \P1Bot\Domain\EditTournament(max_players: 30));
 		self::assertSame(30, $this->app->tournament_repo->find(1)->max_players);
-		self::assertStringContainsString('№1 Поздний', $this->http->lastText());
 
 		$this->dispatch($this->privateMessage($this->owner, '/tournaments'));
 		$list = $this->http->lastText();
 		self::assertLessThan(strpos($list, 'Поздний'), strpos($list, 'Ранний'));
 
 		$this->http->reset();
-		$this->dispatch($this->privateMessage($this->owner, '/cancel 2'));
+		$this->dispatch($this->press($this->owner, 'tcancely:2'));
 		self::assertSame(TournamentStatus::CANCELLED, $this->app->tournament_repo->find(2)->status);
 		self::assertStringContainsString('🏆 <b>Поздний</b> · №1', $this->app->announcer->text($this->app->tournaments->get(1)));
 		$this->dispatch($this->privateMessage($this->owner, '/info 2'));
@@ -460,124 +425,67 @@ class AdminCommandsTest extends IntegrationTestCase {
 		self::assertStringContainsString('Отменён', $this->http->lastText());
 	}
 
-	public function testEditLevelKeywordsAndValues(): void {
-		$this->newDraft($this->owner, '23.11 20:00 | Кубок | 3 | 10');
-		self::assertSame(10, $this->app->tournament_repo->find(1)->max_points);
-		$cases = [
-			'/edit 1 уровень 12' => 12,
-			'/edit 1 уровень турнира 11' => 11,
-			'/edit 1 максимальный уровень 9' => 9,
-			'/edit 1 макс. уровень 13' => 13,
-			'/edit 1 Макс уровень 3, 3, 5' => 11,
-			'/edit 1 уровень средний, средний, высокий+' => 12,
-		];
-		foreach ($cases as $command => $points) {
-			$this->dispatch($this->privateMessage($this->owner, $command));
-			self::assertSame($points, $this->app->tournament_repo->find(1)->max_points, $command);
-			self::assertStringContainsString('Публикуем или что-то поправить?', $this->http->lastText(), $command);
-		}
-
-		$this->dispatch($this->privateMessage($this->owner, '/edit 1 размер 2 уровень 7'));
-		$t = $this->app->tournament_repo->find(1);
-		self::assertSame([2, 7], [$t->team_size, $t->max_points]);
-	}
-
-	public function testInvalidLevelAsksAgainWithHelp(): void {
-		$this->newDraft($this->owner, '23.11 20:00 | Кубок | 3 | 10');
-		$bad = [
-			'/edit 1 уровень' => 'Не указан уровень',
-			'/edit 1 уровень средний' => 'уровней указано 1',
-			'/edit 1 уровень 3, 3' => 'уровней указано 2',
-			'/edit 1 уровень 19' => 'от 3 до 18',
-			'/edit 1 уровень 3, 3, 7' => 'Уровня «7» нет',
-			'/edit 1 уровень крутой, средний, средний' => 'Не понимаю уровень «крутой»',
-			'/edit 1 размер 2' => 'укажи и уровень',
-		];
-		foreach ($bad as $command => $reason) {
-			$this->dispatch($this->privateMessage($this->owner, $command));
-			$text = $this->http->lastText();
-			self::assertStringContainsString($reason, $text, $command);
-			self::assertStringContainsString(
-				"/edit 1 уровень 10\n/edit 1 уровень средний, средний, высокий",
-				$text,
-				$command,
-			);
-			self::assertStringContainsString('Все уровни и баллы: /levels', $text, $command);
-			self::assertSame(10, $this->app->tournament_repo->find(1)->max_points, $command);
-		}
-
-		$error = (string) $this->newDraft($this->owner, '23.11 20:00 | Кубок | 3 | средний');
-		self::assertStringContainsString('Укажи уровень каждого игрока: 3 игрока', $error);
-		self::assertNull($this->app->tournament_repo->find(2));
-	}
-
 	public function testLevelLockedMessageIsClear(): void {
 		$this->newDraft($this->owner, '23.11 20:00 | Кубок | 3 | 10');
 		$this->confirmCard($this->owner);
 		$this->app->teams->joinSolo(1, $this->player('vasya')->id);
-		$this->dispatch($this->privateMessage($this->owner, '/edit 1 уровень 12'));
-		self::assertStringContainsString(
-			'Уровень турнира и размер команды уже не поменять: на турнир есть заявки',
-			$this->http->lastText(),
-		);
-		self::assertStringContainsString('/cancel', $this->http->lastText());
+		try {
+			$this->app->tournaments->edit($this->owner->id, 1, new \P1Bot\Domain\EditTournament(reference_team: '12'));
+			self::fail('level is locked');
+		} catch (\P1Bot\Domain\Exception\ValidationError $e) {
+			self::assertStringContainsString('Уровень турнира и размер команды уже не поменять: на турнир есть заявки', $e->getMessage());
+			self::assertStringContainsString('«❌ Отменить турнир»', $e->getMessage());
+			self::assertStringNotContainsString('/cancel', $e->getMessage());
+		}
 		self::assertSame(10, $this->app->tournament_repo->find(1)->max_points);
+		$error = (string) $this->newDraft($this->owner, '23.11 20:00 | Кубок | 3 | средний');
+		self::assertStringContainsString('Укажи уровень каждого игрока: 3 игрока', $error);
 	}
 
-	public function testLevelsCommandAndHelp(): void {
+	public function testLevelsMovedToHelpAndLevelsCommandIsGone(): void {
 		$vasya = $this->player('vasya');
 		$this->dispatch($this->privateMessage($vasya, '/levels'));
-		$text = $this->http->lastText();
+		self::assertSame('Такой команды я не знаю 🤔 Подсказка: /help', $this->http->lastText());
+
+		$this->dispatch($this->privateMessage($vasya, '/help'));
+		$help_user = $this->http->lastText();
 		foreach ([
 			'1 — начальный (1 балл). Синонимы: базовый, начинающий',
 			'5 — высокий (5 баллов). Синоним: танк',
 			'6 — высокий+ (6 баллов)',
-			'Уровень турнира',
+			'Игрок, которому ещё не поставили уровень, считается средним (3).',
+			'⚖️ <b>Уровень турнира</b>',
+			'/players — все игроки',
+			'/history',
+			'/nick — свой игровой ник',
+			'<code>/nick игровой_ник</code>',
+			'/team',
 		] as $needle) {
-			self::assertStringContainsString($needle, $text);
+			self::assertStringContainsString($needle, $help_user);
 		}
-		self::assertStringNotContainsString('/edit', $text);
-		self::assertStringNotContainsString('Поставить уровень игроку', $text);
-
-		$this->dispatch($this->groupMessage($this->owner, '/levels'));
-		$group_levels = $this->http->lastText();
-		self::assertStringContainsString('Уровни игроков', $group_levels);
-		self::assertStringNotContainsString('/edit', $group_levels);
-		self::assertStringNotContainsString('Поставить уровень игроку', $group_levels);
-
-		$this->dispatch($this->privateMessage($this->owner, '/levels'));
-		$owner_levels = implode("\n", array_column($this->http->sent('sendMessage'), 'text'));
-		self::assertStringContainsString('/edit 1 уровень 10', $owner_levels);
-		self::assertStringContainsString('Поставить уровень игроку: /level @user 4', $owner_levels);
-
-		$this->dispatch($this->privateMessage($vasya, '/help'));
-		$help_user = $this->http->lastText();
-		self::assertStringContainsString('/levels', $help_user);
-		self::assertStringContainsString('/history', $help_user);
-		self::assertStringContainsString('/nick — свой игровой ник', $help_user);
-		self::assertStringContainsString('<code>/nick игровой_ник</code>', $help_user);
-		self::assertStringContainsString('/team', $help_user);
-		self::assertStringNotContainsString('/level @user 4', $help_user);
-		self::assertStringNotContainsString('/nick @user', $help_user);
+		foreach (['/levels', '/edit', '/cancel', '/level @user 4', '/nick @user', 'обычным языком', 'запиши команду'] as $needle) {
+			self::assertStringNotContainsString($needle, $help_user);
+		}
 
 		$this->dispatch($this->groupMessage($vasya, '/help'));
 		$help_group = $this->http->lastText();
 		self::assertStringContainsString('/level — свой уровень', $help_group);
-		self::assertStringContainsString('/levels', $help_group);
+		self::assertStringNotContainsString('/levels', $help_group);
+		self::assertStringNotContainsString('запиши меня', $help_group);
 		self::assertStringNotContainsString('/new', $help_group);
 		self::assertStringNotContainsString('/nick', $help_group);
-		self::assertStringNotContainsString('/level @user 4', $help_group);
 
 		$this->dispatch($this->privateMessage($this->owner, '/help'));
 		$help = $this->http->lastText();
-		self::assertStringContainsString('/edit <code>номер</code>', $help);
-		self::assertStringContainsString('/cancel <code>номер</code>', $help);
+		self::assertStringContainsString('«✏️ Изменить турнир» и «❌ Отменить турнир»', $help);
+		self::assertStringContainsString('«✏️ Поправить», «🗑 Удалить»', $help);
+		self::assertStringNotContainsString('/edit', $help);
+		self::assertStringNotContainsString('/cancel', $help);
 		self::assertStringNotContainsString('/close', $help);
 		self::assertStringContainsString('/nick @user НикВИгре', $help);
 		self::assertStringContainsString('/level @user 4', $help);
-		foreach ([$help, $text, $owner_levels, $group_levels] as $chunk) {
-			self::assertStringNotContainsStringIgnoringCase('эталон', $chunk);
-		}
+		self::assertLessThan(4096, mb_strlen($help));
+		self::assertStringNotContainsStringIgnoringCase('эталон', $help);
 	}
 
 	public function testHistoryListsFinishedAndCancelled(): void {
@@ -617,7 +525,7 @@ class AdminCommandsTest extends IntegrationTestCase {
 
 		$this->dispatch($this->privateMessage($vasya, '/level'));
 		self::assertStringContainsString('Твой уровень: высокий (5)', $this->http->lastText());
-		self::assertStringContainsString('Все уровни — /levels', $this->http->lastText());
+		self::assertStringContainsString('Как устроены уровни — /help, все игроки — /players', $this->http->lastText());
 
 		$this->dispatch($this->privateMessage($petya, '/level'));
 		self::assertStringContainsString('Твой уровень: начальный+ (2)', $this->http->lastText());

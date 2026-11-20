@@ -158,17 +158,20 @@ class TeamForm {
 		$draft = is_array($ctx['payload']['draft'] ?? null) ? $ctx['payload']['draft'] : [];
 		$taken_names = $this->team_repo->memberTeamNames($t->id);
 		$name_hint = false;
+		$can_manage = $this->access->canManageTournament($t, $actor->id);
+		// An organizer who already plays here builds a team of other people: the roster starts empty.
+		$start_empty = $entry === null && $can_manage && isset($taken_names[$actor->id]);
 		if ($entry === null) {
 			$name = isset($draft['name']) ? (string) $draft['name'] : '';
-			if ($name === '') {
+			if ($name === '' && !$start_empty) {
 				$last = $this->team_repo->lastTeamName($actor->id, $t->id);
 				if ($last !== null && $this->team_repo->findByName($t->id, $last) === null) {
 					$name = $last;
 					$name_hint = true;
 				}
 			}
-			$ids = [$actor->id];
-			$captain_id = $actor->id;
+			$ids = $start_empty ? [] : [$actor->id];
+			$captain_id = $start_empty ? 0 : $actor->id;
 			$letter = null;
 		} else {
 			$name = isset($draft['name']) ? (string) $draft['name'] : $entry->team->name;
@@ -183,7 +186,11 @@ class TeamForm {
 			$captain_id = (int) $draft['captain_id'];
 		}
 		if (!in_array($captain_id, $ids, true)) {
-			array_unshift($ids, $captain_id);
+			if ($can_manage) {
+				$captain_id = $ids[0] ?? 0; // organizer: the first player is captain by default
+			} else {
+				array_unshift($ids, $captain_id);
+			}
 		}
 		$own_team = $entry?->team->name;
 		$members = [];
@@ -197,6 +204,9 @@ class TeamForm {
 				continue; // took a place elsewhere since the draft was saved
 			}
 			$members[] = $card;
+		}
+		if ($can_manage && !in_array($captain_id, array_column($members, 'id'), true)) {
+			$captain_id = $members[0]['id'] ?? 0;
 		}
 		$pending = [];
 		foreach (is_array($draft['pending'] ?? null) ? $draft['pending'] : [] as $item) {
@@ -212,7 +222,6 @@ class TeamForm {
 			}
 			$pending[] = ['label' => trim((string) $item['label']), 'suggestions' => $suggestions];
 		}
-		$can_manage = $this->access->canManageTournament($t, $actor->id);
 		$letters = [];
 		$taken_letters = $this->team_repo->takenLetters($t->id);
 		foreach (range('A', 'Z') as $l) {
@@ -236,6 +245,8 @@ class TeamForm {
 			'actor_id' => $actor->id,
 			'can_letter' => $can_manage,
 			'can_transfer' => !$readonly && ($entry !== null || $can_manage),
+			// Organizer/owner may remove anyone, themselves and the captain included.
+			'can_remove_any' => !$readonly && $can_manage,
 			'can_disband' => $entry !== null && !$readonly,
 			'can_leave' => $readonly,
 			'can_contacts' => !$readonly,

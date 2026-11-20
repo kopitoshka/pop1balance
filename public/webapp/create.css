@@ -68,3 +68,7 @@ footer { position: sticky; bottom: 0; padding: 4px 0 env(safe-area-inset-bottom)
 #submit { width: 100%; padding: 14px; border: 0; background: var(--btn); color: var(--btn-fg); font-weight: 600; font-size: 16px; cursor: pointer; }
 #submit:disabled { opacity: .35; cursor: default; }
 @media (prefers-reduced-motion: no-preference) { button { transition: opacity .12s; } }
+
+/* Published tournament with registrations: team size and level are locked. */
+#level-lock:disabled { opacity: 0.55; }
+.lock-hint { margin: 0 0 10px; }

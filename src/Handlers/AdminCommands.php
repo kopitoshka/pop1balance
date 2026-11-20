@@ -16,9 +16,7 @@ use P1Bot\App\TournamentListing;
 use P1Bot\App\TournamentResolver;
 use P1Bot\Domain\AccessPolicy;
 use P1Bot\Domain\BalanceService;
-use P1Bot\Domain\EditTournament;
 use P1Bot\Domain\Exception\DomainError;
-use P1Bot\Domain\Exception\InvalidLevel;
 use P1Bot\Domain\Exception\PermissionDenied;
 use P1Bot\Domain\Exception\PlayerSuggestError;
 use P1Bot\Domain\Exception\ValidationError;
@@ -26,7 +24,6 @@ use P1Bot\Domain\Levels;
 use P1Bot\Domain\NickService;
 use P1Bot\Domain\Model\Player;
 use P1Bot\Domain\Model\Tournament;
-use P1Bot\Domain\MoscowTime;
 use P1Bot\Domain\TournamentService;
 use P1Bot\Domain\TournamentStatus;
 use P1Bot\Repository\BalanceRepository;
@@ -43,15 +40,14 @@ use P1Bot\View\Texts;
 	Slash commands: the fallback that works without AI.
 */
 class AdminCommands {
-	protected const PUBLIC = ['help', 'start', 'tournaments', 'history', 'info', 'level', 'levels', 'nick', 'adduser', 'team'];
+	protected const PUBLIC = ['help', 'start', 'tournaments', 'history', 'info', 'level', 'players', 'nick', 'addplayer', 'team'];
 
-	/**
-		«уровень», «уровень турнира», «максимальный уровень», «макс. уровень» — one field (old «эталон» still works).
-	*/
-	protected const LEVEL_FIELD = '/^(?:(?:максимальный|макс\.?)\s*уровень(?:\s+турнира)?|уровень(?:\s+турнира)?|эталон|reference|level)(?=\s|$)\s*(.*)$/us';
 	protected const CREATE = ['create_tournament'];
-	protected const MANAGE = ['edit', 'cancel', 'open'];
-	protected const ADMIN = ['create_tournament', 'edit', 'cancel', 'open'];
+	/*
+		/edit and /cancel are gone: tournaments are changed and cancelled with card buttons
+		(«✏️ Поправить», «✏️ Изменить турнир», «🗑 Удалить», «❌ Отменить турнир»).
+	*/
+	protected const ADMIN = ['create_tournament', 'open'];
 
 	/**
 		Owner only for now (scales are hidden from users, see AccessPolicy::LEVELS_OWNER_ONLY).
@@ -167,35 +163,20 @@ class AdminCommands {
 				return $this->listTournaments($ctx);
 			case 'history':
 				return $this->listHistory($ctx);
-			case 'adduser':
-				return $this->addUser($ctx);
-			case 'levels':
-				if ($ctx->isPrivate() && $ctx->is_owner) {
-					return $this->ownerLevels($ctx);
-				}
-				return Texts::levels(false);
+			case 'addplayer':
+				return $this->addPlayer($ctx);
+			case 'players':
+				return $this->playersList($ctx);
 			case 'info':
 				[$id] = self::splitId($args);
 				$t = $this->resolver->resolve($this->resolveScope($ctx), $id, TournamentStatus::infoable());
 				return $this->sendAllButLast($ctx, $this->announcer->infoMessages($t));
 			case 'create_tournament':
 				return $this->createTournament($ctx);
-			case 'edit':
-				return $this->edit($ctx, $args);
 			case 'open':
 				return $this->open($ctx, $args);
 			case 'team':
 				return $this->showTeam($ctx);
-			case 'cancel':
-				$target = $this->target($ctx, $args);
-				if ($target->status === TournamentStatus::DRAFT) {
-					$snap = $this->tournaments->deleteDraft($ctx->actor->id, $target->id);
-					return sprintf('Черновик #%d удалён', $snap['id']);
-				}
-				$t = $this->tournaments->cancel($ctx->actor->id, $target->id);
-				$this->announcer->refresh($t->id);
-				$this->announcer->renumber($t->id);
-				return sprintf('Турнир %s отменён. Жаль!', Html::b($t->title));
 			case 'level':
 				return $this->levelCommand($ctx, $args);
 			case 'nick':
@@ -293,91 +274,12 @@ class AdminCommands {
 		$button = isset($this->reply_extra['reply_markup']['inline_keyboard']);
 		if ($ctx->isPrivate()) {
 			return $button
-				? ' Создать новый — кнопкой ниже или просто напиши, какой турнир нужен.'
-				: ' Создать новый: /create_tournament или просто напиши, какой турнир нужен.';
+				? ' Создать новый — кнопкой ниже.'
+				: ' Создать новый: /create_tournament.';
 		}
 		return $button
 			? ' Создать новый можно в личке — кнопка ниже.'
 			: ' Создать новый можно в личке: /create_tournament.';
-	}
-
-	/**
-		/edit [5] поле значение
-	*/
-	protected function edit(Context $ctx, string $args): string {
-		[$id, $rest] = self::splitId($args);
-		if (!preg_match('/^(\S+)\s*(.*)$/us', $rest, $m)) {
-			throw new ValidationError("Что поменять? Например:\n/edit 1 время 23.11 21:00\n/edit 1 название Кубок выходного дня\n/edit 1 лимит 32\n/edit 1 размер 2 уровень 7\n/edit 1 уровень 10\n/edit 1 уровень средний, средний, высокий");
-		}
-		$field = mb_strtolower($m[1]);
-		$value = trim($m[2]);
-		if (preg_match(self::LEVEL_FIELD, mb_strtolower($rest), $lm)) {
-			$field = 'уровень';
-			$value = trim(mb_substr($rest, mb_strlen($rest) - mb_strlen($lm[1])));
-		}
-		$t = $this->resolver->resolve($this->resolveScope($ctx), $id, self::MANAGEABLE);
-
-		switch ($field) {
-			case 'название':
-			case 'title':
-				$edit = new EditTournament($value);
-				break;
-			case 'время':
-			case 'дата':
-			case 'time':
-				$edit = new EditTournament(
-					null,
-					MoscowTime::toInput(MoscowTime::parseHuman($value, $this->clock->now())),
-				);
-				break;
-			case 'размер':
-			case 'size':
-				// "размер 2 уровень 7": a new size needs a level for it
-				$size_level = null;
-				if (preg_match('/^(\S+)\s+(.+)$/us', $value, $sm) && preg_match(
-					self::LEVEL_FIELD,
-					mb_strtolower($sm[2]),
-					$lm,
-				)) {
-					$value = $sm[1];
-					$size_level = trim(mb_substr($sm[2], mb_strlen($sm[2]) - mb_strlen($lm[1])));
-				}
-				$edit = new EditTournament(null, null, self::intArg($value, 'размер команды'), $size_level);
-				break;
-			case 'уровень':
-				if ($value === '') {
-					throw new ValidationError("Не указан уровень турнира.\n\n" . Texts::levelUsage($t->number, $t->team_size));
-				}
-				$edit = new EditTournament(null, null, null, $value);
-				break;
-			case 'лимит':
-			case 'limit':
-				$edit = new EditTournament(null, null, null, null, null, self::intArg($value, 'лимит участников'));
-				break;
-			default:
-				throw new ValidationError(sprintf(
-					'Не знаю поле «%s». Можно: название, время, размер, уровень, лимит.',
-					$field,
-				));
-		}
-
-		try {
-			$t = $this->tournaments->edit($ctx->actor->id, $t->id, $edit);
-		} catch (InvalidLevel $e) {
-			throw new ValidationError($e->getMessage() . "\n\n" . Texts::levelUsage(
-				$t->number,
-				$edit->team_size ?? $t->team_size,
-			));
-		}
-		$this->announcer->renumber($t->id); // a new start time may change the order
-		if ($t->status === TournamentStatus::DRAFT) {
-			$this->drafts->show($t->id, $ctx->chatId(), $ctx->message->message_id, $ctx->actor->id, [
-				['role' => 'user', 'content' => '/edit ' . $args],
-			]);
-			return '';
-		}
-		$this->announcer->refresh($t->id);
-		return "Обновила:\n" . $this->line($t);
 	}
 
 	protected function open(Context $ctx, string $args): string {
@@ -569,7 +471,7 @@ class AdminCommands {
 	}
 
 	protected function levelFooter(bool $is_owner): string {
-		$footer = "\n\nВсе уровни — /levels";
+		$footer = "\n\nКак устроены уровни — /help, все игроки — /players";
 		if ($is_owner) {
 			$footer .= "\nПоставить: /level @ник 4";
 		}
@@ -723,14 +625,6 @@ class AdminCommands {
 		return [null, $args];
 	}
 
-	protected static function intArg(string $value, string $what): int {
-		if (!preg_match('/^\d{1,4}$/', trim($value))) {
-			throw new ValidationError(sprintf('Не поняла %s: «%s». Нужно число.', $what, $value));
-		}
-		return (int) $value;
-	}
-
-
 	/**
 		@param list<string> $tokens
 		@return array<string, mixed>
@@ -797,8 +691,7 @@ class AdminCommands {
 		);
 		if ($teams === []) {
 			return "Сейчас ты не в команде ни на одном открытом турнире.\n"
-				. 'Собрать: открой турнир (/tournaments) → «🛡 Собрать команду», '
-				. 'или напиши мне «запиши команду …».';
+				. 'Собрать: открой турнир (/tournaments) → «🛡 Собрать команду».';
 		}
 		if (count($teams) > 1) {
 			$rows = [];
@@ -822,51 +715,71 @@ class AdminCommands {
 	}
 
 	/**
-		Owner /levels in private: rated players grouped by level, then the reference help.
+		/players: every known player with their level and in-game nick, grouped by level
+		(highest first; «не ставили» last, counted as the default level). Same access as /levels
+		had: anyone, in private and groups.
 	*/
-	protected function ownerLevels(Context $ctx): string {
-		$scale = $this->balances->findDefault();
-		$chunks = [];
-		if ($scale !== null) {
-			$by_level = [1 => [], 2 => [], 3 => [], 4 => [], 5 => [], 6 => []];
-			foreach ($this->balances->effectiveRatings($scale->id) as $player_id => $rating) {
-				$player = $this->players->find($player_id);
-				if ($player === null || $player->tg_user_id === null) {
-					continue;
-				}
-				$level = (int) $rating['level'];
-				if (!isset($by_level[$level])) {
-					continue;
-				}
-				$by_level[$level][] = $player;
-			}
-			$lines = ['📋 <b>Уровни игроков</b>'];
-			$any = false;
-			foreach ($by_level as $level => $list) {
-				if ($list === []) {
-					continue;
-				}
-				$any = true;
-				usort($list, static fn ($a, $b) => strcmp($a->plainLabel(), $b->plainLabel()));
-				$lines[] = '';
-				$lines[] = '<b>' . Levels::name($level) . ' (' . $level . ')</b> — ' . count($list);
-				foreach ($list as $player) {
-					$lines[] = '• ' . $player->lineupLabel()
-						. ($player->username !== null ? ' · @' . Html::e($player->username) : '');
-				}
-			}
-			if (!$any) {
-				$lines[] = '';
-				$lines[] = 'Пока никому не поставлен уровень — все считаются средними (3).';
-			}
-			$chunks = $this->splitTelegramMessages(implode("\n", $lines));
-			foreach (array_slice($chunks, 0, -1) as $chunk) {
-				$this->api->sendMessage($ctx->chatId(), $chunk, $ctx->message->message_id);
-			}
-			$preamble = $chunks !== [] ? end($chunks) . "\n\n" : '';
-			return $preamble . Texts::levels(true);
+	protected function playersList(Context $ctx): string {
+		$scale = $this->balances->viewScaleId() !== null ? $this->balances->findDefault() : null;
+		$ratings = $scale !== null ? $this->balances->effectiveRatings($scale->id) : [];
+		$by_level = [6 => [], 5 => [], 4 => [], 3 => [], 2 => [], 1 => [], 0 => []];
+		$total = 0;
+		foreach ($this->players->listAllKnown() as $player) {
+			$level = isset($ratings[$player->id]) ? (int) $ratings[$player->id]['level'] : null;
+			$by_level[$level !== null && isset($by_level[$level]) ? $level : 0][] = $player;
+			$total++;
 		}
-		return Texts::levels(true);
+		if ($total === 0) {
+			return 'Пока я не знаю ни одного игрока 🙂';
+		}
+		$lines = ['📋 <b>Игроки</b> — ' . $total];
+		foreach ($by_level as $level => $list) {
+			if ($list === []) {
+				continue;
+			}
+			usort($list, static fn (Player $a, Player $b): int => strcmp(
+				mb_strtolower(self::playerSortKey($a)),
+				mb_strtolower(self::playerSortKey($b)),
+			));
+			$lines[] = '';
+			$lines[] = $level === 0
+				? sprintf('<b>Уровень не ставили — считаю %s (%d)</b> — %d', Levels::name(Levels::DEFAULT), Levels::DEFAULT, count($list))
+				: sprintf('<b>%s (%d)</b> — %d', Levels::name($level), $level, count($list));
+			foreach ($list as $player) {
+				$lines[] = '• ' . self::playerLine($player);
+			}
+		}
+		$footer = "\n\nКак устроены уровни — /help";
+		if ($ctx->is_owner) {
+			$footer .= "\nПоставить уровень: /level @ник 4, ник: /nick @ник НикВИгре";
+		}
+		$chunks = $this->splitTelegramMessages(implode("\n", $lines));
+		$last = (string) array_pop($chunks);
+		foreach ($chunks as $chunk) {
+			$this->api->sendMessage($ctx->chatId(), $chunk, $ctx->message->message_id);
+		}
+		return $last . $footer;
+	}
+
+	protected static function playerSortKey(Player $player): string {
+		return $player->hasIgn() ? (string) $player->ign : ($player->display_name !== '' ? $player->display_name : (string) $player->username);
+	}
+
+	/**
+		«tired angel · @just_tired_angel» or «Андрей · @kopitoshka · без ника» (HTML).
+	*/
+	protected static function playerLine(Player $player): string {
+		$username = $player->username !== null && $player->username !== '' ? '@' . $player->username : null;
+		if ($player->hasIgn()) {
+			return '<b>' . Html::e((string) $player->ign) . '</b>' . ($username !== null ? ' · ' . Html::e($username) : '');
+		}
+		$name = $player->display_name !== '' ? $player->display_name : ($username ?? 'игрок #' . $player->id);
+		$parts = [Html::e($name)];
+		if ($username !== null && $username !== $name) {
+			$parts[] = Html::e($username);
+		}
+		$parts[] = '<i>без ника</i>';
+		return implode(' · ', $parts);
 	}
 
 	/**
@@ -900,7 +813,7 @@ class AdminCommands {
 		return new \P1Bot\Domain\Model\TeamEntry($team, $this->team_repo->members($team_id));
 	}
 
-	protected function addUser(Context $ctx): string {
+	protected function addPlayer(Context $ctx): string {
 		if (!$ctx->isPrivate()) {
 			$this->reply_extra = DeepLink::button(
 				Messages::GROUP_REDIRECT_BUTTON,

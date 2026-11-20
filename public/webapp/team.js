@@ -222,6 +222,8 @@
 		meta.appendChild(node('div', 'u', subLine(card, false)));
 		row.appendChild(meta);
 		row.appendChild(node('span', 'lv', levelText(card)));
+		var removable = !readonly() && (boot.can_remove_any
+			|| (card.id !== captain_id && card.id !== boot.actor_id));
 		if (!readonly() && card.id !== captain_id) {
 			if (boot.can_transfer) {
 				var more = node('button', 'icon', '⋯');
@@ -232,6 +234,8 @@
 				});
 				row.appendChild(more);
 			}
+		}
+		if (removable) {
 			var rm = node('button', 'icon', '✕');
 			rm.type = 'button';
 			rm.setAttribute('aria-label', 'Убрать ' + card.name);
@@ -386,16 +390,24 @@
 			return;
 		}
 		members.push(card);
+		if (!captain_id) {
+			// An empty roster (organizer building a team of others): the first player is captain.
+			captain_id = card.id;
+		}
 		render();
 	}
 
 	function removeMember(id) {
-		if (id === captain_id) {
+		if (!boot.can_remove_any && (id === captain_id || id === boot.actor_id)) {
 			return;
 		}
 		members = members.filter(function (m) {
 			return m.id !== id;
 		});
+		if (id === captain_id) {
+			// The organizer removed the captain: the next player takes over, «⋯» changes it.
+			captain_id = members.length ? members[0].id : 0;
+		}
 		render();
 	}
 

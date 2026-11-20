@@ -75,7 +75,7 @@ class MessageHandler {
 			$message_id = $this->sendHistory($ctx);
 		}
 		if (!empty($reply['levels'])) {
-			$message_id = $this->api->sendMessage($chat_id, Texts::levels($ctx->isPrivate() && $ctx->is_owner), $reply_to);
+			$message_id = $this->api->sendMessage($chat_id, Texts::levels(), $reply_to);
 		}
 		$groups = $reply['groups'] ?? [];
 		$suggest = $reply['suggest_markup'] ?? [];
@@ -197,7 +197,7 @@ class MessageHandler {
 		if ($this->assistant === null) {
 			$this->api->sendMessage(
 				$ctx->chatId(),
-				'Не публикую, пока ты явно не подтвердишь. Поправить можно командой, например: /edit ' . (int) $this->drafts->numberOf($t) . ' время 23.11 21:00. Если всё верно — ответь «да» или нажми «Публикуем».',
+				'Не публикую, пока ты явно не подтвердишь. Поправить — кнопкой «✏️ Поправить» на карточке черновика. Если всё верно — нажми «Публикуем».',
 				$ctx->message->message_id,
 			);
 			return true;
