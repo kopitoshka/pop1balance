@@ -14,6 +14,7 @@ class WebAppFormError extends ValidationError {
 	public const INVALID = 'invalid';
 	public const EXPIRED = 'expired';
 	public const FORBIDDEN = 'forbidden';
+	public const NOT_DRAFT = 'not_draft';
 
 	/**
 		@param array<string, string> $fields field => message, for several errors at once

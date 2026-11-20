@@ -145,9 +145,9 @@ class CallbackHandlerTest extends IntegrationTestCase {
 		self::assertStringContainsString('автор или главный админ', $this->lastAnswer());
 		self::assertSame('draft', $this->app->tournament_repo->find(1)->status);
 
-		// «Поправить» explains how to correct, publishes nothing.
+		// Without a Mini App URL «Поправить» points to /edit, publishes nothing.
 		$this->dispatch($this->press($this->owner, 'fix:1', $card_id));
-		self::assertStringContainsString('Напиши, что поправить', $this->lastAnswer());
+		self::assertStringContainsString('/edit 1', $this->lastAnswer());
 		self::assertSame('draft', $this->app->tournament_repo->find(1)->status);
 
 		// A button on an outdated card does nothing.

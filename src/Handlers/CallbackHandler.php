@@ -192,11 +192,19 @@ class CallbackHandler {
 					);
 					return;
 				}
-				$this->api->answerCallbackQuery(
-					$query->id,
-					'Напиши, что поправить: например «время 21:00» или «уровень 10».',
-					true,
-				);
+				if ($t->status !== TournamentStatus::DRAFT) {
+					$this->api->answerCallbackQuery($query->id, 'Это уже не черновик.', true);
+					return;
+				}
+				if ($this->drafts->offerEdit($chat_id, $t, $player, $query->message_id)) {
+					$this->api->answerCallbackQuery($query->id);
+				} else {
+					$this->api->answerCallbackQuery(
+						$query->id,
+						'Форма правки сейчас недоступна. Используй /edit ' . $id . ' и поле, например «время 23.11 21:00».',
+						true,
+					);
+				}
 				return;
 			case 'ddel':
 				$t = $this->tournaments->get($id);

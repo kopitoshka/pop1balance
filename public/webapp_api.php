@@ -48,10 +48,10 @@ if ($init === '' && isset($_SERVER['HTTP_X_TELEGRAM_INIT_DATA'])) {
 }
 
 if ($op === '' || $token === '') {
-	if (str_starts_with($op, 'create_')) {
+	if ((str_starts_with($op, 'create_') || str_starts_with($op, 'edit_'))) {
 		http_response_code(400);
 		echo json_encode(
-			(new WebAppFormError(CreateTournamentForm::EXPIRED_TEXT, '', WebAppFormError::EXPIRED))->toArray(),
+			(new WebAppFormError(str_starts_with($op, 'edit_') ? CreateTournamentForm::EDIT_EXPIRED_TEXT : CreateTournamentForm::EXPIRED_TEXT, '', WebAppFormError::EXPIRED))->toArray(),
 			JSON_UNESCAPED_UNICODE,
 		);
 		exit;
@@ -68,6 +68,11 @@ try {
 	} elseif ($op === 'create_submit') {
 		$form = $body['form'] ?? [];
 		$result = $app->create_form->submit($init, $token, is_array($form) ? $form : []);
+	} elseif ($op === 'edit_bootstrap') {
+		$result = $app->create_form->editBootstrap($init, $token);
+	} elseif ($op === 'edit_submit') {
+		$form = $body['form'] ?? [];
+		$result = $app->create_form->editSubmit($init, $token, is_array($form) ? $form : []);
 	} elseif ($op === 'bootstrap') {
 		$result = $picker->bootstrap($init, $token);
 	} elseif ($op === 'search') {

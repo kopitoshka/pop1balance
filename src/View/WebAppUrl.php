@@ -48,6 +48,14 @@ class WebAppUrl {
 		return self::withToken(self::page($webhook_url, self::CREATE_FORM), $token);
 	}
 
+	/**
+		The same form in edit mode: create.html?ctx=…&mode=edit (the page picks the API ops by mode).
+	*/
+	public static function editForm(string $webhook_url, string $token): ?string {
+		$url = self::createForm($webhook_url, $token);
+		return $url === null ? null : $url . '&mode=edit';
+	}
+
 	protected static function withToken(?string $page, string $token): ?string {
 		if ($page === null || $token === '') {
 			return null;

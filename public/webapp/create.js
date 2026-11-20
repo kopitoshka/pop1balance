@@ -2,7 +2,16 @@
 	'use strict';
 
 	var tg = window.Telegram && window.Telegram.WebApp;
-	var ctx = new URLSearchParams(window.location.search).get('ctx') || '';
+	var params = new URLSearchParams(window.location.search);
+	var ctx = params.get('ctx') || '';
+	// The same page edits a draft: create.html?ctx=…&mode=edit (API ops edit_*).
+	var form_mode = params.get('mode') === 'edit' ? 'edit' : 'create';
+	var SUBMIT_TEXT = form_mode === 'edit' ? 'Сохранить' : 'Создать черновик';
+	var BUSY_TEXT = form_mode === 'edit' ? 'Сохраняю…' : 'Создаю…';
+	var MONTHS = ['Январь', 'Февраль', 'Март', 'Апрель', 'Май', 'Июнь', 'Июль', 'Август', 'Сентябрь',
+		'Октябрь', 'Ноябрь', 'Декабрь'];
+	var WEEKDAYS = ['Вс', 'Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб'];
+	var MINUTE_STEP = 5;
 	var API_URL = '../webapp_api.php';
 
 	var boot = null;
@@ -15,6 +24,7 @@
 	var submitted = false;
 	var busy = false;
 	var closed = false;
+	var view = { year: 0, month: 0 };
 
 	function $(id) {
 		return document.getElementById(id);
@@ -28,6 +38,16 @@
 		title: $('title'),
 		date: $('date'),
 		time: $('time'),
+		heading: $('heading'),
+		date_button: $('date-button'),
+		hour: $('hour'),
+		minute: $('minute'),
+		time_picker: document.querySelector('.time-picker'),
+		calendar: $('calendar'),
+		days: $('days'),
+		month_title: $('month-title'),
+		month_prev: $('month-prev'),
+		month_next: $('month-next'),
 		close_hint: $('close-hint'),
 		team_size: $('team-size'),
 		help: $('help'),
@@ -113,6 +133,99 @@
 		return Date.now() + clock_offset;
 	}
 
+	// Today in Moscow as Y-m-d.
+	function todayMsk() {
+		var d = new Date(mskNow());
+		return d.getUTCFullYear() + '-' + pad(d.getUTCMonth() + 1) + '-' + pad(d.getUTCDate());
+	}
+
+	function ymd(year, month, day) {
+		return year + '-' + pad(month + 1) + '-' + pad(day);
+	}
+
+	// «Сб, 21.11.2026», independent of the device locale.
+	function displayDate(value) {
+		var m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value || '');
+		if (!m) {
+			return 'Выбери дату';
+		}
+		var d = new Date(Date.UTC(+m[1], +m[2] - 1, +m[3]));
+		return WEEKDAYS[d.getUTCDay()] + ', ' + m[3] + '.' + m[2] + '.' + m[1];
+	}
+
+	// Month grid, Monday first; days before today (MSK) are disabled.
+	function renderCalendar() {
+		var today = todayMsk();
+		el.month_title.textContent = MONTHS[view.month] + ' ' + view.year;
+		el.month_prev.disabled = ymd(view.year, view.month, 1) <= today.slice(0, 8) + '01';
+		el.days.innerHTML = '';
+		var first = new Date(Date.UTC(view.year, view.month, 1));
+		var blanks = (first.getUTCDay() + 6) % 7;
+		var count = new Date(Date.UTC(view.year, view.month + 1, 0)).getUTCDate();
+		for (var i = 0; i < blanks; i++) {
+			el.days.appendChild(document.createElement('span'));
+		}
+		for (var day = 1; day <= count; day++) {
+			var value = ymd(view.year, view.month, day);
+			var b = document.createElement('button');
+			b.type = 'button';
+			b.textContent = day;
+			b.setAttribute('data-date', value);
+			b.setAttribute('aria-label', displayDate(value));
+			b.disabled = value < today;
+			b.classList.toggle('today', value === today);
+			b.classList.toggle('selected', value === el.date.value);
+			if (value === el.date.value) {
+				b.setAttribute('aria-pressed', 'true');
+			}
+			el.days.appendChild(b);
+		}
+	}
+
+	function showMonth(value) {
+		var m = /^(\d{4})-(\d{2})/.exec(value || todayMsk());
+		view.year = +m[1];
+		view.month = +m[2] - 1;
+		renderCalendar();
+	}
+
+	function toggleCalendar(open) {
+		el.calendar.hidden = !open;
+		el.date_button.setAttribute('aria-expanded', open ? 'true' : 'false');
+		if (open) {
+			showMonth(el.date.value);
+		}
+	}
+
+	function setDate(value) {
+		el.date.value = value;
+		el.date_button.textContent = displayDate(value);
+	}
+
+	function fillSelect(select, from, to, step) {
+		for (var v = from; v <= to; v += step) {
+			var o = document.createElement('option');
+			o.value = pad(v);
+			o.textContent = pad(v);
+			select.appendChild(o);
+		}
+	}
+
+	// 24-hour time from two selects; an off-step minute of a draft is kept as an extra option.
+	function setTime(value) {
+		var m = /^(\d{2}):(\d{2})/.exec(value || '') || [null, '20', '00'];
+		if (!el.minute.querySelector('option[value="' + m[2] + '"]')) {
+			var o = document.createElement('option');
+			o.value = m[2];
+			o.textContent = m[2];
+			var next = Array.prototype.find.call(el.minute.options, function (opt) { return opt.value > m[2]; });
+			el.minute.insertBefore(o, next || null);
+		}
+		el.hour.value = m[1];
+		el.minute.value = m[2];
+		el.time.value = m[1] + ':' + m[2];
+	}
+
 	function pointsRange() {
 		var n = teamSize();
 		return { min: n * boot.level_min, max: n * boot.level_max };
@@ -178,8 +291,8 @@
 		});
 		showFieldError('title', el.title, shown.title);
 		showFieldError('start', null, shown.start);
-		el.date.classList.toggle('bad', !!shown.start);
-		el.time.classList.toggle('bad', !!shown.start);
+		el.date_button.classList.toggle('bad', !!shown.start);
+		el.time_picker.classList.toggle('bad', !!shown.start);
 		showFieldError('team_size', el.team_size, shown.team_size);
 		showFieldError('level', mode === 'sum' ? el.points : null, shown.level);
 		showFieldError('max_players', el.max_players, shown.max_players);
@@ -370,9 +483,9 @@
 			return;
 		}
 		busy = true;
-		el.submit.textContent = 'Создаю…';
+		el.submit.textContent = BUSY_TEXT;
 		render();
-		api('create_submit', { form: formData() }).then(function () {
+		api(form_mode + '_submit', { form: formData() }).then(function () {
 			if (tg && tg.HapticFeedback) {
 				tg.HapticFeedback.notificationOccurred('success');
 			}
@@ -381,9 +494,9 @@
 			}
 		}).catch(function (err) {
 			busy = false;
-			el.submit.textContent = 'Создать черновик';
+			el.submit.textContent = SUBMIT_TEXT;
 			var data = err.data || {};
-			if (data.reason === 'expired' || data.reason === 'forbidden') {
+			if (data.reason === 'expired' || data.reason === 'forbidden' || data.reason === 'not_draft') {
 				lockForm(err.message);
 				return;
 			}
@@ -410,12 +523,30 @@
 		}
 		el.team_size.value = String(data.team_size['default']);
 		el.title.maxLength = data.title_max;
-		el.date.min = data.now_msk.slice(0, 10);
-		el.date.value = data.default_date;
-		el.time.value = data.default_time;
+		fillSelect(el.hour, 0, 23, 1);
+		fillSelect(el.minute, 0, 59, MINUTE_STEP);
 		el.max_players.max = data.max_players.max;
-		el.max_players.value = data.max_players['default'];
+		var t = data.tournament;
+		if (form_mode === 'edit' && t) {
+			el.title.value = t.title;
+			setDate(t.date);
+			setTime(t.time);
+			el.team_size.value = String(t.team_size);
+			el.max_players.value = t.max_players;
+			levels = t.levels.slice();
+			el.points.value = t.points;
+			points_touched = true;
+			// A draft may already be in the past: show why it cannot be saved as is.
+			touched.start = true;
+		} else {
+			setDate(data.default_date);
+			setTime(data.default_time);
+			el.max_players.value = data.max_players['default'];
+		}
 		fitTeamSize();
+		if (form_mode === 'edit' && t) {
+			setMode(t.level_mode);
+		}
 		el.loading.hidden = true;
 		el.fields.disabled = false;
 		render();
@@ -433,8 +564,45 @@
 	}
 
 	onInput('title', el.title);
-	onInput('start', el.date);
-	onInput('start', el.time);
+	el.date_button.addEventListener('click', function () {
+		toggleCalendar(el.calendar.hidden);
+	});
+	el.month_prev.addEventListener('click', function () {
+		view.month -= 1;
+		if (view.month < 0) {
+			view.month = 11;
+			view.year -= 1;
+		}
+		renderCalendar();
+	});
+	el.month_next.addEventListener('click', function () {
+		view.month += 1;
+		if (view.month > 11) {
+			view.month = 0;
+			view.year += 1;
+		}
+		renderCalendar();
+	});
+	el.days.addEventListener('click', function (e) {
+		var b = e.target.closest('button[data-date]');
+		if (!b || b.disabled) {
+			return;
+		}
+		setDate(b.getAttribute('data-date'));
+		touched.start = true;
+		delete server_errors.start;
+		toggleCalendar(false);
+		el.date_button.focus();
+		render();
+	});
+	[el.hour, el.minute].forEach(function (select) {
+		select.addEventListener('change', function () {
+			el.time.value = el.hour.value + ':' + el.minute.value;
+			touched.start = true;
+			delete server_errors.start;
+			render();
+		});
+	});
 	onInput('max_players', el.max_players);
 	onInput('level', el.points);
 	el.points.addEventListener('input', function () {
@@ -482,13 +650,20 @@
 	});
 	el.form.addEventListener('submit', submit);
 
+	if (form_mode === 'edit') {
+		el.heading.textContent = 'Правка турнира';
+		document.title = 'Правка турнира';
+	}
+	el.submit.textContent = SUBMIT_TEXT;
 	if (!tg || !tg.initData) {
-		lockForm('Открой форму из лички с ботом в Telegram: /create_tournament.');
+		lockForm(form_mode === 'edit'
+			? 'Открой форму кнопкой «✏️ Поправить» на карточке черновика в личке с ботом.'
+			: 'Открой форму из лички с ботом в Telegram: /create_tournament.');
 		return;
 	}
 	tg.ready();
 	tg.expand();
-	api('create_bootstrap').then(start).catch(function (err) {
+	api(form_mode + '_bootstrap').then(start).catch(function (err) {
 		lockForm(err.message);
 	});
 })();

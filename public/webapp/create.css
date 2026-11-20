@@ -23,8 +23,23 @@ input.bad, select.bad { border-color: var(--err); }
 input[type=number] { appearance: textfield; -moz-appearance: textfield; }
 input::-webkit-inner-spin-button, input::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
 .start-row { display: flex; gap: 8px; }
-.start-row input[type=date] { flex: 1.6; }
-.start-row input[type=time] { flex: 1; }
+h1 { margin: 0 4px 16px; font-size: 20px; }
+.field-button { flex: 1.5; min-height: 44px; padding: 11px 12px; border: 1px solid transparent; border-radius: 10px; background: var(--sec); color: var(--fg); text-align: left; cursor: pointer; }
+.field-button.bad, .time-picker.bad { border-color: var(--err); }
+.time-picker { flex: 1; display: flex; align-items: center; gap: 2px; border: 1px solid transparent; border-radius: 10px; background: var(--sec); padding: 0 6px; }
+.time-picker select { border: 0; background: transparent; padding: 11px 2px; text-align: center; text-align-last: center; appearance: none; -webkit-appearance: none; }
+.calendar { margin: 8px 0 0; padding: 8px; border-radius: 12px; background: var(--sec); }
+.calendar-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 6px; }
+.calendar-head b { text-transform: capitalize; }
+.calendar-head button { width: 44px; height: 40px; border: 0; border-radius: 10px; background: transparent; color: var(--link); font-size: 24px; cursor: pointer; }
+.calendar-head button:disabled { opacity: .3; cursor: default; }
+.weekdays, .days { display: grid; grid-template-columns: repeat(7, 1fr); gap: 2px; text-align: center; }
+.weekdays span { font-size: 12px; color: var(--hint); padding: 4px 0; }
+.weekdays span:nth-child(n+6) { color: var(--err); }
+.days button { height: 40px; border: 0; border-radius: 50%; background: transparent; color: var(--fg); cursor: pointer; }
+.days button:disabled { color: var(--hint); opacity: .45; cursor: default; }
+.days button.today { box-shadow: inset 0 0 0 1px var(--link); }
+.days button.selected { background: var(--btn); color: var(--btn-fg); font-weight: 600; }
 .hint, .error { font-size: 13px; margin: 6px 4px 0; }
 .hint { color: var(--hint); }
 .error { color: var(--err); }

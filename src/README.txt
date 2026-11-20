@@ -90,6 +90,7 @@ App/ — сценарии над доменом
     CreateTournamentForm.php
         /create_tournament: предложение формы, кнопка под
         списком, Mini App создания черновика (initData HMAC)
+        и правки черновика («✏️ Поправить» на карточке)
     WebAppFormError.php
         Ошибка формы Mini App: поле + причина для JSON
     TeamCards.php
@@ -225,7 +226,7 @@ PUBLIC/ — то, что отдает веб-сервер
 webhook.php     приём апдейтов Telegram
 webapp_api.php  API Mini App: подбор игрока и форма
                 создания турнира (create_bootstrap,
-                create_submit)
+                create_submit, edit_bootstrap, edit_submit)
 webapp/         страницы Mini App (HTML/JS/CSS, без
                 сборки): picker.* подбор, create.*
                 форма /create_tournament

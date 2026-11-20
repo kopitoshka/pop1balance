@@ -10,6 +10,7 @@
 <body>
 	<form id="form" novalidate>
 		<main>
+			<h1 id="heading">Новый турнир</h1>
 			<div id="error" class="error banner" role="alert" hidden></div>
 			<p id="loading" class="hint">Открываю форму…</p>
 			<fieldset id="fields" disabled>
@@ -21,8 +22,23 @@
 				<section>
 					<label class="label" for="date">Начало (МСК)</label>
 					<div class="start-row">
-						<input id="date" name="date" type="date" required aria-label="Дата начала по МСК" aria-describedby="start-error close-hint">
-						<input id="time" name="time" type="time" step="60" required aria-label="Время начала по МСК" aria-describedby="start-error close-hint">
+						<input id="date" name="date" type="hidden">
+						<input id="time" name="time" type="hidden">
+						<button type="button" id="date-button" class="field-button" aria-haspopup="dialog" aria-expanded="false" aria-controls="calendar" aria-describedby="start-error close-hint">Выбери дату</button>
+						<div class="time-picker" role="group" aria-label="Время начала по МСК, 24 часа">
+							<select id="hour" aria-label="Часы"></select>
+							<span aria-hidden="true">:</span>
+							<select id="minute" aria-label="Минуты"></select>
+						</div>
+					</div>
+					<div id="calendar" class="calendar" role="dialog" aria-label="Выбор даты" hidden>
+						<div class="calendar-head">
+							<button type="button" id="month-prev" aria-label="Предыдущий месяц">‹</button>
+							<b id="month-title"></b>
+							<button type="button" id="month-next" aria-label="Следующий месяц">›</button>
+						</div>
+						<div class="weekdays" aria-hidden="true"><span>Пн</span><span>Вт</span><span>Ср</span><span>Чт</span><span>Пт</span><span>Сб</span><span>Вс</span></div>
+						<div id="days" class="days"></div>
 					</div>
 					<p id="start-error" class="error" hidden></p>
 					<p id="close-hint" class="hint"></p>

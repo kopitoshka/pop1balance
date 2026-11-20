@@ -7,13 +7,16 @@ namespace P1Bot\App;
 use DateInterval;
 use DateTimeImmutable;
 use P1Bot\Domain\CreateTournament;
+use P1Bot\Domain\EditTournament;
 use P1Bot\Domain\Exception\DomainError;
 use P1Bot\Domain\Exception\InvalidLevel;
 use P1Bot\Domain\Exception\PermissionDenied;
 use P1Bot\Domain\Levels;
 use P1Bot\Domain\Model\Player;
+use P1Bot\Domain\Model\Tournament;
 use P1Bot\Domain\MoscowTime;
 use P1Bot\Domain\TournamentService;
+use P1Bot\Domain\TournamentStatus;
 use P1Bot\Repository\PendingActionRepository;
 use P1Bot\Repository\PlayerRepository;
 use P1Bot\Repository\WebAppContextRepository;
@@ -32,11 +35,15 @@ use P1Bot\View\WebAppUrl;
 	/create_tournament and «➕ Создать турнир» on the tournament list open it; in groups they
 	lead to the private chat (start=create). The form only creates a draft: the draft card
 	with «Публикуем?» comes to the private chat, publishing stays on that card.
+	«✏️ Поправить» on the draft card opens the same form in edit mode (prefilled, «Сохранить»);
+	it saves through TournamentService::edit and shows the updated card again.
 */
 class CreateTournamentForm {
 	public const ACTION = 'create_tournament';
 	public const COMMAND = 'create_tournament';
 	public const DEEP_LINK = 'create';
+	public const ACTION_EDIT = 'edit_tournament';
+	public const MODE_EDIT = 'edit';
 
 	/**
 		How long a form button stays valid. Longer than the picker: the button also sits
@@ -52,6 +59,7 @@ class CreateTournamentForm {
 	public const GROUP_BUTTON = '✉️ Продолжить в личке';
 	public const CANCEL_BUTTON = '✖️ Отмена';
 	public const CANCEL_DATA = 'tcreatex:0';
+	public const EDIT_BUTTON = '✏️ Поправить';
 
 	public const OFFER_TEXT = 'Открой форму и заполни поля. После создания пришлю карточку черновика: '
 		. 'проверишь и опубликуешь.';
@@ -61,6 +69,11 @@ class CreateTournamentForm {
 		. 'например «создай турнир на субботу в 20:00, тройки, уровень 10», — я соберу черновик.';
 	public const EXPIRED_TEXT = 'Форма устарела. Закрой её и открой заново: /create_tournament или кнопка '
 		. '«➕ Создать турнир» под списком турниров.';
+	public const EDIT_EXPIRED_TEXT = 'Форма устарела. Закрой её и покажи карточку черновика заново: '
+		. '/open и номер турнира. На свежей карточке будет кнопка «✏️ Поправить».';
+	public const EDIT_OFFER_TEXT = 'Открой форму и поправь черновик. Потом пришлю обновлённую карточку.';
+	public const NOT_DRAFT_TEXT = 'Турнир «%s» уже не черновик (%s). В форме правятся только черновики, '
+		. 'остальное — командой /edit %d.';
 
 	public function __construct(
 		protected WebAppContextRepository $contexts,
@@ -178,12 +191,71 @@ class CreateTournamentForm {
 	}
 
 	/**
+		«✏️ Поправить» for a draft card shown in $chat_id to $actor_id: a web_app button in private,
+		a deep link into the private chat elsewhere (web_app buttons work only in private).
+		Null without a Mini App URL: the card then keeps the old callback button.
+
+		@return array<string, mixed>|null
+	*/
+	public function editButton(Tournament $t, int $chat_id, int $actor_id): ?array {
+		if (!$this->isAvailable()) {
+			return null;
+		}
+		if ($chat_id < 0) {
+			return ['text' => self::EDIT_BUTTON, 'url' => DeepLink::tournament($this->bot_username, $t->id)];
+		}
+		$actor = $this->players->find($actor_id);
+		if ($actor === null || $actor->tg_user_id === null) {
+			return null;
+		}
+		$token = $this->issue($actor, $chat_id, self::ACTION_EDIT, ['tournament_id' => $t->id]);
+		$url = WebAppUrl::editForm($this->webhook_url, $token);
+		return $url === null ? null : ['text' => self::EDIT_BUTTON, 'web_app' => ['url' => $url]];
+	}
+
+	/**
+		Old cards still carry the callback «Поправить» (fix:<id>): answer with a form button.
+		Returns false when the form is unavailable.
+	*/
+	public function sendEditOffer(int $chat_id, Tournament $t, Player $actor, ?int $reply_to = null): bool {
+		$btn = $this->editButton($t, $chat_id, $actor->id);
+		if ($btn === null) {
+			return false;
+		}
+		$this->api->sendMessage($chat_id, Html::e(self::EDIT_OFFER_TEXT), $reply_to, [
+			'reply_markup' => ['inline_keyboard' => [[$btn]]],
+		]);
+		return true;
+	}
+
+	/**
 		Everything the page needs: limits, defaults, level names, Moscow «now».
 
 		@return array<string, mixed>
 	*/
 	public function bootstrap(string $init_data, string $token): array {
 		$this->authorize($init_data, $token);
+		return $this->settings();
+	}
+
+	/**
+		Edit mode: the same settings plus the draft's current values to prefill the form.
+
+		@return array<string, mixed>
+	*/
+	public function editBootstrap(string $init_data, string $token): array {
+		[, , , $t] = $this->authorizeEdit($init_data, $token);
+		$out = $this->settings();
+		$out['action'] = self::ACTION_EDIT;
+		$out['mode'] = self::MODE_EDIT;
+		$out['tournament'] = $this->values($t);
+		return $out;
+	}
+
+	/**
+		@return array<string, mixed>
+	*/
+	protected function settings(): array {
 		$now_msk = $this->clock->now()->setTimezone(MoscowTime::zone());
 		$levels = [];
 		foreach (Levels::all() as $level => $name) {
@@ -192,6 +264,7 @@ class CreateTournamentForm {
 		return [
 			'ok' => true,
 			'action' => self::ACTION,
+			'mode' => 'create',
 			'now_msk' => $now_msk->format('Y-m-d H:i:s'),
 			'default_date' => $now_msk->modify('+1 day')->format('Y-m-d'),
 			'default_time' => self::DEFAULT_TIME,
@@ -244,6 +317,84 @@ class CreateTournamentForm {
 			$this->pending->clearChat($actor->id, $ctx['chat_id']);
 			$this->drafts->show($t->id, $ctx['chat_id'], null, $actor->id, [
 				['role' => 'user', 'content' => 'Создаю турнир через форму: ' . $summary],
+			]);
+		} finally {
+			if ($this->dialogs !== null) {
+				$this->dialogs->end();
+			}
+		}
+		return ['ok' => true, 'close' => true, 'tournament_id' => $t->id];
+	}
+
+	/**
+		Draft values in the form's terms: MSK date/time, level per player (reference team)
+		or as a sum (max_points).
+
+		@return array<string, mixed>
+	*/
+	public function values(Tournament $t): array {
+		$start = $t->starts_at->setTimezone(MoscowTime::zone());
+		$levels = [];
+		if ($t->reference_team !== null) {
+			try {
+				$levels = Levels::parseReferenceTeam($t->reference_team);
+			} catch (DomainError $e) {
+				$levels = [];
+			}
+		}
+		$per_player = $levels !== [] && count($levels) === $t->team_size;
+		return [
+			'id' => $t->id,
+			'number' => $this->announcer->number($t)->number,
+			'title' => $t->title,
+			'date' => $start->format('Y-m-d'),
+			'time' => $start->format('H:i'),
+			'team_size' => $t->team_size,
+			'level_mode' => $per_player ? 'players' : 'sum',
+			'levels' => $per_player ? $levels : [],
+			'points' => $t->max_points ?? $t->team_size * Levels::DEFAULT,
+			'max_players' => $t->max_players,
+		];
+	}
+
+	/**
+		Edit mode submit: validates like creation, saves through TournamentService::edit
+		(author or owner, drafts only) and shows the updated draft card again.
+
+		@param array<string, mixed> $input the same fields as submit()
+		@return array{ok: true, close: true, tournament_id: int}
+	*/
+	public function editSubmit(string $init_data, string $token, array $input): array {
+		[$actor, $ctx, $user, $t] = $this->authorizeEdit($init_data, $token);
+		$form = $this->parse($input, $actor);
+		$summary = $this->summary($form);
+		$level_same = $form->team_size === $t->team_size
+			&& $form->reference_team === ($t->reference_team ?? ($t->max_points !== null ? (string) $t->max_points : null));
+		$edit = new EditTournament(
+			title: $form->title,
+			starts_at_msk: $form->starts_at_msk,
+			team_size: $level_same ? null : $form->team_size,
+			reference_team: $level_same ? null : $form->reference_team,
+			max_players: $form->max_players,
+		);
+		if ($this->dialogs !== null) {
+			$this->dialogs->begin($user, $ctx['chat_id'], 'private', '');
+			$this->dialogs->user('[форма] Сохранить черновик №' . $t->id . ': ' . $summary);
+		}
+		try {
+			try {
+				$t = $this->tournaments->edit($actor->id, $t->id, $edit);
+			} catch (PermissionDenied $e) {
+				throw new WebAppFormError($e->getMessage(), '', WebAppFormError::FORBIDDEN);
+			} catch (InvalidLevel $e) {
+				throw new WebAppFormError($e->getMessage(), 'level');
+			} catch (DomainError $e) {
+				throw new WebAppFormError($e->getMessage());
+			}
+			$this->announcer->renumber($t->id); // a new start time may change the order
+			$this->pending->clearChat($actor->id, $ctx['chat_id']);
+			$this->drafts->show($t->id, $ctx['chat_id'], null, $actor->id, [
+				['role' => 'user', 'content' => 'Правлю турнир через форму: ' . $summary],
 			]);
 		} finally {
 			if ($this->dialogs !== null) {
@@ -385,27 +536,65 @@ class CreateTournamentForm {
 		@return array{0: Player, 1: array{token: string, actor_player_id: int, chat_id: int, action: string, payload: array<string, mixed>}, 2: TgUser}
 	*/
 	protected function authorize(string $init_data, string $token): array {
+		[$actor, $ctx, $user] = $this->authorizeContext($init_data, $token, self::ACTION, self::EXPIRED_TEXT);
+		if (!$this->create_access->canCreate($actor->id)) {
+			throw new WebAppFormError(CreateAccess::REFUSAL, '', WebAppFormError::FORBIDDEN);
+		}
+		return [$actor, $ctx, $user];
+	}
+
+	/**
+		Edit mode: the context names the draft; only its author or the owner, only while it is a draft.
+
+		@return array{0: Player, 1: array{token: string, actor_player_id: int, chat_id: int, action: string, payload: array<string, mixed>}, 2: TgUser, 3: Tournament}
+	*/
+	protected function authorizeEdit(string $init_data, string $token): array {
+		[$actor, $ctx, $user] = $this->authorizeContext($init_data, $token, self::ACTION_EDIT, self::EDIT_EXPIRED_TEXT);
+		$id = self::intValue($ctx['payload']['tournament_id'] ?? null);
+		try {
+			$t = $this->tournaments->get((int) $id);
+		} catch (DomainError $e) {
+			throw new WebAppFormError('Этого турнира больше нет.', '', WebAppFormError::NOT_DRAFT);
+		}
+		try {
+			$this->tournaments->assertCanManage($actor->id, $t->id);
+		} catch (PermissionDenied $e) {
+			throw new WebAppFormError($e->getMessage(), '', WebAppFormError::FORBIDDEN);
+		}
+		if ($t->status !== TournamentStatus::DRAFT) {
+			throw new WebAppFormError(
+				sprintf(self::NOT_DRAFT_TEXT, $t->title, TournamentStatus::label($t->status), $t->id),
+				'',
+				WebAppFormError::NOT_DRAFT,
+			);
+		}
+		return [$actor, $ctx, $user, $t];
+	}
+
+	/**
+		initData signature, a live token of $action and the same Telegram user.
+
+		@return array{0: Player, 1: array{token: string, actor_player_id: int, chat_id: int, action: string, payload: array<string, mixed>}, 2: TgUser}
+	*/
+	protected function authorizeContext(string $init_data, string $token, string $action, string $expired_text): array {
 		$now = $this->clock->now();
 		$this->contexts->purgeExpired($now);
 		try {
 			$parsed = WebAppInitData::parse($init_data, $this->bot_token, $now->getTimestamp());
 		} catch (DomainError $e) {
-			throw new WebAppFormError(self::EXPIRED_TEXT, '', WebAppFormError::EXPIRED);
+			throw new WebAppFormError($expired_text, '', WebAppFormError::EXPIRED);
 		}
 		$token = trim($token);
 		if ($token === '' || preg_match('/^[a-f0-9]{32}$/', $token) !== 1) {
-			throw new WebAppFormError(self::EXPIRED_TEXT, '', WebAppFormError::EXPIRED);
+			throw new WebAppFormError($expired_text, '', WebAppFormError::EXPIRED);
 		}
 		$ctx = $this->contexts->find($token, $now);
-		if ($ctx === null || $ctx['action'] !== self::ACTION) {
-			throw new WebAppFormError(self::EXPIRED_TEXT, '', WebAppFormError::EXPIRED);
+		if ($ctx === null || $ctx['action'] !== $action) {
+			throw new WebAppFormError($expired_text, '', WebAppFormError::EXPIRED);
 		}
 		$actor = $this->players->find($ctx['actor_player_id']);
 		if ($actor === null || $actor->tg_user_id === null || $actor->tg_user_id !== $parsed['user_id']) {
 			throw new WebAppFormError('Эта форма открыта для другого человека.', '', WebAppFormError::FORBIDDEN);
-		}
-		if (!$this->create_access->canCreate($actor->id)) {
-			throw new WebAppFormError(CreateAccess::REFUSAL, '', WebAppFormError::FORBIDDEN);
 		}
 		$user = new TgUser(
 			$parsed['user_id'],
@@ -423,10 +612,13 @@ class CreateTournamentForm {
 		if ($actor->tg_user_id === null) {
 			return null;
 		}
-		return $this->issue($actor, $actor->tg_user_id);
+		return $this->issue($actor, $actor->tg_user_id, self::ACTION, []);
 	}
 
-	protected function issue(Player $actor, int $chat_id): string {
+	/**
+		@param array<string, mixed> $payload
+	*/
+	protected function issue(Player $actor, int $chat_id, string $action, array $payload): string {
 		$now = $this->clock->now();
 		$this->contexts->purgeExpired($now);
 		$token = bin2hex(random_bytes(16));
@@ -434,8 +626,8 @@ class CreateTournamentForm {
 			$token,
 			$actor->id,
 			$chat_id,
-			self::ACTION,
-			[],
+			$action,
+			$payload,
 			$now->add(new DateInterval('PT' . self::TTL_SECONDS . 'S')),
 			$now,
 		);

@@ -7,6 +7,7 @@ namespace P1Bot\App;
 use P1Bot\Domain\AccessPolicy;
 use P1Bot\Domain\Exception\PermissionDenied;
 use P1Bot\Domain\Exception\ValidationError;
+use P1Bot\Domain\Model\Player;
 use P1Bot\Domain\Model\Tournament;
 use P1Bot\Domain\TournamentService;
 use P1Bot\Domain\TournamentStatus;
@@ -24,6 +25,18 @@ use Throwable;
 	only after an explicit confirmation of the version that was shown.
 */
 class DraftCards {
+	protected ?CreateTournamentForm $create_form = null;
+
+	public function setCreateForm(CreateTournamentForm $create_form): void {
+		$this->create_form = $create_form;
+	}
+
+	/**
+		Old draft cards still have fix:<id>. Offer the same Mini App instead of asking for text.
+	*/
+	public function offerEdit(int $chat_id, Tournament $t, Player $actor, ?int $reply_to = null): bool {
+		return $this->create_form !== null && $this->create_form->sendEditOffer($chat_id, $t, $actor, $reply_to);
+	}
 
 	public function __construct(
 		protected TelegramApi $api,
@@ -68,7 +81,8 @@ class DraftCards {
 			throw new ValidationError('Этот турнир уже не черновик.');
 		}
 		$text = $this->cardText($t);
-		$message_id = $this->api->sendMessage($chat_id, $text, $reply_to, TournamentCard::buttons($t->id));
+		$edit_button = $this->create_form !== null ? $this->create_form->editButton($t, $chat_id, $actor_id) : null;
+		$message_id = $this->api->sendMessage($chat_id, $text, $reply_to, TournamentCard::buttons($t->id, $edit_button));
 		$this->tournaments->setCardMessage($t->id, $message_id, $actor_id);
 
 		$history[] = ['role' => 'assistant', 'content' => self::plain($text)];

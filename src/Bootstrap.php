@@ -390,6 +390,7 @@ class Bootstrap {
 			$this->webapp_picker,
 		);
 		$commands->setCreateForm($this->create_form);
+		$this->drafts->setCreateForm($this->create_form);
 
 		$this->dispatcher = new Dispatcher(
 			$this->tournaments,

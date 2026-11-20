@@ -52,11 +52,11 @@ class TournamentCard {
 	/**
 		@return array<string, mixed>
 	*/
-	public static function buttons(int $tournament_id): array {
+	public static function buttons(int $tournament_id, ?array $edit_button = null): array {
 		return ['reply_markup' => ['inline_keyboard' => [
 			[
 				['text' => '✅ Публикуем', 'callback_data' => 'pub:' . $tournament_id],
-				['text' => '✏️ Поправить', 'callback_data' => 'fix:' . $tournament_id],
+				$edit_button ?? ['text' => '✏️ Поправить', 'callback_data' => 'fix:' . $tournament_id],
 			],
 			[
 				['text' => '🗑 Удалить', 'callback_data' => 'ddel:' . $tournament_id],

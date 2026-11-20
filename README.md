@@ -297,11 +297,17 @@ Creating:
   token, TTL 6 h). Fields: title (1–255), date and time **MSK** in the future (hint «Регистрация
   закроется в HH:MM»), team size 1–12 (default 3), tournament level («По игрокам»: a level per
   player, or «Суммой»: total team_size…team_size×6), player limit (default 24, team_size…1000).
+  Date and time use the page's own controls, not the device locale: a Russian calendar starting on
+  Monday (past days disabled) and 24-hour hour/minute selects (minutes in steps of 5).
   The server validates everything again. In a group the command answers with a deep link
   `?start=create` to the private chat (web_app buttons work only in private).
   The form creates a **draft** (optional origin `chat_id` for history) and shows its card **in private**
   ending with «Публикуем или что-то поправить?» and the buttons «✅ Публикуем» / «✏️ Поправить». On a
   clear confirmation the announcement goes into **every** active group. The form never publishes.
+- «✏️ Поправить» on a draft card opens the same form in edit mode (`create.html?ctx=…&mode=edit`,
+  ops `edit_bootstrap` / `edit_submit`): prefilled, heading «Правка турнира», button «Сохранить».
+  It saves through `TournamentService::edit` (author or owner, drafts only) and sends the updated card.
+  A card outside private gets a `?start=t_<id>` deep link instead. Old cards with `fix:<id>` get a form button.
   Without an https `WEBHOOK_URL` the form is unavailable and the bot suggests plain text instead.
 - Plain text in private («создай турнир на субботу в 20:00, тройки, уровень 10») still works via AI.
   `/new` was removed.
