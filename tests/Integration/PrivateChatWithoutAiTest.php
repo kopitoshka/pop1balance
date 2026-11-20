@@ -35,7 +35,7 @@ class PrivateChatWithoutAiTest extends IntegrationTestCase {
 	}
 
 	public function testCardReplyWithoutAi(): void {
-		$this->dispatch($this->privateMessage($this->owner, '/new 23.11 20:00 | Кубок | 2 | 3,4'));
+		$this->newDraft($this->owner, '23.11 20:00 | Кубок | 2 | 3,4');
 		$t = $this->app->tournament_repo->find(1);
 		$reply = ['reply_to_message' => [
 			'message_id' => $t->card_msg_id,

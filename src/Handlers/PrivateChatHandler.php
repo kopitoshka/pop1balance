@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace P1Bot\Handlers;
 
 use P1Bot\App\CreateAccess;
+use P1Bot\App\CreateTournamentForm;
 use P1Bot\App\DraftCards;
 use P1Bot\App\PrivateGroups;
 use P1Bot\App\OrganizerTeams;
@@ -110,6 +111,16 @@ class PrivateChatHandler {
 			$decision['command'] = $name;
 			$decision['args'] = $command['args'];
 			if ($name === 'start') {
+				// Group-to-private link for the tournament form.
+				if (trim($command['args']) === CreateTournamentForm::DEEP_LINK) {
+					return [
+						'kind' => self::COMMAND,
+						'command' => CreateTournamentForm::COMMAND,
+						'args' => '',
+						'tournament' => null,
+						'group' => null,
+					];
+				}
 				$payload = DeepLink::parse(trim($command['args']));
 				if ($payload['tournament'] !== null) {
 					return ['kind' => self::START_TOURNAMENT, 'tournament' => $payload['tournament']] + $decision;

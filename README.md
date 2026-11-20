@@ -1,6 +1,6 @@
 # Pop1 tournament bot
 
-Telegram bot for Population: One tournaments: tournament registration, teams (2–4 players)
+Telegram bot for Population: One tournaments: tournament registration, teams (1–12 players)
 with a captain, solo players, level balance (6 levels, per-admin rating scales), player limit
 with computed reserve, announcements in the group, reminders before start. Players talk to the
 bot in plain Russian (OpenAI, model `gpt-6-luna`); admins also have slash commands.
@@ -201,7 +201,7 @@ Example:
 
 Decisions: `ignored: no mention/reply`, `ignored: wrong bot username in mention`,
 `ignored: command /x@other_bot is for another bot`, `ignored: unknown command /x`,
-`group: info /tournaments` (info commands answered in the group), `group: redirect (/new|mention|reply) start=t_5|g_-100…`,
+`group: info /tournaments` (info commands answered in the group), `group: redirect (/create_tournament|mention|reply) start=t_5|g_-100…`,
 `group: old button solo:5 -> private`, `private: start t_5`, `private: start g_-100…`, `private: start`,
 `private: command /edit`, `private: unknown command /x`, `private: ask group (/info)`, `private: card reply`,
 `private: ai`, `private: help` / `levels` / `tournaments` / `fallback text (AI off…)` (keywords, AI off),
@@ -256,7 +256,7 @@ for the webhook too, e.g. `sudo -u apache php bin/diag.php`.
   `REMIND_ALL_GROUPS=0` turns group broadcasts off (no private DM reminders yet). `REMINDER_MINUTES` key unchanged.
 - In the group when mentioned/replied: info (`/tournaments`, `/info`, `/level`, `/levels`, `/help`, «какие турниры?»,
   «что нового?», «какой у меня уровень?»…) is answered there (help ends with a private-chat hint + button); «запиши меня» /
-  «удали меня» join/leave solo when the tournament is unambiguous; management and private-only (`/new`, `/history`,
+  «удали меня» join/leave solo when the tournament is unambiguous; management and private-only (`/create_tournament`, `/history`,
   «прошлые турниры»…) → random private redirect phrase + deep link; anything else → fixed
   «Не поняла 🙅‍♀️ Что я умею — /help» (no free-form AI chat in groups). Deep link is `t_<id>` when clear, else `g_<chat id>`.
 - Buttons of old group messages (`solo`, `unsolo`, `howto`, `pub`, `fix`) answer «Теперь это в личке…» and open
@@ -283,7 +283,7 @@ per-group headers). `players.dm_group_id` / deep link `g_<chat id>` / `grp:` but
 group (legacy), but creating a tournament no longer asks which group it is for.
 
 **Who may create / manage:**
-- **Create** (`/new`, AI create): the bot **owner** always; otherwise a user who shares at least one **active** group
+- **Create** (`/create_tournament` form, AI create): the bot **owner** always; otherwise a user who shares at least one **active** group
   with both the bot and the owner (`getChatMember`: member/administrator/creator/restricted-but-member), with a short
   cache. Or anyone if `ANYONE_CAN_CREATE_TOURNAMENT=1` (override, key kept). Refusal (feminine):
   «Создавать турниры могут только участники групп, где есть организатор P1. Записаться на турнир при этом можно 🙂».
@@ -291,11 +291,20 @@ group (legacy), but creating a tournament no longer asks which group it is for.
   the bot **owner** (`BOT_OWNER_TG_ID`). Group admins have no special rights to manage someone else's tournament.
 
 Creating:
-- `/new 23.11 20:00 | Кубок | 3 | 10 | 24` — date/time MSK | title | team size |
-  tournament level (required, see «Tournament level» below) | player limit (default 24).
-  Creates a **draft** (optional origin `chat_id` for history) and shows its card **in private** ending with
-  «Публикуем или что-то поправить?» and the buttons «✅ Публикуем» / «✏️ Поправить». On a clear confirmation the
-  announcement goes into **every** active group.
+- `/create_tournament` (private, also in the command menus and as «➕ Создать турнир» under the
+  tournament list for those who may create) opens the **Mini App form** (`public/webapp/create.*`,
+  API `webapp_api.php` ops `create_bootstrap` / `create_submit`, initData HMAC + `webapp_contexts`
+  token, TTL 6 h). Fields: title (1–255), date and time **MSK** in the future (hint «Регистрация
+  закроется в HH:MM»), team size 1–12 (default 3), tournament level («По игрокам»: a level per
+  player, or «Суммой»: total team_size…team_size×6), player limit (default 24, team_size…1000).
+  The server validates everything again. In a group the command answers with a deep link
+  `?start=create` to the private chat (web_app buttons work only in private).
+  The form creates a **draft** (optional origin `chat_id` for history) and shows its card **in private**
+  ending with «Публикуем или что-то поправить?» and the buttons «✅ Публикуем» / «✏️ Поправить». On a
+  clear confirmation the announcement goes into **every** active group. The form never publishes.
+  Without an https `WEBHOOK_URL` the form is unavailable and the bot suggests plain text instead.
+- Plain text in private («создай турнир на субботу в 20:00, тройки, уровень 10») still works via AI.
+  `/new` was removed.
 - `/edit [N] время 23.11 21:00` (fields: название, время, размер, уровень, лимит; `баланс N` — owner only). Editing a draft shows a fresh card.
   `/edit 1 уровень 10`, `/edit 1 уровень средний, средний, высокий`, `/edit 1 размер 2 уровень 7`.
 - `/levels` — the six levels with points and synonyms and how the tournament level works (for everyone).
@@ -350,7 +359,7 @@ Every tournament has a level (see below). There is no "no level" option any more
    Player limit defaults to 24, the level scale to the default one.
 2. It creates a draft and shows the card with «Публикуем или что-то поправить?» in private.
 3. Publishing (registration opens, the announcement is posted to the group) happens only on a clear confirmation from the
-   organizer, the admin the current card was shown to (who ran `/new`, `/edit` or `/open`) or the bot owner: the «Публикуем» button, or a reply to the card like «да», «публикуем», «ок», «всё верно».
+   organizer, the admin the current card was shown to (who created it, ran `/edit` or `/open`) or the bot owner: the «Публикуем» button, or a reply to the card like «да», «публикуем», «ок», «всё верно».
    The check is done in PHP (`App\Confirmation`), not by the model: anything with a correction, a question,
    a negation or numbers («да, но время 21:00») is not a confirmation — the edits are applied and the card is shown again.
    The model can publish only via the `publish_tournament` tool, which re-checks the user's message.
@@ -369,14 +378,14 @@ text via the `levels_help` tool when asked «какие есть уровни»)
 
 «уровень», «уровень турнира», «максимальный уровень», «макс. уровень» are the same thing: the maximum total
 points of a team (`tournaments.max_points`). A team is accepted when the sum of its players' levels fits.
-It is set (in `/new`, `/edit` and plain text) in one of two ways:
+It is set (in the form, `/edit` and plain text) in one of two ways:
 
 - **one number** — the total itself: `10` for a team of 3 means `max_points = 10`. Allowed range:
   team_size × 1 … team_size × 6 (3–18 for threes). Stored with `reference_team = NULL`.
 - **levels of all players**, exactly team_size of them (names, synonyms or digits 1–6):
   «средний, средний, высокий» / `3,3,5` → `max_points = 11`, `reference_team = '3,3,5'`.
 
-A single level name («средний») is not a shorthand for teams of 2–4. Anything else (no value, wrong number
+A single level name («средний») is accepted only for one-player teams (team_size = 1). Anything else (no value, wrong number
 of levels, digit outside 1–6, total out of range, unknown word) is rejected with the reason plus the usage
 help with examples and a pointer to `/levels`. The label («средний (10 баллов на троих)») is
 round(max_points / team_size). Changing the team size needs a new level (`/edit 1 размер 2 уровень 7`).

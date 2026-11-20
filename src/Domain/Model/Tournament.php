@@ -79,10 +79,11 @@ class Tournament {
 			return 'без ограничения по уровню';
 		}
 		$who = match ($this->team_size) {
+			1 => 'одного',
 			2 => 'двоих',
 			3 => 'троих',
 			4 => 'четверых',
-			default => $this->team_size . ' игроков',
+			default => $this->team_size . ' ' . RuPlural::choose($this->team_size, ['игрока', 'игроков', 'игроков']),
 		};
 		return sprintf(
 			'%s (%d %s на %s)',

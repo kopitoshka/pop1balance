@@ -1,0 +1,80 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+	<meta charset="utf-8">
+	<meta name="viewport" content="width=device-width, initial-scale=1">
+	<title>Новый турнир</title>
+	<script src="https://telegram.org/js/telegram-web-app.js"></script>
+	<link rel="stylesheet" href="create.css">
+</head>
+<body>
+	<form id="form" novalidate>
+		<main>
+			<div id="error" class="error banner" role="alert" hidden></div>
+			<p id="loading" class="hint">Открываю форму…</p>
+			<fieldset id="fields" disabled>
+				<section>
+					<label class="label" for="title">Название</label>
+					<input id="title" name="title" type="text" placeholder="Например, Кубок выходного дня" required autocomplete="off" aria-describedby="title-error">
+					<p id="title-error" class="error" hidden></p>
+				</section>
+				<section>
+					<label class="label" for="date">Начало (МСК)</label>
+					<div class="start-row">
+						<input id="date" name="date" type="date" required aria-label="Дата начала по МСК" aria-describedby="start-error close-hint">
+						<input id="time" name="time" type="time" step="60" required aria-label="Время начала по МСК" aria-describedby="start-error close-hint">
+					</div>
+					<p id="start-error" class="error" hidden></p>
+					<p id="close-hint" class="hint"></p>
+				</section>
+				<section>
+					<label class="label" for="team-size">Игроков в команде</label>
+					<select id="team-size" name="team_size" aria-describedby="team_size-error"></select>
+					<p id="team_size-error" class="error" hidden></p>
+				</section>
+				<section>
+					<div class="label">Уровень турнира <button type="button" id="help-toggle" class="help-toggle" aria-label="Справка об уровне турнира" aria-expanded="false" aria-controls="help">?</button></div>
+					<div id="help" class="help" hidden>
+						<button type="button" id="help-close" aria-label="Закрыть справку">×</button>
+						<p><b>Уровень турнира</b> — самая сильная команда, которую можно записать.</p>
+						<p id="help-levels"></p>
+						<p>Уровни игроков команды складываются, и сумма не должна быть больше уровня турнира.</p>
+						<p><b>По игрокам</b> — опиши самую сильную допустимую команду. <b>Суммой</b> — сразу задай максимум баллов.</p>
+					</div>
+					<div class="segments" role="group" aria-label="Способ задания уровня">
+						<button type="button" id="mode-players" class="selected" aria-pressed="true">По игрокам</button>
+						<button type="button" id="mode-sum" aria-pressed="false">Суммой</button>
+					</div>
+					<div id="players-mode">
+						<div id="slots"></div>
+						<div class="total"><span>Максимум на команду</span><b id="total"></b></div>
+					</div>
+					<div id="sum-mode" hidden>
+						<div class="stepper">
+							<button type="button" data-step="points:-1" aria-label="Уменьшить уровень">−</button>
+							<input id="points" type="number" step="1" inputmode="numeric" aria-label="Максимум баллов на команду" aria-describedby="level-error">
+							<button type="button" data-step="points:1" aria-label="Увеличить уровень">+</button>
+						</div>
+						<input id="slider" type="range" step="1" aria-label="Максимум баллов на команду">
+						<div class="ticks"><span id="points-min"></span><span id="points-max"></span></div>
+						<p id="sum-hint" class="hint"></p>
+					</div>
+					<p id="level-error" class="error" hidden></p>
+				</section>
+				<section>
+					<label class="label" for="max-players">Лимит участников</label>
+					<div class="stepper">
+						<button type="button" data-step="max-players:-1" aria-label="Уменьшить лимит участников">−</button>
+						<input id="max-players" name="max_players" type="number" step="1" inputmode="numeric" aria-describedby="max_players-error teams-hint">
+						<button type="button" data-step="max-players:1" aria-label="Увеличить лимит участников">+</button>
+					</div>
+					<p id="max_players-error" class="error" hidden></p>
+					<p id="teams-hint" class="hint"></p>
+				</section>
+			</fieldset>
+		</main>
+		<footer><button id="submit" type="submit" disabled>Создать черновик</button></footer>
+	</form>
+	<script src="create.js"></script>
+</body>
+</html>

@@ -7,6 +7,7 @@ migrate.php
   Применяет новые migrations/*.sql по порядку.
   013: все турниры на шкалу по умолчанию.
   015: таблица webapp_contexts для Mini App.
+  016: размер команды 1–12 (CHECK на tournaments).
 
 diag.php
   Здоровье бота / БД. Также:
@@ -17,8 +18,9 @@ diag.php
 set_webhook.php
   Ставит webhook по TELEGRAM_* из .env.
   Также обновляет меню команд (личка: /tournaments,
-  /team, /level, /nick, /levels, /help; без /history,
-  /info, /adduser и без дубля /start).
+  /create_tournament, /team, /level, /nick, /levels, /help; без /history,
+  /info, /adduser и без дубля /start). Запустить
+  заново после git pull, если меню команд менялось.
 
 cron.php
   Напоминания и автозавершение турниров

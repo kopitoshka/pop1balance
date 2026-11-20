@@ -40,7 +40,8 @@ Handlers/ — вход с Telegram
     PrivateChatHandler.php
         Личка: /start, команды, keywords, AI
     AdminCommands.php
-        Реализация slash-команд (/new, /level, /nick, …)
+        Реализация slash-команд (/create_tournament, /level,
+        /nick, …)
     CallbackHandler.php
         Нажатия inline-кнопок
     MessageHandler.php
@@ -86,6 +87,11 @@ App/ — сценарии над доменом
     WebAppPicker.php
         Mini App: токен контекста, поиск, добавление /
         показ уровня (initData HMAC)
+    CreateTournamentForm.php
+        /create_tournament: предложение формы, кнопка под
+        списком, Mini App создания черновика (initData HMAC)
+    WebAppFormError.php
+        Ошибка формы Mini App: поле + причина для JSON
     TeamCards.php
         Карточка команды в личке
     WebhookGate.php
@@ -217,5 +223,9 @@ PUBLIC/ — то, что отдает веб-сервер
 ----------------------------------
 
 webhook.php     приём апдейтов Telegram
-webapp_api.php  API Mini App (поиск и выбор игрока)
-webapp/         страница подбора (HTML/JS/CSS, без сборки)
+webapp_api.php  API Mini App: подбор игрока и форма
+                создания турнира (create_bootstrap,
+                create_submit)
+webapp/         страницы Mini App (HTML/JS/CSS, без
+                сборки): picker.* подбор, create.*
+                форма /create_tournament

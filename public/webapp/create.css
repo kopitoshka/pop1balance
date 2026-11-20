@@ -1,0 +1,55 @@
+:root {
+	--bg: var(--tg-theme-bg-color, #ffffff);
+	--fg: var(--tg-theme-text-color, #111111);
+	--hint: var(--tg-theme-hint-color, #8a8a8e);
+	--btn: var(--tg-theme-button-color, #2481cc);
+	--btn-fg: var(--tg-theme-button-text-color, #ffffff);
+	--sec: var(--tg-theme-secondary-bg-color, #f1f1f4);
+	--link: var(--tg-theme-link-color, #2481cc);
+	--err: var(--tg-theme-destructive-text-color, #e0245e);
+}
+* { box-sizing: border-box; }
+[hidden] { display: none !important; }
+html, body { margin: 0; padding: 0; background: var(--bg); color: var(--fg); font: 16px/1.4 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
+main { padding: 14px 14px 0; }
+fieldset { border: 0; padding: 0; margin: 0; min-width: 0; }
+section { margin: 0 0 18px; }
+.label { display: block; font-size: 13px; color: var(--hint); margin: 0 0 6px 4px; text-transform: uppercase; letter-spacing: .02em; }
+input, select, button { font: inherit; }
+input:not([type=range]), select { min-width: 0; width: 100%; padding: 11px 12px; border: 1px solid transparent; border-radius: 10px; background: var(--sec); color: var(--fg); font-size: 16px; }
+input::placeholder { color: var(--hint); opacity: 1; }
+input:focus-visible, select:focus-visible, button:focus-visible { outline: 2px solid var(--link); outline-offset: 2px; }
+input.bad, select.bad { border-color: var(--err); }
+input[type=number] { appearance: textfield; -moz-appearance: textfield; }
+input::-webkit-inner-spin-button, input::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
+.start-row { display: flex; gap: 8px; }
+.start-row input[type=date] { flex: 1.6; }
+.start-row input[type=time] { flex: 1; }
+.hint, .error { font-size: 13px; margin: 6px 4px 0; }
+.hint { color: var(--hint); }
+.error { color: var(--err); }
+.banner { padding: 10px; margin: 0 0 16px; border: 1px solid var(--err); border-radius: 10px; }
+.help-toggle { display: inline-flex; width: 18px; height: 18px; padding: 0; margin-left: 6px; border: 0; border-radius: 50%; background: var(--btn); color: var(--btn-fg); font-size: 12px; font-weight: bold; align-items: center; justify-content: center; vertical-align: 1px; cursor: pointer; }
+.help { position: relative; background: #2b2f36; color: #f2f2f2; border-radius: 12px; padding: 11px 12px; font-size: 13px; line-height: 1.4; margin: 10px 0; }
+.help::before { content: ""; position: absolute; top: -6px; left: 150px; border: 6px solid transparent; border-top: 0; border-bottom-color: #2b2f36; }
+.help p { margin: 0 0 6px; }
+.help p:last-child { margin: 0; }
+#help-close { float: right; border: 0; background: transparent; color: #99a3aa; font-size: 20px; padding: 0 0 6px 8px; cursor: pointer; line-height: 1; }
+.segments { display: flex; background: var(--sec); border-radius: 10px; padding: 3px; margin-bottom: 8px; }
+.segments button { flex: 1; border: 0; background: transparent; border-radius: 8px; padding: 8px 0; font-size: 15px; color: var(--fg); cursor: pointer; }
+.segments button.selected { background: var(--bg); box-shadow: 0 1px 3px #0003; font-weight: 600; }
+.slot { display: flex; align-items: center; justify-content: space-between; gap: 6px; background: var(--sec); border-radius: 10px; padding: 0 12px; margin-bottom: 6px; }
+.slot label { color: var(--hint); font-size: 14px; white-space: nowrap; }
+.slot select { width: auto; max-width: 74%; text-align: right; padding: 9px 0; }
+.total { display: flex; justify-content: space-between; gap: 8px; font-size: 14px; margin: 8px 4px 0; }
+.total b { color: var(--link); }
+.stepper { display: flex; align-items: center; gap: 10px; }
+.stepper button { flex: 0 0 40px; height: 40px; border: 0; border-radius: 10px; background: var(--sec); color: var(--link); font-size: 22px; cursor: pointer; }
+.stepper input { text-align: center; font-weight: 600; }
+.stepper button:disabled { opacity: .4; cursor: default; }
+#slider { width: 100%; margin: 12px 0 0; accent-color: var(--btn); }
+.ticks { display: flex; justify-content: space-between; color: var(--hint); font-size: 12px; margin: 0 4px; }
+footer { position: sticky; bottom: 0; padding: 4px 0 env(safe-area-inset-bottom); background: var(--bg); }
+#submit { width: 100%; padding: 14px; border: 0; background: var(--btn); color: var(--btn-fg); font-weight: 600; font-size: 16px; cursor: pointer; }
+#submit:disabled { opacity: .35; cursor: default; }
+@media (prefers-reduced-motion: no-preference) { button { transition: opacity .12s; } }

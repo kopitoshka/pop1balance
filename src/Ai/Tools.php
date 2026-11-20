@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace P1Bot\Ai;
 
+use P1Bot\Domain\TournamentService;
+
 /**
 	Function tools offered to the model. Admin tools are offered to admins only (PHP re-checks anyway).
 */
@@ -212,14 +214,14 @@ class Tools {
 		$time = ['type' => 'string', 'description' => 'Дата и время по МСК: "23.11 20:00" или "2026-11-23 20:00".'];
 		$level = [
 			'type' => 'string',
-			'description' => 'Уровень турнира (= максимальный уровень команды). Либо одно число — сумма баллов на команду, от team_size до team_size×6 (например "10" для троек), либо уровни всех игроков через запятую, ровно team_size штук: "средний, средний, высокий" или "3,3,5". Одно название уровня без числа не подходит. Обязательно.',
+			'description' => 'Уровень турнира (= максимальный уровень команды). Либо одно число — сумма баллов на команду, от team_size до team_size×6 (например "10" для троек), либо уровни всех игроков через запятую, ровно team_size штук: "средний, средний, высокий" или "3,3,5". Одно название уровня без числа подходит только при team_size = 1. Обязательно.',
 		];
 
 		return [
 			self::fn('create_tournament', 'Создать черновик турнира (не публикует). Вызывай, только когда известны название, дата и время по МСК, размер команды и уровень турнира. Организатор — автор сообщения. После вызова пользователю автоматически покажется карточка с вопросом «Публикуем или что-то поправить?».', [
 				'title' => ['type' => 'string'],
 				'starts_at_msk' => $time,
-				'team_size' => ['type' => 'integer', 'minimum' => 2, 'maximum' => 4],
+				'team_size' => ['type' => 'integer', 'minimum' => TournamentService::MIN_TEAM_SIZE, 'maximum' => TournamentService::MAX_TEAM_SIZE],
 				'level' => $level,
 				'max_players' => ['type' => 'integer', 'description' => 'Лимит участников, по умолчанию 24.'],
 			], ['title', 'starts_at_msk', 'team_size', 'level']),
@@ -227,7 +229,7 @@ class Tools {
 				'tournament_id' => $tid,
 				'title' => ['type' => 'string'],
 				'starts_at_msk' => $time,
-				'team_size' => ['type' => 'integer', 'minimum' => 2, 'maximum' => 4],
+				'team_size' => ['type' => 'integer', 'minimum' => TournamentService::MIN_TEAM_SIZE, 'maximum' => TournamentService::MAX_TEAM_SIZE],
 				'level' => $level,
 				'max_players' => ['type' => 'integer'],
 			]),

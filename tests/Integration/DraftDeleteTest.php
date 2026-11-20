@@ -42,7 +42,7 @@ class DraftDeleteTest extends IntegrationTestCase {
 	}
 
 	public function testDraftCardHasDeleteButton(): void {
-		$this->dispatch($this->privateMessage($this->owner, '/new 14.11 19:00 | Черновой кубок | 2 | 3,3'));
+		$this->newDraft($this->owner, '14.11 19:00 | Черновой кубок | 2 | 3,3');
 		$t = $this->app->tournament_repo->find(1);
 		self::assertNotNull($t);
 		self::assertContains('ddel:' . $t->id, $this->allCallbacks());
@@ -50,7 +50,7 @@ class DraftDeleteTest extends IntegrationTestCase {
 	}
 
 	public function testDeleteButtonConfirmsAndHardDeletes(): void {
-		$this->dispatch($this->privateMessage($this->owner, '/new 14.11 19:00 | Черновой кубок | 2 | 3,3'));
+		$this->newDraft($this->owner, '14.11 19:00 | Черновой кубок | 2 | 3,3');
 		$t = $this->app->tournament_repo->find(1);
 		self::assertNotNull($t);
 		$this->http->reset();

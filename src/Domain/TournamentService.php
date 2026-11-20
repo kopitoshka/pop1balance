@@ -18,15 +18,17 @@ use P1Bot\Support\Clock;
 use P1Bot\Support\Database;
 
 class TournamentService {
-	public const MIN_TEAM_SIZE = 2;
-	public const MAX_TEAM_SIZE = 4;
+	public const MIN_TEAM_SIZE = 1;
+	public const MAX_TEAM_SIZE = 12;
+	public const MAX_PLAYERS_LIMIT = 1000;
+	public const TITLE_MAX_LENGTH = 255;
 
 	public const REFERENCE_REQUIRED = 'Нужно указать уровень турнира: одним числом — сумму баллов на команду, '
 		. 'или уровнями всех игроков команды, например «средний, средний, средний+».';
 
 	public const LEVEL_LOCKED = 'Уровень турнира и размер команды уже не поменять: на турнир есть заявки, '
 		. 'и их проверяли по текущим правилам. Название, время и лимит участников менять можно. '
-		. 'Если нужен другой уровень — отмени этот турнир (/cancel с его номером) и создай новый (/new).';
+		. 'Если нужен другой уровень — отмени этот турнир (/cancel с его номером) и создай новый (/create_tournament).';
 
 	public function __construct(
 		protected TournamentRepository $tournaments,
@@ -284,6 +286,10 @@ class TournamentService {
 		return $this->registration_close_minutes;
 	}
 
+	public function defaultMaxPlayers(): int {
+		return $this->default_max_players;
+	}
+
 	/**
 		Upcoming tournaments that are due for a reminder: for the smallest offset whose moment
 		has passed and that was not reminded at or after that moment. Returns [tournament, minutes].
@@ -444,8 +450,11 @@ class TournamentService {
 
 	protected function validTitle(string $title): string {
 		$title = trim($title);
-		if ($title === '' || mb_strlen($title) > 255) {
-			throw new ValidationError('Название турнира должно быть от 1 до 255 символов.');
+		if ($title === '' || mb_strlen($title) > self::TITLE_MAX_LENGTH) {
+			throw new ValidationError(sprintf(
+				'Название турнира должно быть от 1 до %d символов.',
+				self::TITLE_MAX_LENGTH,
+			));
 		}
 		return $title;
 	}
@@ -470,8 +479,12 @@ class TournamentService {
 	}
 
 	protected function validMaxPlayers(int $max_players, int $team_size): int {
-		if ($max_players < $team_size || $max_players > 1000) {
-			throw new ValidationError(sprintf('Лимит участников должен быть от %d до 1000.', $team_size));
+		if ($max_players < $team_size || $max_players > self::MAX_PLAYERS_LIMIT) {
+			throw new ValidationError(sprintf(
+				'Лимит участников должен быть от %d до %d.',
+				$team_size,
+				self::MAX_PLAYERS_LIMIT,
+			));
 		}
 		return $max_players;
 	}

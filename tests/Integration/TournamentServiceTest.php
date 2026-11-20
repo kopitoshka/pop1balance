@@ -60,8 +60,16 @@ class TournamentServiceTest extends IntegrationTestCase {
 				$this->owner->id,
 				'X',
 				'2026-11-14 19:00',
-				5,
-				'3,3,3,3,3',
+				13,
+				'39',
+			),
+			'team too small' => new CreateTournament(
+				self::CHAT_ID,
+				$this->owner->id,
+				'X',
+				'2026-11-14 19:00',
+				0,
+				'3',
 			),
 			'reference size mismatch' => new CreateTournament(
 				self::CHAT_ID,

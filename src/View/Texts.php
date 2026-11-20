@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace P1Bot\View;
 
+use P1Bot\Support\RuPlural;
+
 /**
 	Fixed user-facing texts (HTML).
 */
@@ -55,7 +57,7 @@ class Texts {
 			. '/help — эта подсказка';
 		if ($is_admin || $is_owner) {
 			$text .= "\n\nСоздание турниров и управление своим:\n"
-				. "/new — создать турнир\n"
+				. "/create_tournament — создать турнир через форму\n"
 				. "/edit <code>номер</code> — редактировать турнир\n"
 				. "/cancel <code>номер</code> — отменить турнир (черновик удаляется навсегда)\n"
 				. 'Править и отменять турнир могут только его автор и главный админ.';
@@ -119,24 +121,20 @@ class Texts {
 	}
 
 	/**
-		Usage help added when a tournament level was not understood.
-
-		@param string $command 'edit' or 'new'
+		Usage help added when a tournament level was not understood (/edit).
 	*/
-	public static function levelUsage(
-		string $command = 'edit',
-		?int $tournament_number = null,
-		?int $team_size = null,
-	): string {
+	public static function levelUsage(?int $tournament_number = null, ?int $team_size = null): string {
 		$n = $tournament_number ?? 1;
 		$range = $team_size !== null
-			? sprintf('от %d до %d для команды из %d', $team_size, $team_size * 6, $team_size)
+			? sprintf(
+				'от %d до %d для команды из %d %s',
+				$team_size,
+				$team_size * 6,
+				$team_size,
+				RuPlural::choose($team_size, ['игрока', 'игроков', 'игроков']),
+			)
 			: 'от размера команды до размера × 6';
-		if ($command === 'new') {
-			$examples = "/new 23.11 20:00 | Кубок | 3 | 10 | 24\n/new 23.11 20:00 | Кубок | 3 | средний, средний, высокий | 24";
-		} else {
-			$examples = "/edit {$n} уровень 10\n/edit {$n} уровень средний, средний, высокий";
-		}
+		$examples = "/edit {$n} уровень 10\n/edit {$n} уровень средний, средний, высокий";
 		return "Уровень турнира можно указать так:\n"
 			. "• одним числом — суммой баллов на команду ({$range});\n"
 			. "• уровнями всех игроков через запятую, ровно по числу игроков (названия или цифры 1–6).\n"

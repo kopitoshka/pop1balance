@@ -132,7 +132,7 @@ class GroupRedirectTest extends IntegrationTestCase {
 
 	public function testManageCommandsRedirectWithRandomPhrase(): void {
 		$this->openTournament(3);
-		$reply = $this->groupReply($this->owner, '/new 23.11 20:00 | Кубок | 3 | 10');
+		$reply = $this->groupReply($this->owner, '/history');
 		self::assertSame(Messages::MANAGE_REDIRECTS[0], $reply['text']);
 		self::assertSame(Messages::GROUP_REDIRECT_BUTTON, '💬 Написать в личку');
 		self::assertStringContainsString('start=g_', (string) $reply['url']);

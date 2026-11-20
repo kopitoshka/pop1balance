@@ -2,9 +2,11 @@
 
 declare(strict_types=1);
 
-// Mini App API: search and submit. Auth is Telegram initData HMAC, not the webhook secret.
+// Mini App API: player picker (bootstrap/search/submit) and the tournament form
+// (create_bootstrap/create_submit). Auth is Telegram initData HMAC, not the webhook secret.
 
-use P1Bot\App\WebAppPicker;
+use P1Bot\App\CreateTournamentForm;
+use P1Bot\App\WebAppFormError;
 use P1Bot\Bootstrap;
 use P1Bot\Domain\Exception\DomainError;
 use P1Bot\Support\Logger;
@@ -46,6 +48,14 @@ if ($init === '' && isset($_SERVER['HTTP_X_TELEGRAM_INIT_DATA'])) {
 }
 
 if ($op === '' || $token === '') {
+	if (str_starts_with($op, 'create_')) {
+		http_response_code(400);
+		echo json_encode(
+			(new WebAppFormError(CreateTournamentForm::EXPIRED_TEXT, '', WebAppFormError::EXPIRED))->toArray(),
+			JSON_UNESCAPED_UNICODE,
+		);
+		exit;
+	}
 	webapp_fail(400, 'Нет контекста подбора.');
 }
 
@@ -53,7 +63,12 @@ try {
 	$app = Bootstrap::fromConfig($config, $logger);
 	$app->ensureOwner();
 	$picker = $app->webapp_picker;
-	if ($op === 'bootstrap') {
+	if ($op === 'create_bootstrap') {
+		$result = $app->create_form->bootstrap($init, $token);
+	} elseif ($op === 'create_submit') {
+		$form = $body['form'] ?? [];
+		$result = $app->create_form->submit($init, $token, is_array($form) ? $form : []);
+	} elseif ($op === 'bootstrap') {
 		$result = $picker->bootstrap($init, $token);
 	} elseif ($op === 'search') {
 		$query = (string) ($body['q'] ?? $_GET['q'] ?? '');
@@ -72,6 +87,10 @@ try {
 		webapp_fail(400, 'Неизвестная команда.');
 	}
 	echo json_encode($result, JSON_UNESCAPED_UNICODE);
+} catch (WebAppFormError $e) {
+	$logger->info('webapp form: ' . $e->reason . ' ' . $e->field . ' ' . $e->getMessage());
+	http_response_code(400);
+	echo json_encode($e->toArray(), JSON_UNESCAPED_UNICODE);
 } catch (DomainError $e) {
 	$logger->info('webapp: ' . $e->getMessage());
 	webapp_fail(400, $e->getMessage());

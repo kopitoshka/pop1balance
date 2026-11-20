@@ -132,7 +132,7 @@ class CallbackHandlerTest extends IntegrationTestCase {
 	}
 
 	public function testPublishAndFixButtonsOnPrivateDraftCard(): void {
-		$this->dispatch($this->privateMessage($this->owner, '/new 23.11 20:00 | Кубок | 2 | 3,4'));
+		$this->newDraft($this->owner, '23.11 20:00 | Кубок | 2 | 3,4');
 		$card = $this->http->sent('sendMessage');
 		self::assertSame(self::OWNER_TG_ID, end($card)['chat_id'], 'the card is shown in private');
 		$card_id = $this->app->tournament_repo->find(1)->card_msg_id;

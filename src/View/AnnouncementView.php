@@ -198,7 +198,9 @@ class AnnouncementView {
 			$sections[] = array_merge(['🛡 <b>Команды:</b>'], $this->teams($lineup->main_teams));
 		}
 		if ($lineup->main_solo !== []) {
-			$sections[] = array_merge(['🙋 <b>Ищут команду:</b>'], $this->solos($lineup->main_solo));
+			// In a 1-player format nobody looks for a team: solos already play on their own.
+			$title = $team_size === 1 ? '🙋 <b>Соло:</b>' : '🙋 <b>Ищут команду:</b>';
+			$sections[] = array_merge([$title], $this->solos($lineup->main_solo));
 		}
 		if ($lineup->reserve_teams !== [] || $lineup->reserve_solo !== []) {
 			$reserve = ['⏳ <b>Запас:</b>'];

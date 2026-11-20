@@ -36,7 +36,7 @@ class ScaleHiddenTest extends IntegrationTestCase {
 	}
 
 	public function testCardDoesNotShowTheScale(): void {
-		$this->dispatch($this->privateMessage($this->admin, '/new 23.11 20:00 | Кубок | 3 | 10'));
+		$this->newDraft($this->admin, '23.11 20:00 | Кубок | 3 | 10');
 
 		$card = $this->http->lastText();
 		self::assertStringContainsString('Уровень турнира', $card);
@@ -52,7 +52,8 @@ class ScaleHiddenTest extends IntegrationTestCase {
 	public function testPublicHelpHasNoScaleAndOwnerSeesHisCommands(): void {
 		$this->dispatch($this->privateMessage($this->admin, '/help'));
 		$help = $this->http->lastText();
-		self::assertStringContainsString('/new', $help);
+		self::assertStringContainsString('/create_tournament', $help);
+		self::assertStringNotContainsString('/new', $help);
 		self::assertStringContainsString('/edit <code>номер</code>', $help);
 		self::assertStringContainsString('/cancel <code>номер</code>', $help);
 		self::assertStringNotContainsString('/close', $help);
@@ -101,7 +102,7 @@ class ScaleHiddenTest extends IntegrationTestCase {
 
 	public function testEditBalanceFieldGoneAndCreateIgnoresScaleId(): void {
 		$other = $this->app->balances->create(self::CHAT_ID, $this->owner->id, 'Другая');
-		$this->dispatch($this->privateMessage($this->admin, '/new 23.11 20:00 | Кубок | 3 | 10'));
+		$this->newDraft($this->admin, '23.11 20:00 | Кубок | 3 | 10');
 		$default_id = $this->app->balances->findDefault()->id;
 
 		$this->dispatch($this->privateMessage($this->owner, '/edit 1 баланс ' . $other->id));

@@ -15,7 +15,7 @@ use P1Bot\View\Html;
 
 /**
 	What the private chat shows: a tournament with buttons for the player's state and the list of
-	tournaments with «open» buttons. Tournament card: psolo/punsolo/pteam, «🛡 Моя команда» (tcard),
+	tournaments with «open» buttons (+ «➕ Создать турнир» for creators). Tournament card: psolo/punsolo/pteam, «🛡 Моя команда» (tcard),
 	«👥 Команды» (oteams), «❌ Отменить турнир» (tcancel) for author/owner. Team manage on TeamCards.
 */
 class PrivateViews {
@@ -29,7 +29,12 @@ class PrivateViews {
 		protected PrivateGroups $groups,
 		protected AccessPolicy $access,
 		protected ?TeamCards $team_cards = null,
+		protected ?CreateTournamentForm $create_form = null,
 	) {
+	}
+
+	public function setCreateForm(?CreateTournamentForm $create_form): void {
+		$this->create_form = $create_form;
 	}
 
 	/**
@@ -117,6 +122,10 @@ class PrivateViews {
 			$this->listing->privateTournaments($groups, $player->id, $is_owner),
 			$groups,
 		);
+		if ($this->create_form !== null) {
+			// «➕ Создать турнир» opens the Mini App form; only for those who may create.
+			$buttons = $this->create_form->appendListButton($buttons, $player, true);
+		}
 		$message_id = 0;
 		foreach ($messages as $i => $text) {
 			$last = $i === count($messages) - 1;

@@ -74,8 +74,9 @@ class TeamService {
 			$roster = array_values(array_unique(array_merge([$captain_id], $player_ids)));
 			if (count($roster) > $tournament->team_size) {
 				throw new ValidationError(sprintf(
-					'В команде этого турнира максимум %d игрока(ов), а указано %d.',
+					'В команде этого турнира максимум %d %s, а указано %d.',
 					$tournament->team_size,
+					RuPlural::choose($tournament->team_size, ['игрок', 'игрока', 'игроков']),
 					count($roster),
 				));
 			}
@@ -119,8 +120,9 @@ class TeamService {
 			$roster = array_values(array_unique(array_merge([$captain_id], $player_ids)));
 			if (count($roster) > $tournament->team_size) {
 				throw new ValidationError(sprintf(
-					'В команде этого турнира максимум %d игрока(ов), а указано %d.',
+					'В команде этого турнира максимум %d %s, а указано %d.',
 					$tournament->team_size,
+					RuPlural::choose($tournament->team_size, ['игрок', 'игрока', 'игроков']),
 					count($roster),
 				));
 			}
@@ -149,7 +151,7 @@ class TeamService {
 			$members = $this->teams->members($team->id);
 			if (count($members) >= $tournament->team_size) {
 				throw new ValidationError(sprintf(
-					'В команде «%s» уже %d из %d игроков, мест нет.',
+					'В команде «%s» уже %d из %d, мест нет.',
 					$team->name,
 					count($members),
 					$tournament->team_size,

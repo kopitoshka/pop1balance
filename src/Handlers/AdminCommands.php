@@ -6,6 +6,7 @@ namespace P1Bot\Handlers;
 
 use P1Bot\App\Announcer;
 use P1Bot\App\CreateAccess;
+use P1Bot\App\CreateTournamentForm;
 use P1Bot\App\WebAppPicker;
 use P1Bot\App\DraftCards;
 use P1Bot\App\NeedGroupChoice;
@@ -15,7 +16,6 @@ use P1Bot\App\TournamentListing;
 use P1Bot\App\TournamentResolver;
 use P1Bot\Domain\AccessPolicy;
 use P1Bot\Domain\BalanceService;
-use P1Bot\Domain\CreateTournament;
 use P1Bot\Domain\EditTournament;
 use P1Bot\Domain\Exception\DomainError;
 use P1Bot\Domain\Exception\InvalidLevel;
@@ -50,9 +50,9 @@ class AdminCommands {
 		«уровень», «уровень турнира», «максимальный уровень», «макс. уровень» — one field (old «эталон» still works).
 	*/
 	protected const LEVEL_FIELD = '/^(?:(?:максимальный|макс\.?)\s*уровень(?:\s+турнира)?|уровень(?:\s+турнира)?|эталон|reference|level)(?=\s|$)\s*(.*)$/us';
-	protected const CREATE = ['new'];
+	protected const CREATE = ['create_tournament'];
 	protected const MANAGE = ['edit', 'cancel', 'open'];
-	protected const ADMIN = ['new', 'edit', 'cancel', 'open'];
+	protected const ADMIN = ['create_tournament', 'edit', 'cancel', 'open'];
 
 	/**
 		Owner only for now (scales are hidden from users, see AccessPolicy::LEVELS_OWNER_ONLY).
@@ -100,6 +100,12 @@ class AdminCommands {
 	*/
 	protected array $reply_extra = [];
 
+	protected ?CreateTournamentForm $create_form = null;
+
+	public function setCreateForm(?CreateTournamentForm $create_form): void {
+		$this->create_form = $create_form;
+	}
+
 	public function supports(string $command): bool {
 		return in_array($command, self::PUBLIC, true)
 			|| in_array($command, self::ADMIN, true)
@@ -111,7 +117,7 @@ class AdminCommands {
 			if (in_array($command, self::OWNER, true) && !$ctx->is_owner) {
 				throw new PermissionDenied(AccessPolicy::OWNER_ONLY);
 			}
-			// /new: CreateAccess (shared group with owner, or ANYONE_CAN_CREATE). Manage: author|owner only.
+			// /create_tournament: CreateAccess (shared group with owner, or ANYONE_CAN_CREATE). Manage: author|owner only.
 			if (in_array($command, self::CREATE, true)) {
 				if ($this->create_access !== null) {
 					$this->create_access->assertCanCreate($ctx->actor->id);
@@ -173,8 +179,8 @@ class AdminCommands {
 				[$id] = self::splitId($args);
 				$t = $this->resolver->resolve($this->resolveScope($ctx), $id, TournamentStatus::infoable());
 				return $this->sendAllButLast($ctx, $this->announcer->infoMessages($t));
-			case 'new':
-				return $this->create($ctx, $args);
+			case 'create_tournament':
+				return $this->createTournament($ctx);
 			case 'edit':
 				return $this->edit($ctx, $args);
 			case 'open':
@@ -203,24 +209,24 @@ class AdminCommands {
 		if ($ctx->isPrivate() && $this->groups !== null) {
 			$groups = $this->groups->all();
 			$messages = $this->listing->privateMessages($groups, $ctx->actor->id, $ctx->is_owner);
-			if ($messages === []) {
-				return 'Сейчас активных турниров нет.' . ($this->canCreate($ctx) ? ' Создать: /new 23.11 20:00 | Название | 3 | средний, средний, средний+ | 24 или просто напиши, какой турнир нужен.' : '');
-			}
-			$this->reply_extra = TournamentListing::openButtons(
+			$this->reply_extra = $this->withCreateButton(TournamentListing::openButtons(
 				$this->listing->privateTournaments($groups, $ctx->actor->id, $ctx->is_owner),
 				$groups,
-			);
+			), $ctx);
+			if ($messages === []) {
+				return 'Сейчас активных турниров нет.' . $this->createHint($ctx);
+			}
 			return $this->sendAllButLast($ctx, $messages);
 		}
 		// The group list never shows drafts: drafts live in the organizer's private chat.
 		$messages = $this->listing->messages($ctx->groupId(), false);
-		if ($messages === []) {
-			return 'Сейчас активных турниров нет.' . ($this->canCreate($ctx) ? ' Создать: /new 23.11 20:00 | Название | 3 | средний, средний, средний+ | 24' : '');
-		}
-		$this->reply_extra = TournamentListing::deepLinkButtons(
+		$this->reply_extra = $this->withCreateButton(TournamentListing::deepLinkButtons(
 			$this->listing->privateTournaments([], $ctx->actor->id, false),
 			$this->bot->username,
-		);
+		), $ctx);
+		if ($messages === []) {
+			return 'Сейчас активных турниров нет.' . $this->createHint($ctx);
+		}
 		return $this->sendAllButLast($ctx, $messages);
 	}
 
@@ -251,46 +257,49 @@ class AdminCommands {
 	}
 
 	/**
-		/new 23.11 20:00 | Название | 3 | средний, средний, средний+ | 24 => draft card with confirmation
+		/create_tournament: private — a message with the form button; group — a link to the private chat.
 	*/
-	protected function create(Context $ctx, string $args): string {
-		$parts = array_map('trim', explode('|', $args));
-		if (count($parts) < 4 || $parts[0] === '' || $parts[1] === '' || $parts[3] === '') {
-			throw new ValidationError(
-				"Создать турнир можно одной строкой:\n/new 23.11 20:00 | Название | 3 | 10 | 24\n"
-				. 'Дата и время по МСК | название | игроков в команде (2–4) | уровень турнира | лимит участников (по умолчанию 24).'
-				. "\n\n" . Texts::levelUsage('new')
-				. "\n\nИли просто напиши мне, какой турнир нужен, — я уточню детали.",
-			);
+	protected function createTournament(Context $ctx): string {
+		if ($this->create_form === null) {
+			return Html::e(CreateTournamentForm::UNAVAILABLE_TEXT);
 		}
-		$starts_at = MoscowTime::parseHuman($parts[0], $this->clock->now());
-		$team_size = self::intArg($parts[2], 'размер команды');
-		$reference = $parts[3];
-		$max_players = isset($parts[4]) && $parts[4] !== '' ? self::intArg($parts[4], 'лимит участников') : null;
-
-		$chat_id = $this->groups !== null
-			? $this->groups->originForCreate($ctx->actor->id)
-			: ($ctx->isPrivate() ? null : $ctx->groupId());
-		try {
-			$t = $this->tournaments->create(new CreateTournament(
-				$chat_id,
-				$ctx->actor->id,
-				$parts[1],
-				MoscowTime::toInput($starts_at),
-				$team_size,
-				$reference,
-				null,
-				$max_players,
-			));
-		} catch (InvalidLevel $e) {
-			throw new ValidationError($e->getMessage() . "\n\n" . Texts::levelUsage('new', null, $team_size));
+		if ($ctx->isPrivate()) {
+			$this->create_form->sendOffer($ctx->chatId(), $ctx->actor, $ctx->message->message_id);
+		} else {
+			$this->create_form->sendGroupRedirect($ctx->chatId(), $ctx->message->message_id);
 		}
-
-		$this->announcer->renumber($t->id);
-		$this->drafts->show($t->id, $ctx->chatId(), $ctx->message->message_id, $ctx->actor->id, [
-			['role' => 'user', 'content' => '/new ' . $args],
-		]);
 		return '';
+	}
+
+	/**
+		«➕ Создать турнир» under the tournament list (only for those who may create).
+
+		@param array<string, mixed> $extra
+		@return array<string, mixed>
+	*/
+	protected function withCreateButton(array $extra, Context $ctx): array {
+		if ($this->create_form === null) {
+			return $extra;
+		}
+		return $this->create_form->appendListButton($extra, $ctx->actor, $ctx->isPrivate());
+	}
+
+	/**
+		Tail of «Сейчас активных турниров нет.» for those who may create.
+	*/
+	protected function createHint(Context $ctx): string {
+		if (!$this->canCreate($ctx)) {
+			return '';
+		}
+		$button = isset($this->reply_extra['reply_markup']['inline_keyboard']);
+		if ($ctx->isPrivate()) {
+			return $button
+				? ' Создать новый — кнопкой ниже или просто напиши, какой турнир нужен.'
+				: ' Создать новый: /create_tournament или просто напиши, какой турнир нужен.';
+		}
+		return $button
+			? ' Создать новый можно в личке — кнопка ниже.'
+			: ' Создать новый можно в личке: /create_tournament.';
 	}
 
 	/**
@@ -338,7 +347,7 @@ class AdminCommands {
 				break;
 			case 'уровень':
 				if ($value === '') {
-					throw new ValidationError("Не указан уровень турнира.\n\n" . Texts::levelUsage('edit', $t->number, $t->team_size));
+					throw new ValidationError("Не указан уровень турнира.\n\n" . Texts::levelUsage($t->number, $t->team_size));
 				}
 				$edit = new EditTournament(null, null, null, $value);
 				break;
@@ -357,7 +366,6 @@ class AdminCommands {
 			$t = $this->tournaments->edit($ctx->actor->id, $t->id, $edit);
 		} catch (InvalidLevel $e) {
 			throw new ValidationError($e->getMessage() . "\n\n" . Texts::levelUsage(
-				'edit',
 				$t->number,
 				$edit->team_size ?? $t->team_size,
 			));

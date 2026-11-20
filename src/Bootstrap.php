@@ -10,6 +10,7 @@ use P1Bot\Ai\Dispatcher;
 use P1Bot\Ai\OpenAiClient;
 use P1Bot\App\Announcer;
 use P1Bot\App\CreateAccess;
+use P1Bot\App\CreateTournamentForm;
 use P1Bot\App\GroupChat;
 use P1Bot\App\CronRunner;
 use P1Bot\App\DraftCards;
@@ -111,6 +112,7 @@ class Bootstrap {
 	public TournamentAnnouncementRepository $announcements;
 	public WebAppContextRepository $webapp_contexts;
 	public WebAppPicker $webapp_picker;
+	public CreateTournamentForm $create_form;
 	public RegistrationFillFlow $reg_fill;
 
 	/**
@@ -351,6 +353,22 @@ class Bootstrap {
 		$this->organizer_teams->setPicker($this->webapp_picker);
 		$this->webapp_picker->setRegistrationFill($this->reg_fill);
 		$this->webapp_picker->setOrganizer($this->organizer_teams);
+		$this->create_form = new CreateTournamentForm(
+			$this->webapp_contexts,
+			$this->players,
+			$this->tournaments,
+			$this->create_access,
+			$this->private_groups,
+			$this->announcer,
+			$this->drafts,
+			$pending_actions,
+			$this->telegram,
+			$clock,
+			(string) ($config['telegram']['token'] ?? ''),
+			(string) ($config['telegram']['webhook_url'] ?? ''),
+			$this->bot->username,
+			$this->dialogs,
+		);
 		$commands = new AdminCommands(
 			$this->telegram,
 			$this->bot,
@@ -371,6 +389,7 @@ class Bootstrap {
 			$this->team_repo,
 			$this->webapp_picker,
 		);
+		$commands->setCreateForm($this->create_form);
 
 		$this->dispatcher = new Dispatcher(
 			$this->tournaments,
@@ -426,6 +445,7 @@ class Bootstrap {
 			$this->access,
 			$this->team_cards,
 		);
+		$views->setCreateForm($this->create_form);
 		$this->group_chat = new GroupChat(
 			$this->telegram,
 			$this->bot,
@@ -451,8 +471,28 @@ class Bootstrap {
 			$this->dispatcher,
 			$this->announcer,
 		);
+		$callbacks = new CallbackHandler(
+			$this->telegram,
+			$this->bot,
+			$this->tournaments,
+			$this->teams,
+			$this->announcer,
+			$this->drafts,
+			$this->private_groups,
+			$views,
+			$this->conversations,
+			$clock,
+			(int) ($config['conversation_ttl_minutes'] ?? 30),
+			$this->disband_notifier,
+			$pending_runner,
+			$this->team_add,
+			$this->team_cards,
+			$this->players,
+			$this->organizer_teams,
+			$this->pending_guard,
+			$this->reg_fill,
+		);
 		$this->router = new UpdateRouter(
-
 			$this->telegram,
 			$this->bot,
 			$this->chats,
@@ -462,27 +502,7 @@ class Bootstrap {
 			$clock,
 			$commands,
 			$messages,
-			new CallbackHandler(
-				$this->telegram,
-				$this->bot,
-				$this->tournaments,
-				$this->teams,
-				$this->announcer,
-				$this->drafts,
-				$this->private_groups,
-				$views,
-				$this->conversations,
-				$clock,
-				(int) ($config['conversation_ttl_minutes'] ?? 30),
-				$this->disband_notifier,
-				$pending_runner,
-				$this->team_add,
-				$this->team_cards,
-				$this->players,
-				$this->organizer_teams,
-				$this->pending_guard,
-				$this->reg_fill,
-			),
+			$callbacks,
 			new EditedReplyRepository($db),
 			$this->logger,
 			new PrivateChatHandler(

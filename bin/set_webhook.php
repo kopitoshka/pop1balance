@@ -41,6 +41,7 @@ try {
 	$common = [
 		['command' => 'start', 'description' => 'Турниры с кнопками записи'],
 		['command' => 'tournaments', 'description' => 'Активные турниры'],
+		['command' => 'create_tournament', 'description' => 'Создать турнир (форма в личке)'],
 		['command' => 'level', 'description' => 'Свой или чужой уровень'],
 		['command' => 'levels', 'description' => 'Справка по уровням'],
 		['command' => 'help', 'description' => 'Подсказка по командам'],
@@ -48,6 +49,7 @@ try {
 	// Private: no /start (Telegram has Start); no /history|/info|/adduser in menu.
 	$private = [
 		['command' => 'tournaments', 'description' => 'Активные турниры'],
+		['command' => 'create_tournament', 'description' => 'Создать турнир через форму'],
 		['command' => 'team', 'description' => 'Карточка твоей команды'],
 		['command' => 'level', 'description' => 'Свой или чужой уровень'],
 		['command' => 'nick', 'description' => 'Свой игровой ник'],

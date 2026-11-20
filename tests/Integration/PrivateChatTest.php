@@ -284,8 +284,8 @@ class PrivateChatTest extends IntegrationTestCase {
 	}
 
 	public function testCreationInPrivatePublishesToTheGroup(): void {
-		$card = $this->say($this->admin, '/new 23.11 20:00 | Кубок | 2 | 3,4');
-		self::assertStringContainsString('Публикуем или что-то поправить?', $card);
+		self::assertNull($this->newDraft($this->admin, '23.11 20:00 | Кубок | 2 | 3,4'));
+		self::assertStringContainsString('Публикуем или что-то поправить?', $this->http->lastText());
 		$t = $this->app->tournament_repo->find(1);
 		self::assertSame(self::CHAT_ID, $t->chat_id, 'the draft belongs to the group');
 
@@ -305,8 +305,8 @@ class PrivateChatTest extends IntegrationTestCase {
 
 	public function testCreationIsGlobalWithoutGroupPicker(): void {
 		$this->app->chats->ensure(self::SECOND_CHAT, 'Вторая группа');
-		$reply = $this->say($this->owner, '/new 23.11 20:00 | Кубок | 2 | 3,4');
-		self::assertStringContainsString('Публикуем', $reply);
+		self::assertNull($this->newDraft($this->owner, '23.11 20:00 | Кубок | 2 | 3,4'));
+		self::assertStringContainsString('Публикуем', $this->http->lastText());
 		self::assertSame(['pub:1', 'fix:1', 'ddel:1'], $this->lastButtons());
 		$t = $this->app->tournament_repo->find(1);
 		self::assertNotNull($t);
@@ -314,16 +314,22 @@ class PrivateChatTest extends IntegrationTestCase {
 	}
 
 	public function testCreateRequiresSharedGroupWithOwner(): void {
-		self::assertStringContainsString('Публикуем', $this->say($this->admin, '/new 23.11 20:00 | Кубок | 2 | 3,4'));
+		self::assertNull($this->newDraft($this->admin, '23.11 20:00 | Кубок | 2 | 3,4'));
+		self::assertStringContainsString('Публикуем', $this->http->lastText());
 		self::assertNotNull($this->app->tournament_repo->find(1));
 
 		$vasya = $this->player('vasya');
 		$this->withoutSharedOwnerGroup($vasya);
 		self::assertStringContainsString(
 			'организатор P1',
-			$this->say($vasya, '/new 23.11 20:00 | Кубок | 2 | 3,4'),
+			$this->say($vasya, '/create_tournament'),
 		);
 		self::assertStringContainsString('Записаться на турнир при этом можно', $this->http->lastText());
+		self::assertStringContainsString(
+			'Записаться на турнир при этом можно',
+			(string) $this->newDraft($vasya, '23.11 20:00 | Кубок | 2 | 3,4'),
+		);
+		self::assertNull($this->app->tournament_repo->find(2));
 	}
 
 	public function testAiCreationIsGlobalWithoutGroupPicker(): void {
@@ -343,7 +349,9 @@ class PrivateChatTest extends IntegrationTestCase {
 	public function testAiCreationRefusesWithoutSharedOwnerGroup(): void {
 		$vasya = $this->player('vasya');
 		$this->withoutSharedOwnerGroup($vasya);
-		self::assertStringContainsString('организатор P1', $this->say($vasya, '/new 23.11 20:00 | Кубок | 2 | 3,4'));
+		// The AI path is covered in AssistantTest; here the command and the form refuse the same way.
+		self::assertStringContainsString('организатор P1', $this->say($vasya, '/create_tournament'));
+		self::assertStringContainsString('организатор P1', (string) $this->newDraft($vasya, '23.11 20:00 | Кубок | 2 | 3,4'));
 		self::assertNull($this->app->tournament_repo->find(1));
 	}
 

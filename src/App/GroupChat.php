@@ -83,7 +83,7 @@ class GroupChat {
 		$message = $ctx->message;
 		if ($command !== null) {
 			$name = mb_strtolower($command['name']);
-			if (in_array($name, ['help', 'start', 'tournaments', 'info', 'level', 'levels'], true)) {
+			if (in_array($name, ['help', 'start', 'tournaments', 'info', 'level', 'levels', 'create_tournament'], true)) {
 				if ($name === 'level' && preg_match('/^all\b/ui', $command['args'])) {
 					$this->redirectManage($message, 'level');
 					return;
@@ -91,7 +91,7 @@ class GroupChat {
 				$this->commands->handle($ctx, $name, $command['args']);
 				return;
 			}
-			// /history /nick /adduser /team /new /edit /open /cancel → private redirect
+			// /history /nick /adduser /team /edit /open /cancel → private redirect
 			$this->redirectManage($message, $command['name']);
 			return;
 		}

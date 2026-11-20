@@ -61,7 +61,7 @@ CREATE TABLE tournaments (
 	organizer_id    INTEGER NOT NULL REFERENCES players(id),
 	title           TEXT NOT NULL,
 	starts_at       TEXT NOT NULL,
-	team_size       INTEGER NOT NULL CHECK (team_size BETWEEN 2 AND 4),
+	team_size       INTEGER NOT NULL CHECK (team_size BETWEEN 1 AND 12),
 	balance_id      INTEGER NULL REFERENCES balances(id) ON DELETE SET NULL,
 	reference_team  TEXT NULL,
 	max_points      INTEGER NULL,

@@ -11,7 +11,7 @@ use P1Bot\Tests\Support\IntegrationTestCase;
 class AdminCommandsTest extends IntegrationTestCase {
 
 	public function testNewOneLine(): void {
-		$this->dispatch($this->privateMessage($this->owner, '/new 23.11 20:00 | Кубок выходного дня | 3 | 3,3,4 | 30'));
+		$this->newDraft($this->owner, '23.11 20:00 | Кубок выходного дня | 3 | 3,3,4 | 30');
 
 		$t = $this->app->tournament_repo->find(1);
 		self::assertNotNull($t);
@@ -41,7 +41,7 @@ class AdminCommandsTest extends IntegrationTestCase {
 			self::assertNull($this->app->tournament_repo->find(1), $command);
 		}
 
-		$this->dispatch($this->privateMessage($this->owner, '/new 23.11 20:00 | Пары | 2 | Танк, слабый плюс'));
+		$this->newDraft($this->owner, '23.11 20:00 | Пары | 2 | Танк, слабый плюс');
 		$t = $this->app->tournament_repo->find(1);
 		self::assertSame(7, $t->max_points);
 		self::assertNotNull($t->balance_id, 'default scale');
@@ -49,7 +49,7 @@ class AdminCommandsTest extends IntegrationTestCase {
 	}
 
 	public function testClearYesReplyToCardPublishes(): void {
-		$this->dispatch($this->privateMessage($this->owner, '/new 23.11 20:00 | Кубок | 3 | 3,3,4'));
+		$this->newDraft($this->owner, '23.11 20:00 | Кубок | 3 | 3,3,4');
 		$card_id = $this->app->tournament_repo->find(1)->card_msg_id;
 
 		$this->dispatch($this->privateMessage($this->owner, 'Да, всё верно!', ['reply_to_message' => [
@@ -67,7 +67,7 @@ class AdminCommandsTest extends IntegrationTestCase {
 	}
 
 	public function testUnclearReplyToCardDoesNotPublish(): void {
-		$this->dispatch($this->privateMessage($this->owner, '/new 23.11 20:00 | Кубок | 3 | 3,3,4'));
+		$this->newDraft($this->owner, '23.11 20:00 | Кубок | 3 | 3,3,4');
 		$card_id = $this->app->tournament_repo->find(1)->card_msg_id;
 		foreach (['да, но время 21:00', 'не, подожди', 'хм', 'вроде да?'] as $answer) {
 			$this->dispatch($this->privateMessage($this->owner, $answer, ['reply_to_message' => [
@@ -80,7 +80,7 @@ class AdminCommandsTest extends IntegrationTestCase {
 	}
 
 	public function testEditDraftShowsNewCardAndOldCardIsOutdated(): void {
-		$this->dispatch($this->privateMessage($this->owner, '/new 23.11 20:00 | Кубок | 3 | 3,3,4'));
+		$this->newDraft($this->owner, '23.11 20:00 | Кубок | 3 | 3,3,4');
 		$old_card = $this->app->tournament_repo->find(1)->card_msg_id;
 		$this->http->reset();
 
@@ -102,29 +102,33 @@ class AdminCommandsTest extends IntegrationTestCase {
 	}
 
 	public function testNoBalanceEditIsGone(): void {
-		$this->dispatch($this->privateMessage($this->owner, '/new 23.11 20:00 | Кубок | 3 | 3,3,4'));
+		$this->newDraft($this->owner, '23.11 20:00 | Кубок | 3 | 3,3,4');
 		$this->dispatch($this->privateMessage($this->owner, '/edit 1 без баланса'));
 		self::assertStringContainsString('Не знаю поле', $this->http->lastText());
 		self::assertSame(10, $this->app->tournament_repo->find(1)->max_points);
 	}
 
-	public function testNewWithoutArgsExplainsSyntax(): void {
+	public function testNewCommandIsGone(): void {
+		$this->dispatch($this->privateMessage($this->owner, '/new 23.11 20:00 | Кубок | 3 | 10 | 24'));
+		self::assertStringContainsString('Такой команды я не знаю', $this->http->lastText());
 		$this->dispatch($this->privateMessage($this->owner, '/new'));
-		self::assertStringContainsString('/new 23.11 20:00 | Название | 3 | 10 | 24', $this->http->lastText());
-		self::assertStringContainsString('/levels', $this->http->lastText());
+		self::assertStringContainsString('Такой команды я не знаю', $this->http->lastText());
+		$this->dispatch($this->groupMessage($this->owner, '/new 23.11 20:00 | Кубок | 3 | 10'));
 		self::assertNull($this->app->tournament_repo->find(1));
+		self::assertStringNotContainsString('Публикуем', implode("\n", array_column($this->http->sent('sendMessage'), 'text')));
 	}
 
 	public function testValidationErrorIsShownHumanly(): void {
-		$this->dispatch($this->privateMessage($this->owner, '/new 23.11 20:00 | Кубок | 5 | 3,3,3,3,3'));
-		self::assertStringContainsString('от 2 до 4 игроков', $this->http->lastText());
+		self::assertStringContainsString('от 1 до 12 игроков', (string) $this->newDraft($this->owner, '23.11 20:00 | Кубок | 13 | 3'));
+		self::assertNull($this->app->tournament_repo->find(1));
 	}
 
 	public function testRegularPlayerCannotUseAdminCommands(): void {
 		$vasya = $this->player('vasya');
 		$this->withoutSharedOwnerGroup($vasya);
-		$this->dispatch($this->privateMessage($vasya, '/new 23.11 20:00 | Кубок | 3'));
+		$this->dispatch($this->privateMessage($vasya, '/create_tournament'));
 		self::assertStringContainsString('организатор P1', $this->http->lastText());
+		self::assertStringContainsString('организатор P1', (string) $this->newDraft($vasya, '23.11 20:00 | Кубок | 3 | 10'));
 		self::assertNull($this->app->tournament_repo->find(1));
 	}
 
@@ -137,12 +141,12 @@ class AdminCommandsTest extends IntegrationTestCase {
 				'username' => 'admin2',
 			]]]];
 		});
-		$this->dispatch($this->privateMessage($this->admin, '/new 23.11 20:00 | Кубок | 2 | 3,3'));
+		$this->newDraft($this->admin, '23.11 20:00 | Кубок | 2 | 3,3');
 		self::assertSame($this->admin->id, $this->app->tournament_repo->find(1)->organizer_id);
 	}
 
 	public function testOpenPostsAnnouncementWithButtons(): void {
-		$this->dispatch($this->privateMessage($this->owner, '/new 23.11 20:00 | Кубок | 3 | 3,3,4'));
+		$this->newDraft($this->owner, '23.11 20:00 | Кубок | 3 | 3,3,4');
 		$this->http->reset();
 		$this->dispatch($this->privateMessage($this->owner, '/open'));
 
@@ -171,14 +175,14 @@ class AdminCommandsTest extends IntegrationTestCase {
 
 		$t = $this->app->tournament_repo->find(1);
 		self::assertSame(TournamentStatus::REGISTRATION, $t->status);
-		self::assertSame(1002, $t->announce_msg_id, 'after the /new card and the /open card');
+		self::assertSame(1002, $t->announce_msg_id, 'after the draft card and the /open card');
 	}
 
 	public function testOtherAdminCannotManageSomeoneElsesTournament(): void {
 		$organizer = $this->admin;
 		$other = $this->player('helper');
 		$this->chatAdmins([$organizer, $other]);
-		$this->dispatch($this->privateMessage($organizer, '/new 23.11 20:00 | Кубок | 3 | 3,3,4'));
+		$this->newDraft($organizer, '23.11 20:00 | Кубок | 3 | 3,3,4');
 		self::assertSame($organizer->id, $this->app->tournament_repo->find(1)->organizer_id);
 
 		$this->confirmCard($this->player('vasya'));
@@ -204,7 +208,7 @@ class AdminCommandsTest extends IntegrationTestCase {
 	public function testOwnerCanManageSomeoneElsesTournament(): void {
 		$organizer = $this->admin;
 		$this->chatAdmins([$organizer]);
-		$this->dispatch($this->privateMessage($organizer, '/new 23.11 20:00 | Кубок | 3 | 3,3,4'));
+		$this->newDraft($organizer, '23.11 20:00 | Кубок | 3 | 3,3,4');
 		$this->confirmCard($organizer);
 		$this->app->tournaments->closeRegistration($this->owner->id, 1);
 		self::assertSame(TournamentStatus::CLOSED, $this->app->tournament_repo->find(1)->status);
@@ -214,7 +218,7 @@ class AdminCommandsTest extends IntegrationTestCase {
 		$organizer = $this->admin;
 		$third = $this->player('third');
 		$this->chatAdmins([$organizer, $third]);
-		$this->dispatch($this->privateMessage($organizer, '/new 23.11 20:00 | Кубок | 3 | 3,3,4'));
+		$this->newDraft($organizer, '23.11 20:00 | Кубок | 3 | 3,3,4');
 		$this->confirmCard($third);
 		self::assertSame(TournamentStatus::DRAFT, $this->app->tournament_repo->find(1)->status);
 	}
@@ -234,7 +238,7 @@ class AdminCommandsTest extends IntegrationTestCase {
 	}
 
 	public function testOpenDraftUnclearAnswerDoesNotPublish(): void {
-		$this->dispatch($this->privateMessage($this->owner, '/new 23.11 20:00 | Кубок | 3 | 3,3,4'));
+		$this->newDraft($this->owner, '23.11 20:00 | Кубок | 3 | 3,3,4');
 		$this->dispatch($this->privateMessage($this->owner, '/open 1'));
 		$this->confirmCard($this->owner, 'да, только лимит 30');
 		self::assertSame(TournamentStatus::DRAFT, $this->app->tournament_repo->find(1)->status);
@@ -242,7 +246,7 @@ class AdminCommandsTest extends IntegrationTestCase {
 	}
 
 	public function testOpenReopensClosedTournamentDirectly(): void {
-		$this->dispatch($this->privateMessage($this->owner, '/new 23.11 20:00 | Кубок | 3 | 3,3,4'));
+		$this->newDraft($this->owner, '23.11 20:00 | Кубок | 3 | 3,3,4');
 		$this->confirmCard($this->owner);
 		$this->app->tournaments->closeRegistration($this->owner->id, 1);
 		$this->dispatch($this->privateMessage($this->owner, '/open 1'));
@@ -260,7 +264,7 @@ class AdminCommandsTest extends IntegrationTestCase {
 	}
 
 	public function testEditCloseCancelRefreshAnnouncement(): void {
-		$this->dispatch($this->privateMessage($this->owner, '/new 23.11 20:00 | Кубок | 3 | 3,3,4'));
+		$this->newDraft($this->owner, '23.11 20:00 | Кубок | 3 | 3,3,4');
 		$this->confirmCard($this->owner);
 		$this->http->reset();
 
@@ -290,8 +294,8 @@ class AdminCommandsTest extends IntegrationTestCase {
 	}
 
 	public function testAmbiguousTournamentAsksForId(): void {
-		$this->dispatch($this->privateMessage($this->owner, '/new 23.11 20:00 | Первый | 3 | 3,3,4'));
-		$this->dispatch($this->privateMessage($this->owner, '/new 24.11 20:00 | Второй | 3 | 3,3,4'));
+		$this->newDraft($this->owner, '23.11 20:00 | Первый | 3 | 3,3,4');
+		$this->newDraft($this->owner, '24.11 20:00 | Второй | 3 | 3,3,4');
 		$this->dispatch($this->privateMessage($this->owner, '/open'));
 		self::assertStringContainsString('Уточни номер турнира', $this->http->lastText());
 		self::assertStringContainsString('№2 — Второй', $this->http->lastText());
@@ -329,7 +333,7 @@ class AdminCommandsTest extends IntegrationTestCase {
 		$this->dispatch($this->privateMessage($vasya, '/tournaments'));
 		self::assertStringContainsString('активных турниров нет', $this->http->lastText());
 
-		$this->dispatch($this->privateMessage($this->owner, '/new 23.11 20:00 | Кубок | 3 | 3,3,4'));
+		$this->newDraft($this->owner, '23.11 20:00 | Кубок | 3 | 3,3,4');
 		$this->confirmCard($this->owner);
 		$this->dispatch($this->privateMessage($vasya, '/tournaments'));
 		$list = $this->http->lastText();
@@ -345,7 +349,7 @@ class AdminCommandsTest extends IntegrationTestCase {
 
 	public function testNoServerLinksInTexts(): void {
 		$this->dispatch($this->privateMessage($this->owner, '/help'));
-		$this->dispatch($this->privateMessage($this->owner, '/new 23.11 20:00 | Кубок | 3 | 3,3,4'));
+		$this->newDraft($this->owner, '23.11 20:00 | Кубок | 3 | 3,3,4');
 		$this->dispatch($this->privateMessage($this->owner, '/open'));
 		$this->confirmCard($this->owner);
 		self::assertSame(TournamentStatus::REGISTRATION, $this->app->tournament_repo->find(1)->status);
@@ -359,12 +363,12 @@ class AdminCommandsTest extends IntegrationTestCase {
 	}
 
 	public function testTournamentsListShowsLineupsAndDraftsForAdmins(): void {
-		$this->dispatch($this->privateMessage($this->owner, '/new 23.11 20:00 | Кубок <1> | 2 | 3,4'));
+		$this->newDraft($this->owner, '23.11 20:00 | Кубок <1> | 2 | 3,4');
 		$this->confirmCard($this->owner);
 		$cap = $this->player('cap');
 		$this->app->teams->createTeam(1, $cap->id, 'Wolves & Co', [$this->player('mate')->id]);
 		$this->app->teams->joinSolo(1, $this->player('solo')->id);
-		$this->dispatch($this->privateMessage($this->owner, '/new 24.11 21:00 | Черновой | 2 | 3,3'));
+		$this->newDraft($this->owner, '24.11 21:00 | Черновой | 2 | 3,3');
 
 		$vasya = $this->player('vasya');
 		$this->http->reset();
@@ -390,10 +394,7 @@ class AdminCommandsTest extends IntegrationTestCase {
 
 	public function testLongTournamentListIsSplitIntoMessages(): void {
 		for ($i = 1; $i <= 3; $i++) {
-			$this->dispatch($this->privateMessage(
-				$this->owner,
-				sprintf('/new 2%d.11 20:00 | Кубок %d | 4 | 3,3,3,3 | 200', $i, $i),
-			));
+			$this->newDraft($this->owner, sprintf('2%d.11 20:00 | Кубок %d | 4 | 3,3,3,3 | 200', $i, $i));
 			$this->confirmCardOf($i);
 			for ($k = 0; $k < 25; $k++) {
 				$ids = [];
@@ -430,9 +431,9 @@ class AdminCommandsTest extends IntegrationTestCase {
 
 	public function testGlobalNumbersAreTournamentIds(): void {
 		// Number = database id, same in every group; does not shift when another tournament is cancelled.
-		$this->dispatch($this->privateMessage($this->owner, '/new 25.11 20:00 | Поздний | 2 | 3,3'));
+		$this->newDraft($this->owner, '25.11 20:00 | Поздний | 2 | 3,3');
 		$this->confirmCardOf(1);
-		$this->dispatch($this->privateMessage($this->owner, '/new 23.11 20:00 | Ранний | 2 | 3,3'));
+		$this->newDraft($this->owner, '23.11 20:00 | Ранний | 2 | 3,3');
 		self::assertStringContainsString('Турнир №2 (черновик)', $this->http->lastText());
 		$this->confirmCardOf(2);
 
@@ -460,7 +461,7 @@ class AdminCommandsTest extends IntegrationTestCase {
 	}
 
 	public function testEditLevelKeywordsAndValues(): void {
-		$this->dispatch($this->privateMessage($this->owner, '/new 23.11 20:00 | Кубок | 3 | 10'));
+		$this->newDraft($this->owner, '23.11 20:00 | Кубок | 3 | 10');
 		self::assertSame(10, $this->app->tournament_repo->find(1)->max_points);
 		$cases = [
 			'/edit 1 уровень 12' => 12,
@@ -482,7 +483,7 @@ class AdminCommandsTest extends IntegrationTestCase {
 	}
 
 	public function testInvalidLevelAsksAgainWithHelp(): void {
-		$this->dispatch($this->privateMessage($this->owner, '/new 23.11 20:00 | Кубок | 3 | 10'));
+		$this->newDraft($this->owner, '23.11 20:00 | Кубок | 3 | 10');
 		$bad = [
 			'/edit 1 уровень' => 'Не указан уровень',
 			'/edit 1 уровень средний' => 'уровней указано 1',
@@ -505,16 +506,13 @@ class AdminCommandsTest extends IntegrationTestCase {
 			self::assertSame(10, $this->app->tournament_repo->find(1)->max_points, $command);
 		}
 
-		$this->dispatch($this->privateMessage($this->owner, '/new 23.11 20:00 | Кубок | 3 | средний'));
-		$text = $this->http->lastText();
-		self::assertStringContainsString('уровней указано 1', $text);
-		self::assertStringContainsString('/new 23.11 20:00 | Кубок | 3 | 10 | 24', $text);
-		self::assertStringContainsString('от 3 до 18 для команды из 3', $text);
+		$error = (string) $this->newDraft($this->owner, '23.11 20:00 | Кубок | 3 | средний');
+		self::assertStringContainsString('Укажи уровень каждого игрока: 3 игрока', $error);
 		self::assertNull($this->app->tournament_repo->find(2));
 	}
 
 	public function testLevelLockedMessageIsClear(): void {
-		$this->dispatch($this->privateMessage($this->owner, '/new 23.11 20:00 | Кубок | 3 | 10'));
+		$this->newDraft($this->owner, '23.11 20:00 | Кубок | 3 | 10');
 		$this->confirmCard($this->owner);
 		$this->app->teams->joinSolo(1, $this->player('vasya')->id);
 		$this->dispatch($this->privateMessage($this->owner, '/edit 1 уровень 12'));

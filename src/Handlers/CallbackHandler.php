@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace P1Bot\Handlers;
 
 use P1Bot\App\Announcer;
+use P1Bot\App\CreateTournamentForm;
 use P1Bot\App\PendingPlayerRunner;
 use P1Bot\App\TeamDisbandNotifier;
 use P1Bot\App\DraftCards;
@@ -34,7 +35,7 @@ use P1Bot\View\Messages;
 
 /**
 	Inline buttons. In private: psolo:<t>, punsolo:<t>, pteam:<t>, pleave:<team>, pdissolve:<team>,
-	popen:<t>, grp:<chat id>, pub:<t> / fix:<t>, tcancel/tcancely/tcanceln,<t>, oteams/otnew/otren/otcap/otsetc/otdel/otdelo/otcc
+	popen:<t>, grp:<chat id>, tcreatex:0 (dismiss the form offer), pub:<t> / fix:<t>, tcancel/tcancely/tcanceln,<t>, oteams/otnew/otren/otcap/otsetc/otdel/otdelo/otcc
 	(organizer team manage), padd/prem/tadd/trem/tcard. Old group buttons only point to private.
 */
 class CallbackHandler {
@@ -156,6 +157,13 @@ class CallbackHandler {
 	protected function privateButton(CallbackQuery $query, Player $player, string $action, int $id): void {
 		$chat_id = (int) $query->chat_id;
 		switch ($action) {
+			case 'tcreatex':
+				// «✖️ Отмена» under the /create_tournament form button.
+				$this->api->answerCallbackQuery($query->id, 'Отменила');
+				if ($query->message_id !== null) {
+					$this->api->editMessageText($chat_id, (int) $query->message_id, Html::e(CreateTournamentForm::CANCELLED_TEXT));
+				}
+				return;
 			case 'grp':
 				if ($this->groups === null || !$this->groups->choose($player->id, $id)) {
 					$this->api->answerCallbackQuery($query->id, 'Этой группы больше нет.', true);
@@ -368,16 +376,27 @@ class CallbackHandler {
 		}
 		$number = (int) $this->announcer->number($t)->number;
 		$others = $t->team_size - 1;
-		$question = sprintf(
-			'Собираем команду на №%d %s. Как назовём команду и кто в ней? В команде %d %s: ты и ещё %d. '
-				. "Напиши, например:\n<i>Wolves: @vasya, @petya</i>\n"
-				. 'Можно сначала только название — игроков добавишь потом.',
-			$number,
-			Html::b($t->title),
-			$t->team_size,
-			$t->team_size === 1 ? 'игрок' : ($t->team_size < 5 ? 'игрока' : 'игроков'),
-			$others,
-		);
+		if ($t->team_size === 1) {
+			// Solo format: the team is just its captain, only the name is needed.
+			$question = sprintf(
+				'Записываемся на №%d %s. В команде 1 игрок — только ты. Как назовём команду? '
+					. "Напиши название, например:\n<i>Wolves</i>",
+				$number,
+				Html::b($t->title),
+			);
+		} else {
+			$question = sprintf(
+				'Собираем команду на №%d %s. Как назовём команду и кто в ней? В команде %d %s: ты и ещё %d. '
+					. "Напиши, например:\n<i>%s</i>\n"
+					. 'Можно сначала только название — игроков добавишь потом.',
+				$number,
+				Html::b($t->title),
+				$t->team_size,
+				RuPlural::choose($t->team_size, ['игрок', 'игрока', 'игроков']),
+				$others,
+				$others === 1 ? 'Wolves: @vasya' : 'Wolves: @vasya, @petya',
+			);
+		}
 		$this->api->answerCallbackQuery($query->id);
 		$message_id = $this->api->sendMessage((int) $query->chat_id, $question);
 		if ($this->conversations !== null && $this->clock !== null) {

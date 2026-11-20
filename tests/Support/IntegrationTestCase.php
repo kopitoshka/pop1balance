@@ -4,14 +4,18 @@ declare(strict_types=1);
 
 namespace P1Bot\Tests\Support;
 
+use P1Bot\App\WebAppFormError;
 use P1Bot\Bootstrap;
 use P1Bot\Domain\CreateTournament;
+use P1Bot\Domain\Levels;
+use P1Bot\Domain\MoscowTime;
 use P1Bot\Domain\Model\Player;
 use P1Bot\Domain\Model\Tournament;
 use P1Bot\Repository\AdminRepository;
 use P1Bot\Repository\ChatRepository;
 use P1Bot\Support\Database;
 use P1Bot\Support\FixedRandom;
+use P1Bot\Telegram\WebAppInitData;
 use PDO;
 use PHPUnit\Framework\TestCase;
 
@@ -118,6 +122,66 @@ abstract class IntegrationTestCase extends TestCase {
 			$pdo->exec((string) file_get_contents($migration));
 		}
 		return new Database($pdo);
+	}
+
+	/**
+		Signed Mini App initData for the player (as Telegram would send it now).
+	*/
+	protected function initDataFor(Player $player): string {
+		return WebAppInitData::sign([
+			'auth_date' => (string) $this->clock->now()->getTimestamp(),
+			'user' => (string) json_encode([
+				'id' => $player->tg_user_id,
+				'first_name' => $player->display_name,
+				'username' => $player->username,
+			], JSON_UNESCAPED_UNICODE),
+		], (string) $this->config()['telegram']['token']);
+	}
+
+	/**
+		Submits the Mini App creation form as $who.
+		$line is "23.11 20:00 | Название | 3 | 3,3,4 | 30": start (МСК) | title | team size |
+		level (per-player list, or one number = sum) | optional limit.
+
+		@return string|null the form error, null when the draft was created
+	*/
+	protected function newDraft(Player $who, string $line): ?string {
+		$parts = array_map('trim', explode('|', $line));
+		$start = MoscowTime::parseHuman($parts[0], $this->clock->now())->setTimezone(MoscowTime::zone());
+		$team_size = (int) ($parts[2] ?? 0);
+		$form = [
+			'title' => $parts[1] ?? '',
+			'date' => $start->format('Y-m-d'),
+			'time' => $start->format('H:i'),
+			'team_size' => $team_size,
+			'max_players' => isset($parts[4]) && $parts[4] !== ''
+				? (int) $parts[4]
+				: (int) $this->config()['tournament']['default_max_players'],
+		];
+		$level = $parts[3] ?? '';
+		if (preg_match('/^\d+$/', $level) === 1 && $team_size > 1) {
+			$form['level_mode'] = 'sum';
+			$form['points'] = (int) $level;
+		} elseif ($level !== '' && $level !== '-') {
+			$form['level_mode'] = 'players';
+			$form['levels'] = Levels::parseReferenceTeam($level);
+		}
+		return $this->submitForm($who, $form);
+	}
+
+	/**
+		@param array<string, mixed> $form
+		@return string|null the form error, null on success
+	*/
+	protected function submitForm(Player $who, array $form, ?string $token = null): ?string {
+		$this->app->chats->ensure((int) $who->tg_user_id, $who->display_name);
+		$token = $token ?? (string) $this->app->create_form->issueToken($who);
+		try {
+			$this->app->create_form->submit($this->initDataFor($who), $token, $form);
+		} catch (WebAppFormError $e) {
+			return $e->getMessage();
+		}
+		return null;
 	}
 
 	/**
