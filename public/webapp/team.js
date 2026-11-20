@@ -207,7 +207,7 @@
 		el.letter_hint.hidden = true;
 		el.letter_label.textContent = '';
 		el.letter_label.appendChild(document.createTextNode(label + ' '));
-		el.letter_label.appendChild(node('span', 'ro', letter ? ': ' + letter : '· назначит организатор'));
+		el.letter_label.appendChild(node('span', 'ro', letter ? '· ' + letter : '· назначит организатор'));
 	}
 
 	function memberRow(card) {
