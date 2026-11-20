@@ -24,9 +24,9 @@ set_webhook.php
   Ставит webhook по TELEGRAM_* из .env.
   Также обновляет меню команд (личка: /tournaments,
   /create_tournament, /team, /level, /nick, /players, /help; без /history,
-  /info, /addplayer и без дубля /start; /levels, /edit, /cancel убраны).
-  Запустить
-  заново после git pull, если меню команд менялось.
+  /info и без дубля /start; /levels, /edit, /cancel убраны). В личке
+  владельца (BOT_OWNER_TG_ID) меню ещё показывает /addplayer.
+  Запустить заново после git pull, если меню команд менялось.
 
 cron.php
   Напоминания и автозавершение турниров

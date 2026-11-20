@@ -46,7 +46,7 @@ try {
 		['command' => 'players', 'description' => 'Все игроки: уровень и ник'],
 		['command' => 'help', 'description' => 'Команды и как устроены уровни'],
 	];
-	// Private: no /start (Telegram has Start); no /history|/info|/addplayer in menu.
+	// Private: no /start (Telegram has Start); no /history|/info in menu; /addplayer for the owner only.
 	$private = [
 		['command' => 'tournaments', 'description' => 'Активные турниры'],
 		['command' => 'create_tournament', 'description' => 'Создать турнир через форму'],
@@ -61,10 +61,15 @@ try {
 	$api->setMyCommands($private, ['type' => 'all_private_chats']);
 	$owner_tg_id = (int) ($config['owner_tg_id'] ?? 0);
 	if ($owner_tg_id > 0) {
-		$api->setMyCommands($private, ['type' => 'chat', 'chat_id' => $owner_tg_id]);
-		fwrite(STDOUT, "Owner private commands refreshed (chat {$owner_tg_id})\n");
+		// The owner's private menu also shows /addplayer.
+		$owner = $private;
+		array_splice($owner, count($owner) - 1, 0, [
+			['command' => 'addplayer', 'description' => 'Добавить игроков из контактов Telegram'],
+		]);
+		$api->setMyCommands($owner, ['type' => 'chat', 'chat_id' => $owner_tg_id]);
+		fwrite(STDOUT, "Owner private commands refreshed with /addplayer (chat {$owner_tg_id})\n");
 	}
-	fwrite(STDOUT, "Bot commands updated (menus without /history|/info|/addplayer)\n");
+	fwrite(STDOUT, "Bot commands updated (menus without /history|/info; /addplayer only for the owner)\n");
 } catch (Throwable $e) {
 	fwrite(STDERR, 'Error: ' . $e->getMessage() . "\n");
 	exit(1);
