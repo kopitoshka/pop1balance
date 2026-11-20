@@ -65,8 +65,9 @@ class PlayerRepository {
 	}
 
 	/**
-		Player who wrote a message. If someone already referenced them by @username
-		(placeholder row without tg_user_id), that row is claimed instead of creating a duplicate.
+		Player who wrote a message. If someone already added them by @username
+		(/addplayer: a row without tg_user_id), that row is claimed instead of creating a duplicate;
+		its nick, levels and rosters stay, the display name is refreshed from Telegram.
 	*/
 	public function ensureByTelegram(
 		int $tg_user_id,
@@ -194,7 +195,6 @@ class PlayerRepository {
 
 	/**
 		Existing player with this @username and a real Telegram id (already seen by the bot).
-		Does not create placeholders.
 	*/
 	public function findKnownByUsername(string $username): ?Player {
 		$player = $this->findByUsername($username);
@@ -205,7 +205,7 @@ class PlayerRepository {
 	}
 
 	/**
-		@return list<Player> rows without tg_user_id (legacy placeholders)
+		@return list<Player> players without Telegram (allowed via /addplayer)
 	*/
 	public function listPlaceholders(): array {
 		$rows = $this->db->fetchAll(
@@ -242,7 +242,7 @@ class PlayerRepository {
 
 
 	/**
-		Known players (tg_user_id set) the actor played with/against or who share a group
+		Players (with or without Telegram) the actor played with/against or who share a group
 		via tournament history; excludes anyone already on a team of $tournament_id.
 
 		@return list<Player>
@@ -333,7 +333,7 @@ class PlayerRepository {
 				continue;
 			}
 			$player = $this->find($pid);
-			if ($player === null || $player->tg_user_id === null) {
+			if ($player === null) {
 				continue;
 			}
 			$out[] = $player;
@@ -357,7 +357,7 @@ class PlayerRepository {
 	}
 
 	/**
-		Partial match on username / display_name / IGN for known players.
+		Partial match on username / display_name / IGN, players without Telegram included.
 		@param list<int> $exclude_ids
 		@return list<Player>
 	*/
@@ -371,7 +371,7 @@ class PlayerRepository {
 		$q_compact = self::compactKey($query);
 		$exclude = array_fill_keys($exclude_ids, true);
 		$rows = $this->db->fetchAll(
-			'SELECT * FROM players WHERE tg_user_id IS NOT NULL ORDER BY id DESC LIMIT 3000',
+			'SELECT * FROM players ORDER BY id DESC LIMIT 3000',
 		);
 		$prefix = [];
 		$contains = [];
@@ -418,15 +418,15 @@ class PlayerRepository {
 	}
 
 	/**
-		Recent known players (have a Telegram id), for an empty Mini App search.
+		Recent players with a name, nick or @username, for an empty Mini App search.
 		@param list<int> $exclude_ids
 		@return list<Player>
 	*/
 	public function listKnown(int $limit = 20, array $exclude_ids = []): array {
 		$limit = max(1, min(40, $limit));
 		$rows = $this->db->fetchAll(
-			'SELECT * FROM players WHERE tg_user_id IS NOT NULL
-				AND (username IS NOT NULL OR display_name <> \'\' OR ign_norm IS NOT NULL)
+			'SELECT * FROM players
+				WHERE username IS NOT NULL OR display_name <> \'\' OR ign_norm IS NOT NULL
 				ORDER BY id DESC LIMIT 200',
 		);
 		$skip = array_fill_keys($exclude_ids, true);
@@ -445,14 +445,39 @@ class PlayerRepository {
 	}
 
 	/**
-		Every player with a Telegram id (/players).
+		Every player the bot knows (/players): a Telegram id, an @username or an in-game nick.
+		Rows stripped by a merge (none of the three) are left out.
 		@return list<Player>
 	*/
 	public function listAllKnown(): array {
 		return array_map(
 			[Player::class, 'fromRow'],
-			$this->db->fetchAll('SELECT * FROM players WHERE tg_user_id IS NOT NULL ORDER BY id'),
+			$this->db->fetchAll(
+				'SELECT * FROM players
+					WHERE tg_user_id IS NOT NULL OR username IS NOT NULL OR ign_norm IS NOT NULL
+					ORDER BY id',
+			),
 		);
+	}
+
+	/**
+		Player without Telegram (/addplayer @username [nick] or /addplayer nick): no tg id, so no
+		messages, forms or captaincy. A @username row is claimed by ensureByTelegram on the first
+		visit; a nick-only row stays offline. Display name is the nick ('' without one).
+	*/
+	public function createOffline(?string $username, ?string $ign, ?string $ign_norm, DateTimeImmutable $now): Player {
+		$id = $this->db->insert(
+			'INSERT INTO players (tg_user_id, username, display_name, ign, ign_norm, created_at)
+				VALUES (NULL, :u, :d, :i, :n, :c)',
+			[
+				'u' => $username === null ? null : self::normalizeUsername($username),
+				'd' => $ign ?? '',
+				'i' => $ign,
+				'n' => $ign_norm,
+				'c' => DateFormat::toDb($now),
+			],
+		);
+		return $this->find($id) ?? throw new \LogicException('Player insert failed');
 	}
 
 	public function fuzzySuggest(string $needle, int $limit = 5): array {
@@ -463,8 +488,8 @@ class PlayerRepository {
 			return [];
 		}
 		$rows = $this->db->fetchAll(
-			'SELECT * FROM players WHERE tg_user_id IS NOT NULL
-				AND (username IS NOT NULL OR display_name <> \'\' OR ign_norm IS NOT NULL)
+			'SELECT * FROM players
+				WHERE username IS NOT NULL OR display_name <> \'\' OR ign_norm IS NOT NULL
 				ORDER BY id DESC LIMIT 2000',
 		);
 		$scored = [];
@@ -542,7 +567,8 @@ class PlayerRepository {
 	}
 
 	/**
-		Delete every player with tg_user_id IS NULL together with roster links and
+		Legacy bulk purge (not called by any command or job). Offline players are now allowed;
+		do not run this as maintenance. Deletes every player with tg_user_id IS NULL, roster links and
 		ratings. Empty teams are removed. Captains that pointed at a placeholder are
 		reassigned to the oldest remaining member. Placeholders that still organize a
 		tournament or own a balance are left (rare); count them in the return value.

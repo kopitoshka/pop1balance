@@ -64,7 +64,7 @@ class PendingPlayerRunner {
 			return;
 		}
 		$chosen = $this->players->find($chosen_player_id);
-		if ($chosen === null || $chosen->tg_user_id === null) {
+		if ($chosen === null) {
 			$this->api->answerCallbackQuery($callback_id, 'Игрок уже недоступен.', true);
 			return;
 		}
@@ -157,7 +157,9 @@ class PendingPlayerRunner {
 				}
 				$args = is_array($action['args'] ?? null) ? $action['args'] : [];
 				$slot = (string) ($action['player_arg'] ?? 'player');
-				$insert = $chosen->username !== null ? '@' . $chosen->username : (string) $chosen->tg_user_id;
+				$insert = $chosen->username !== null
+					? '@' . $chosen->username
+					: ($chosen->hasIgn() ? (string) $chosen->ign : (string) $chosen->tg_user_id);
 				if (str_starts_with($slot, 'players.')) {
 					$idx = (int) substr($slot, strlen('players.'));
 					$players = is_array($args['players'] ?? null) ? array_values($args['players']) : [];

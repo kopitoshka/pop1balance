@@ -345,6 +345,22 @@ Creating:
   «Уровень не ставили — считаю средний (3)»; each line is the in-game nick and @username, or the
   Telegram name/@username marked «без ника». Same access as `/levels` had: anyone in private and groups. The owner also sees how to set levels and nicks.
 - The level reference (scale 1–6 with names, the tournament level, default level 3) is part of `/help`.
+- **Players without Telegram are allowed again** (reverses the 2026-11-09 rule behind migration 014's
+  purge). `/addplayer` with no arguments keeps the Telegram picker for everyone. Owner and anyone who may
+  create tournaments (`CreateAccess`), private only:
+  - `/addplayer @username [nick]` — a row with `tg_user_id` NULL and the username (lower-case, no @);
+    the optional rest is the in-game nick. A known @username is not duplicated: the nick is set with the
+    `/nick @user` override (taken nick moves over), reply «Игрок @… уже есть…». The first visit of that
+    @username claims the row (`PlayerRepository::ensureByTelegram`): tg id bound, nick/levels/rosters kept.
+  - `/addplayer nick` — nick only: no tg id, no username, display name = nick. A taken nick is refused.
+  - Such players get no DMs (skipped silently), open no forms and cannot be captain
+    (`TeamService::NO_TELEGRAM_CAPTAIN` on create / transfer; the form hides «сделать капитаном» and the
+    default captain is the first player with Telegram). They are found by the team form search and the
+    level picker; the owner sets levels with `/level @user 4` or `/level Nick 4`, nicks with
+    `/nick @user Nick` or `/nick "Old nick" New nick`. Duplicates are fine; there is no merge.
+  - Links everywhere (lineups, announcements, team cards, `/players`, `/level all`): @username →
+    `https://t.me/…`, else tg id → `tg://user?id=…`, else plain text.
+  - No command deletes a player; duplicates are removed by hand in the DB.
 - `/open [id]` — for a draft: shows the same card and publishes only after a clear confirmation (see below);
   for a closed tournament: reopens registration right away.
 - All of this in plain text too («создай турнир на субботу в 20:00, тройки, уровень 10»).

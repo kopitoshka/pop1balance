@@ -181,7 +181,7 @@ class WebAppPicker {
 
 	protected function submitLevel(Player $actor, int $chat_id, int $player_id, ?int $level, bool $can_set): void {
 		$player = $this->players->find($player_id);
-		if ($player === null || $player->tg_user_id === null) {
+		if ($player === null) {
 			throw new ValidationError('Такого игрока я не знаю.');
 		}
 		if ($level !== null) {

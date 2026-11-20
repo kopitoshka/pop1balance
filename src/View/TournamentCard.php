@@ -35,7 +35,7 @@ class TournamentCard {
 		// $balance is not shown for now: scales are hidden from users (see AccessPolicy::LEVELS_OWNER_ONLY).
 		$lines[] = '🎟 Лимит участников: ' . $t->max_players;
 		if ($organizer !== null) {
-			$lines[] = '👤 Организатор: ' . Html::e($organizer->mention());
+			$lines[] = '👤 Организатор: ' . $organizer->link(Html::e($organizer->mention()));
 		}
 		return implode("\n", $lines) . "\n\n" . self::QUESTION;
 	}

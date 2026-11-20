@@ -18,6 +18,9 @@ diag.php
   Здоровье бота / БД. Также:
   php bin/diag.php --player @nick
   php bin/diag.php --placeholders
+    игроки без Telegram (tg_user_id NULL) и где они
+    используются. Такие игроки снова разрешены
+    (/addplayer), «None» больше не обязателен.
   php bin/diag.php --resolve @nick
 
 set_webhook.php
@@ -50,10 +53,11 @@ import_members.php
   actor_id вызывается getChatMember. В БД
   попадают только живые участники (member /
   administrator / creator / restricted). Боты,
-  left и kicked пропускаются. Placeholder-строки
-  не создаются; при совпадении @username
-  существующий placeholder сливается (как при
-  обычном сообщении в группе). Никому не пишет.
+  left и kicked пропускаются. Игроков без
+  Telegram скрипт не создаёт; при совпадении
+  @username с игроком без Telegram (/addplayer)
+  привязывает его (как при обычном сообщении в
+  группе). Никому не пишет.
   Лимит ≈20 запросов/с, при 429 ждёт retry_after.
   --dry-run считает статистику без записи в БД.
   Если getChat = chat not found — бота нет в

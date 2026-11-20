@@ -12,7 +12,7 @@ use P1Bot\Support\Clock;
 use P1Bot\Support\Database;
 
 /**
-	Population: One in-game nicknames (IGN) linked to Telegram players.
+	Population: One in-game nicknames (IGN), with or without a Telegram account.
 */
 class NickService {
 	public const MIN_LEN = 2;
@@ -96,6 +96,52 @@ class NickService {
 			}
 			$player = $this->assign($target_id, $ign, $norm, $owner_id);
 			return ['player' => $player, 'previous_holder' => $previous];
+		});
+	}
+
+	/**
+		/addplayer with arguments; the caller checks access (owner or CreateAccess).
+		Username may be null (nick-only); nick may be null (username-only). An existing @username is
+		reused and gets the nick with the taken-nick override of assignByOwner (history kept).
+		A nick-only player never takes a nick from someone: a taken nick is refused.
+		Atomic: an invalid or taken nick never leaves a half-created row.
+		@return array{player: Player, existed: bool, previous_holder: ?Player}
+	*/
+	public function addPlayer(int $actor_id, ?string $username, ?string $raw): array {
+		if ($username !== null) {
+			$username = PlayerRepository::normalizeUsername($username);
+			if (!preg_match('/^[a-z][a-z0-9_]{4,31}$/D', $username)) {
+				throw new ValidationError('Username: 5–32 символа, латинские буквы, цифры и _, первая — буква. Например: @player.');
+			}
+		}
+		if ($raw === null && $username === null) {
+			throw new ValidationError('Укажи @username или игровой ник.');
+		}
+		[$ign, $norm] = $raw === null ? [null, null] : self::parse($raw);
+		return $this->db->transactional(function () use ($actor_id, $username, $ign, $norm): array {
+			$player = $username === null ? null : $this->players->findByUsername($username);
+			$existed = $player !== null;
+			$previous = null;
+			if ($norm !== null) {
+				$holder = $this->players->findByIgnNorm($norm);
+				if ($holder !== null && $username === null) {
+					throw new ValidationError(sprintf(
+						'Ник «%s» уже у игрока %s. Если это другой человек, дай ему другой ник.',
+						$holder->ign,
+						$holder->plainLabel(),
+					));
+				}
+				if ($holder !== null && $holder->id !== $player?->id) {
+					$previous = $holder;
+					$this->clear($holder->id, $actor_id);
+				}
+			}
+			if ($player === null) {
+				$player = $this->players->createOffline($username, $ign, $norm, $this->clock->now());
+			} elseif ($ign !== null) {
+				$player = $this->assign($player->id, $ign, (string) $norm, $actor_id);
+			}
+			return ['player' => $player, 'existed' => $existed, 'previous_holder' => $previous];
 		});
 	}
 

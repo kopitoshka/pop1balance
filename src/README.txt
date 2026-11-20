@@ -60,7 +60,8 @@ App/ — сценарии над доменом
     CronRunner.php
         Периодические задачи
     PlayerResolver.php
-        @user / «я» / IGN → известный игрок с tg id
+        @user / «я» / IGN → известный игрок (и без
+        Telegram, добавленный через /addplayer)
     TournamentResolver.php
         Номер турнира из текста
     DraftCards.php

@@ -747,4 +747,41 @@ class TeamFormTest extends IntegrationTestCase {
 		self::assertSame('Секта', $this->app->team_repo->preferredTeamName($cap->id), 'latest created, not latest start');
 		self::assertNull($this->app->team_repo->preferredTeamName($mate->id), 'only captains');
 	}
+
+	public function testOfflinePlayersAreFoundAndAddedButNeverCaptain(): void {
+		$t = $this->openTournament(3);
+		$shadow = $this->app->nicks->addPlayer($this->owner->id, null, 'Тень')['player'];
+		$owl = $this->app->nicks->addPlayer($this->owner->id, 'offline_owl', null)['player'];
+		$real = $this->player('real_one');
+		$token = $this->formToken($this->owner, $t, null);
+		$found = $this->app->team_form->search($this->initDataFor($this->owner), $token, 'тен');
+		self::assertSame([$shadow->id, false], [$found['players'][0]['id'] ?? null, $found['players'][0]['can_captain'] ?? null]);
+		$found = $this->app->team_form->search($this->initDataFor($this->owner), $token, 'offline_o');
+		self::assertSame($owl->id, $found['players'][0]['id'] ?? null);
+
+		// Only players without Telegram: refused with a clear error, nothing saved.
+		$e = $this->submit($this->owner, $token, ['name' => 'Призраки', 'player_ids' => [$shadow->id, $owl->id], 'captain_id' => 0]);
+		self::assertNotNull($e);
+		self::assertStringContainsString('капитаном быть не может', $e->getMessage());
+		self::assertNull($this->app->teams->findByName($t->id, 'Призраки'));
+		$e = $this->submit($this->owner, $token, ['name' => 'Призраки', 'player_ids' => [$shadow->id, $real->id], 'captain_id' => $shadow->id]);
+		self::assertStringContainsString('капитаном быть не может', (string) $e?->getMessage());
+
+		// Default captain: the first player with Telegram, in the bootstrap and on save.
+		$draft = $this->formToken($this->owner, $t, null, ['player_ids' => [$shadow->id, $real->id], 'name' => 'Смешанные']);
+		$b = $this->boot($this->owner, $draft);
+		self::assertSame($real->id, $b['team']['captain_id']);
+		self::assertSame([false, true], array_column($b['team']['members'], 'can_captain'));
+		self::assertNull($this->submit($this->owner, $token, ['name' => 'Смешанные', 'player_ids' => [$shadow->id, $real->id], 'captain_id' => 0]));
+		$entry = $this->app->teams->findByName($t->id, 'Смешанные');
+		self::assertSame($real->id, $entry->team->captain_id);
+		self::assertCount(2, $entry->members);
+
+		// Captain can add them in edit mode too; transfer to them is refused.
+		$edit = $this->formToken($real, $t, $entry->team->id);
+		self::assertNull($this->submit($real, $edit, ['name' => 'Смешанные', 'player_ids' => [$shadow->id, $real->id, $owl->id], 'captain_id' => $real->id]));
+		$e = $this->submit($real, $edit, ['name' => 'Смешанные', 'player_ids' => [$shadow->id, $real->id, $owl->id], 'captain_id' => $owl->id]);
+		self::assertStringContainsString('капитаном быть не может', (string) $e?->getMessage());
+		self::assertSame($real->id, $this->app->teams->findByName($t->id, 'Смешанные')->team->captain_id);
+	}
 }

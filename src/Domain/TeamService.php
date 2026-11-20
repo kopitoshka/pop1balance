@@ -31,6 +31,8 @@ class TeamService {
 	public const EMPTY_ROSTER = 'В команде должен быть хотя бы один игрок.';
 	public const SELF_REMOVAL = 'Себя из состава не убрать. Чтобы выйти из команды, передай капитана '
 		. 'и нажми «❌ Отменить регистрацию».';
+	public const NO_TELEGRAM_CAPTAIN = '%s без Telegram — капитаном быть не может: я не смогу ему писать. '
+		. 'Выбери капитаном того, кто есть в Telegram.';
 
 	public const MAX_NAME_LENGTH = 64;
 
@@ -74,6 +76,7 @@ class TeamService {
 		return $this->db->transactional(function () use ($tournament_id, $captain_id, $name, $player_ids): TeamEntry {
 			$tournament = $this->openTournament($tournament_id, $captain_id);
 			$name = $this->validName($tournament_id, $name, null);
+			$this->assertCanCaptain($captain_id);
 
 			$roster = array_values(array_unique(array_merge([$captain_id], $player_ids)));
 			if (count($roster) > $tournament->team_size) {
@@ -122,6 +125,7 @@ class TeamService {
 			$this->access->assertCanManageTournament($tournament, $actor_id);
 			$tournament = $this->openTournament($tournament_id, $actor_id);
 			$name = $this->validName($tournament_id, $name, null);
+			$this->assertCanCaptain($captain_id);
 			$roster = array_values(array_unique(array_merge([$captain_id], $player_ids)));
 			if (count($roster) > $tournament->team_size) {
 				throw new ValidationError(sprintf(
@@ -211,7 +215,7 @@ class TeamService {
 						throw new PermissionDenied('Капитан новой команды — тот, кто открыл форму.');
 					}
 					if (!in_array($captain_id, $ids, true)) {
-						$captain_id = $ids[0]; // default: the first player of the roster
+						$captain_id = $this->defaultCaptain($ids); // the first player with Telegram
 					}
 					$entry = $this->createTeamAsOrganizer(
 						$actor_id,
@@ -236,7 +240,7 @@ class TeamService {
 				if (!$this->access->canManageTournament($t, $actor_id)) {
 					throw new ValidationError('Капитан должен быть в составе. Сначала выбери капитана.');
 				}
-				$captain_id = $ids[0]; // the organizer removed the captain: the first player takes over
+				$captain_id = $this->defaultCaptain($ids); // the organizer removed the captain: the first player with Telegram takes over
 			}
 			if (count($ids) > $t->team_size) {
 				throw new ValidationError(sprintf(
@@ -409,6 +413,7 @@ class TeamService {
 				throw new ValidationError('Этот игрок уже капитан.');
 			}
 			$this->assertMember($team, $new_captain_id);
+			$this->assertCanCaptain($new_captain_id);
 			$this->teams->setCaptain($team->id, $new_captain_id);
 			return $this->get($team->id);
 		});
@@ -589,6 +594,30 @@ class TeamService {
 			$player->mention(),
 			$other !== null ? $other->name : '?',
 		));
+	}
+
+	/**
+		Captains get messages and open the form, so they need a Telegram id.
+	*/
+	protected function assertCanCaptain(int $player_id): void {
+		$player = $this->players->find($player_id) ?? throw new NotFound('Такого игрока я не знаю.');
+		if (!$player->hasTelegram()) {
+			throw new ValidationError(sprintf(self::NO_TELEGRAM_CAPTAIN, $player->mention()));
+		}
+	}
+
+	/**
+		First roster player who may be captain; the first player when nobody may (the save then fails
+		with NO_TELEGRAM_CAPTAIN).
+		@param list<int> $ids
+	*/
+	protected function defaultCaptain(array $ids): int {
+		foreach ($ids as $id) {
+			if ($this->players->find($id)?->hasTelegram()) {
+				return $id;
+			}
+		}
+		return $ids[0];
 	}
 
 	protected function assertMember(Team $team, int $player_id): void {

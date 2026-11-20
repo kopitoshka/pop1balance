@@ -187,7 +187,7 @@ class TeamForm {
 		}
 		if (!in_array($captain_id, $ids, true)) {
 			if ($can_manage) {
-				$captain_id = $ids[0] ?? 0; // organizer: the first player is captain by default
+				$captain_id = 0; // organizer: the first player with Telegram, set below
 			} else {
 				array_unshift($ids, $captain_id);
 			}
@@ -206,7 +206,13 @@ class TeamForm {
 			$members[] = $card;
 		}
 		if ($can_manage && !in_array($captain_id, array_column($members, 'id'), true)) {
-			$captain_id = $members[0]['id'] ?? 0;
+			$captain_id = 0;
+			foreach ($members as $card) {
+				if ($card['can_captain']) {
+					$captain_id = $card['id'];
+					break;
+				}
+			}
 		}
 		$pending = [];
 		foreach (is_array($draft['pending'] ?? null) ? $draft['pending'] : [] as $item) {
@@ -573,6 +579,8 @@ class TeamForm {
 			'level_name' => Levels::name($level),
 			'level_explicit' => $explicit !== null,
 			'in_team' => $team,
+			// Players without Telegram (added by /addplayer) can be on a roster, not captain.
+			'can_captain' => $player->hasTelegram(),
 		];
 	}
 

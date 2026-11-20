@@ -164,7 +164,7 @@ class AdminCommands {
 			case 'history':
 				return $this->listHistory($ctx);
 			case 'addplayer':
-				return $this->addPlayer($ctx);
+				return $this->addPlayer($ctx, $args);
 			case 'players':
 				return $this->playersList($ctx);
 			case 'info':
@@ -362,6 +362,15 @@ class AdminCommands {
 					return $this->setLevel($ctx, $target, $rest_tokens);
 				}
 			} else {
+				// «/level Zoloto on heat 4»: an in-game nick (also of a player without Telegram)
+				// followed by a level. The whole text as a nick wins, so a nick ending in a digit stays.
+				$set = $this->nickWithLevel($args);
+				if ($set !== null) {
+					if (!$ctx->is_owner) {
+						throw new PermissionDenied(AccessPolicy::LEVELS_OWNER_ONLY);
+					}
+					return $this->setLevel($ctx, $set[0], $set[1]);
+				}
 				$target = $this->player_resolver->fromReference(
 					$args,
 					$ctx->actor,
@@ -400,10 +409,26 @@ class AdminCommands {
 		$this->balances->setLevel($ctx->groupId(), $ctx->actor->id, $player->id, $level, $balance_id);
 		return sprintf(
 			'Записала: %s — %s (%d).',
-			Html::e($player->mention()),
+			Html::e($player->plainLabel()),
 			Levels::name($level),
 			$level,
 		);
+	}
+
+	/**
+		«nick level» where nick is an exact in-game nick and the whole text is not one.
+		@return array{0: Player, 1: list<string>}|null
+	*/
+	protected function nickWithLevel(string $args): ?array {
+		if (!preg_match('/^(.+?)\s+(\S+)$/us', $args, $m) || Levels::parse($m[2]) === null) {
+			return null;
+		}
+		$norm = static fn (string $v): string => mb_strtolower(trim((string) preg_replace('/\s+/u', ' ', $v)), 'UTF-8');
+		if ($this->players->findByIgnNorm($norm($args)) !== null) {
+			return null;
+		}
+		$player = $this->players->findByIgnNorm($norm($m[1]));
+		return $player === null ? null : [$player, [$m[2]]];
 	}
 
 	protected function showPlayerLevel(Context $ctx, Player $player, bool $own): string {
@@ -446,7 +471,7 @@ class AdminCommands {
 			$label = $player !== null ? $player->plainLabel() : '#' . $player_id;
 			$rows[] = [
 				'level' => $rating['level'],
-				'label' => $label,
+				'label' => $player !== null ? $player->link(Html::e($label)) : Html::e($label),
 				'sort' => mb_strtolower($label),
 			];
 		}
@@ -459,7 +484,7 @@ class AdminCommands {
 		foreach ($rows as $row) {
 			$lines[] = sprintf(
 				'• %s — %s (%d)',
-				Html::e($row['label']),
+				$row['label'],
 				Levels::name($row['level']),
 				$row['level'],
 			);
@@ -510,7 +535,13 @@ class AdminCommands {
 		$target = null;
 		$rest = $args;
 		$owner_form = false;
-		if ($mentions !== []) {
+		if (preg_match('/^"([^"\n]+)"(?:\s+(.*))?$/us', $args, $m)) {
+			// A quoted exact IGN keeps the long-standing /nick <own nick> syntax unambiguous.
+			$owner_form = true;
+			$rest = trim($m[2] ?? '');
+			$target = $this->nicks->findByIgn($m[1])
+				?? throw new ValidationError('Не нашла игрока с таким игровым ником.');
+		} elseif ($mentions !== []) {
 			$owner_form = true;
 			$first = $mentions[0];
 			$rest = trim((string) preg_replace('/' . preg_quote($first['text'], '/') . '/u', '', $args, 1));
@@ -771,10 +802,11 @@ class AdminCommands {
 	protected static function playerLine(Player $player): string {
 		$username = $player->username !== null && $player->username !== '' ? '@' . $player->username : null;
 		if ($player->hasIgn()) {
-			return '<b>' . Html::e((string) $player->ign) . '</b>' . ($username !== null ? ' · ' . Html::e($username) : '');
+			return $player->link('<b>' . Html::e((string) $player->ign) . '</b>')
+				. ($username !== null ? ' · ' . Html::e($username) : '');
 		}
 		$name = $player->display_name !== '' ? $player->display_name : ($username ?? 'игрок #' . $player->id);
-		$parts = [Html::e($name)];
+		$parts = [$player->link(Html::e($name))];
 		if ($username !== null && $username !== $name) {
 			$parts[] = Html::e($username);
 		}
@@ -813,13 +845,31 @@ class AdminCommands {
 		return new \P1Bot\Domain\Model\TeamEntry($team, $this->team_repo->members($team_id));
 	}
 
-	protected function addPlayer(Context $ctx): string {
+	protected function addPlayer(Context $ctx, string $args): string {
 		if (!$ctx->isPrivate()) {
 			$this->reply_extra = DeepLink::button(
 				Messages::GROUP_REDIRECT_BUTTON,
 				DeepLink::url($this->bot->username),
 			);
 			return Messages::GROUP_REDIRECT;
+		}
+		$args = trim($args);
+		if ($args !== '') {
+			if (!$ctx->is_owner && !$this->canCreate($ctx)) {
+				throw new PermissionDenied('Добавлять игроков по имени могут только создатели турниров и главный админ.');
+			}
+			if ($this->nicks === null) {
+				throw new ValidationError('Добавление игроков пока недоступно.');
+			}
+			$username = null;
+			$ign = $args;
+			if (str_starts_with($args, '@')) {
+				$parts = preg_split('/\s+/u', $args, 2) ?: [];
+				$username = substr($parts[0], 1);
+				$ign = isset($parts[1]) ? trim($parts[1]) : null;
+			}
+			$result = $this->nicks->addPlayer($ctx->actor->id, $username, $ign);
+			return self::addPlayerReply($result, $ign !== null);
 		}
 		$this->reply_extra = [
 			'reply_markup' => [
@@ -841,5 +891,32 @@ class AdminCommands {
 		];
 		return 'Нажми кнопку ниже и выбери до 10 игроков — я добавлю их в базу '
 			. '(с @username, если Telegram его отдаст).';
+	}
+
+	/**
+		@param array{player: Player, existed: bool, previous_holder: ?Player} $result
+	*/
+	protected static function addPlayerReply(array $result, bool $nick_given): string {
+		$player = $result['player'];
+		$nick = $player->hasIgn() ? '«' . Html::e((string) $player->ign) . '»' : null;
+		if ($result['existed']) {
+			$text = sprintf('Игрок %s уже есть', Html::e($player->mention()));
+			$text .= $nick_given
+				? sprintf(', поставила ему ник %s.', $nick)
+				: ($nick !== null ? sprintf(', ник %s.', $nick) : ', без ника.');
+		} elseif ($player->username !== null) {
+			$text = sprintf('Добавила игрока %s', Html::e('@' . $player->username))
+				. ($nick !== null ? sprintf(' с ником %s.', $nick) : '.')
+				. ' Когда он напишет мне, привяжу его Telegram. До тех пор сообщений от меня он не получает '
+				. 'и капитаном быть не может.';
+		} else {
+			$text = sprintf('Добавила игрока %s без Telegram.', $nick)
+				. ' Его можно ставить в составы и задавать уровень (<code>/level ' . Html::e((string) $player->ign)
+				. ' 4</code>), но сообщений от меня он не получит и капитаном быть не может.';
+		}
+		if ($result['previous_holder'] !== null) {
+			$text .= sprintf(' Раньше этот ник был у %s — забрала.', Html::e($result['previous_holder']->mention()));
+		}
+		return $text;
 	}
 }

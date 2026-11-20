@@ -309,7 +309,7 @@ abstract class IntegrationTestCase extends TestCase {
 	}
 
 	/**
-		Legacy row without tg_user_id (for claim/merge tests only — production no longer creates these).
+		Row without tg_user_id, display name = username (like old placeholders; /addplayer creates such rows with display name '').
 	*/
 	protected function insertPlaceholder(string $username): Player {
 		$username = \P1Bot\Repository\PlayerRepository::normalizeUsername($username);

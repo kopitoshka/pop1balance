@@ -49,10 +49,31 @@ class Player {
 	}
 
 	/**
-		HTML for lineups/cards: IGN / @username / name as a profile link when possible.
-		Prefer https://t.me/<username> when known — Telegram always highlights those.
-		tg://user?id= is a fallback without username; clients often show it as plain text
-		unless the user shared a private link / started the bot (Telegram privacy).
+		Known to Telegram (has a tg id): can get messages, open forms and be a captain.
+		Players added by @username or by nick only (/addplayer) have none until they write to the bot.
+	*/
+	public function hasTelegram(): bool {
+		return $this->tg_user_id !== null;
+	}
+
+	/**
+		Wraps already-escaped HTML in a profile link: https://t.me/<username> when known
+		(Telegram always highlights those), else tg://user?id=, else returns it as plain text.
+	*/
+	public function link(string $label_html): string {
+		if ($this->username !== null && $this->username !== '') {
+			return '<a href="https://t.me/' . rawurlencode($this->username) . '">' . $label_html . '</a>';
+		}
+		if ($this->tg_user_id !== null) {
+			return '<a href="tg://user?id=' . $this->tg_user_id . '">' . $label_html . '</a>';
+		}
+		return $label_html;
+	}
+
+	/**
+		HTML for lineups/cards: IGN / @username / name as a profile link when possible (see link()).
+		tg://user?id= clients often show as plain text unless the user shared a private link or
+		started the bot (Telegram privacy). Players without Telegram stay plain text.
 		Already escaped — do not Html::e again.
 	*/
 	public function lineupLabel(): string {
@@ -63,13 +84,7 @@ class Player {
 		} else {
 			$label = Html::e($this->display_name !== '' ? $this->display_name : 'игрок #' . $this->id);
 		}
-		if ($this->username !== null && $this->username !== '') {
-			return '<a href="https://t.me/' . rawurlencode($this->username) . '">' . $label . '</a>';
-		}
-		if ($this->tg_user_id !== null) {
-			return '<a href="tg://user?id=' . $this->tg_user_id . '">' . $label . '</a>';
-		}
-		return $label;
+		return $this->link($label);
 	}
 
 	/**

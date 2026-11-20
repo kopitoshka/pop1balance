@@ -15,8 +15,9 @@ use P1Bot\Telegram\TgUser;
 use P1Bot\View\DeepLink;
 
 /**
-	Turns "@vasya", a text_mention user or "я/me" into a known player (with Telegram id).
-	Never creates placeholder rows without tg_user_id.
+	Turns "@vasya", an in-game nick, a text_mention user or "я/me" into a known player.
+	Players without Telegram (added by /addplayer @username or by nick) count as known.
+	Never creates rows itself.
 	Unknown @username: MTProto (if configured) → fuzzy suggestions with pick buttons.
 */
 class PlayerResolver {
@@ -56,25 +57,25 @@ class PlayerResolver {
 				if ($actor->username !== null && strcasecmp($actor->username, $username) === 0) {
 					return $actor;
 				}
-				$known = $this->players->findKnownByUsername($username);
-				if ($known !== null) {
+				$known = $this->players->findByUsername($username);
+				if ($known !== null && $known->hasTelegram()) {
 					return $known;
 				}
+				// Added without Telegram: MTProto (when on) binds the real account to that row.
 				$resolved = $this->tryMtproto($username);
 				if ($resolved !== null) {
 					return $resolved;
 				}
+				if ($known !== null) {
+					return $known;
+				}
 				$this->throwUnknownOrSuggest($username, $actor, $resume, $chat_id);
 			}
 		}
-		// In-game nick (may contain spaces / dots) — only if linked to a real Telegram user.
+		// In-game nick (may contain spaces / dots), with or without Telegram.
 		$by_ign = $this->players->findByIgnNorm(mb_strtolower(trim(preg_replace('/\s+/u', ' ', $ref) ?? ''), 'UTF-8'));
-		if ($by_ign !== null && $by_ign->tg_user_id !== null) {
+		if ($by_ign !== null) {
 			return $by_ign;
-		}
-		if ($by_ign !== null && $by_ign->tg_user_id === null) {
-			$label = $by_ign->username !== null ? '@' . $by_ign->username : $ref;
-			$this->throwUnknownOrSuggest(ltrim($label, '@'), $actor, $resume, $chat_id);
 		}
 		$exact = $this->uniqueExact($ref);
 		if ($exact !== null) {
@@ -148,7 +149,7 @@ class PlayerResolver {
 		@return list<Player>
 	*/
 	/**
-		Unique exact match on display name, IGN or username (known Telegram users only).
+		Unique exact match on display name, IGN or username.
 	*/
 	protected function uniqueExact(string $ref): ?Player {
 		$needle = mb_strtolower(ltrim(trim($ref), '@'));

@@ -41,8 +41,10 @@ class AddPlayerTest extends IntegrationTestCase {
 		$owner_help = $this->http->lastText();
 		self::assertStringContainsString('/addplayer', $owner_help);
 		self::assertStringContainsString('Только для главного админа', $owner_help);
-		// Owner block must not list /addplayer twice as owner-only.
-		self::assertSame(1, substr_count($owner_help, '/addplayer'));
+		// The owner-only block does not list /addplayer: the picker is for everyone, the argument
+		// forms are in the tournament creators' block.
+		$owner_block = (string) strstr($owner_help, 'Только для главного админа');
+		self::assertStringNotContainsString('/addplayer', (string) strstr($owner_block, '📊', true));
 	}
 
 	public function testOldAdduserIsUnknown(): void {

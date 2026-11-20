@@ -390,8 +390,8 @@
 			return;
 		}
 		members.push(card);
-		if (!captain_id) {
-			// An empty roster (organizer building a team of others): the first player is captain.
+		if (!captain_id && card.can_captain) {
+			// An empty roster (organizer building a team of others): the first player with Telegram.
 			captain_id = card.id;
 		}
 		render();
@@ -405,8 +405,14 @@
 			return m.id !== id;
 		});
 		if (id === captain_id) {
-			// The organizer removed the captain: the next player takes over, «⋯» changes it.
-			captain_id = members.length ? members[0].id : 0;
+			// The organizer removed the captain: the next player with Telegram takes over.
+			captain_id = 0;
+			members.some(function (m) {
+				if (m.can_captain) {
+					captain_id = m.id;
+				}
+				return m.can_captain;
+			});
 		}
 		render();
 	}
@@ -414,8 +420,10 @@
 	function openMenu(card) {
 		menu_id = card.id;
 		el.menu_title.textContent = card.name;
+		// No Telegram: no messages from the bot, so no captaincy (the server refuses it too).
+		el.menu_captain.hidden = card.can_captain === false;
 		el.menu.hidden = false;
-		el.menu_captain.focus();
+		(el.menu_captain.hidden ? el.menu_remove : el.menu_captain).focus();
 	}
 
 	function closeMenu() {

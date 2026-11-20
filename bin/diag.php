@@ -5,7 +5,7 @@ declare(strict_types=1);
 // Health check:     php bin/diag.php
 // Player dig:       php bin/diag.php --player @nick   (or IGN / numeric player id)
 // Placeholders dig: php bin/diag.php --placeholders
-// After migrate 014 (or PlayerRepository::purgePlaceholders) this should print None.
+// Players without Telegram are allowed again (/addplayer @user or /addplayer nick), so rows here are normal.
 // MTProto resolve:  php bin/diag.php --resolve @nick
 
 use P1Bot\App\Diagnostics;

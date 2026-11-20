@@ -8,10 +8,23 @@ use P1Bot\Tests\Support\IntegrationTestCase;
 
 class PlaceholderPurgeTest extends IntegrationTestCase {
 
+	/**
+		A team captained by a player without Telegram, written straight to the repository:
+		TeamService no longer lets such a player be captain.
+		@param list<int> $others
+	*/
+	protected function legacyTeam(int $tournament_id, int $captain_id, string $name, array $others): \P1Bot\Domain\Model\TeamEntry {
+		$team = $this->app->team_repo->create($tournament_id, $captain_id, $name, $this->clock->now());
+		foreach (array_merge([$captain_id], $others) as $id) {
+			$this->app->team_repo->addMember($team, $id, $this->clock->now());
+		}
+		return new \P1Bot\Domain\Model\TeamEntry($team, $this->app->team_repo->members($team->id));
+	}
+
 	public function testPurgeRemovesReferencedPlaceholderAndEmptyTeam(): void {
 		$ph = $this->insertPlaceholder('tired_angel1');
 		$t = $this->openTournament(2, null);
-		$entry = $this->app->teams->createTeamAsOrganizer($this->owner->id, $t->id, $ph->id, 'Ghosts');
+		$entry = $this->legacyTeam($t->id, $ph->id, 'Ghosts', []);
 		$this->rate($ph, 4);
 
 		$result = $this->app->players->purgePlaceholders();
@@ -40,13 +53,7 @@ class PlaceholderPurgeTest extends IntegrationTestCase {
 		$ph = $this->insertPlaceholder('old_mate');
 		$real = $this->player('alive');
 		$t = $this->openTournament(2, null);
-		$entry = $this->app->teams->createTeamAsOrganizer(
-			$this->owner->id,
-			$t->id,
-			$ph->id,
-			'Mixed',
-			[$real->id],
-		);
+		$entry = $this->legacyTeam($t->id, $ph->id, 'Mixed', [$real->id]);
 
 		$result = $this->app->players->purgePlaceholders();
 		self::assertSame(1, $result['deleted']);

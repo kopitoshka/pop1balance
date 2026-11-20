@@ -291,7 +291,7 @@ class AdminCommandsTest extends IntegrationTestCase {
 		$all = $this->http->lastText();
 		self::assertStringContainsString('<b>средний+ (4)</b> — 1', $all);
 		self::assertStringContainsString('<b>высокий+ (6)</b> — 1', $all);
-		self::assertStringContainsString('Vasya · @vasya · <i>без ника</i>', $all);
+		self::assertStringContainsString('<a href="https://t.me/vasya">Vasya</a> · @vasya · <i>без ника</i>', $all);
 	}
 
 	public function testTournamentsListAndHelp(): void {
@@ -539,8 +539,8 @@ class AdminCommandsTest extends IntegrationTestCase {
 
 		$this->dispatch($this->privateMessage($vasya, '/level all'));
 		$all = $this->http->lastText();
-		self::assertStringContainsString('@vasya — высокий (5)', $all);
-		self::assertStringContainsString('@petya — начальный+ (2)', $all);
+		self::assertStringContainsString('<a href="https://t.me/vasya">@vasya</a> — высокий (5)', $all);
+		self::assertStringContainsString('<a href="https://t.me/petya">@petya</a> — начальный+ (2)', $all);
 		// sorted by level desc: vasya before petya
 		self::assertLessThan(strpos($all, '@petya'), strpos($all, '@vasya'));
 		self::assertStringNotContainsString('Поставить:', $all);
