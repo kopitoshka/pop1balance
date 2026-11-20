@@ -13,6 +13,7 @@ namespace P1Bot\View;
 class WebAppUrl {
 	public const PICKER = 'picker.html';
 	public const CREATE_FORM = 'create.html';
+	public const TEAM_FORM = 'team.html';
 
 	/**
 		https URL of a page under public/webapp/, or null when WEBHOOK_URL is not https.
@@ -54,6 +55,10 @@ class WebAppUrl {
 	public static function editForm(string $webhook_url, string $token): ?string {
 		$url = self::createForm($webhook_url, $token);
 		return $url === null ? null : $url . '&mode=edit';
+	}
+
+	public static function teamForm(string $webhook_url, string $token): ?string {
+		return self::withToken(self::page($webhook_url, self::TEAM_FORM), $token);
 	}
 
 	protected static function withToken(?string $page, string $token): ?string {

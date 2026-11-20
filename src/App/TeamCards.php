@@ -27,12 +27,12 @@ class TeamCards {
 		protected PlayerRepository $players,
 		protected AccessPolicy $access,
 		protected ?PrivateGroups $groups = null,
-		protected ?OrganizerTeams $organizer = null,
+		protected ?TeamForm $form = null,
 	) {
 	}
 
-	public function setOrganizer(?OrganizerTeams $organizer): void {
-		$this->organizer = $organizer;
+	public function setForm(?TeamForm $form): void {
+		$this->form = $form;
 	}
 
 	/**
@@ -40,7 +40,7 @@ class TeamCards {
 	*/
 	public function text(Tournament $t, TeamEntry $entry): string {
 		$lines = [
-			'🛡 <b>' . Html::e($entry->team->name) . '</b>',
+			'🛡 ' . Html::e(($entry->team->letter ?? '?') . '. ') . '<b>' . Html::e($entry->team->name) . '</b>',
 			'🏆 ' . Html::e($t->title) . ' · №' . $t->id,
 		];
 		if ($this->groups !== null && $t->chat_id !== null && count($this->groups->all()) > 1) {
@@ -66,94 +66,48 @@ class TeamCards {
 	}
 
 	/**
+		One «✏️ Редактировать команду» button: the form is editable for captain/organizer/owner
+		and read-only (with «❌ Отменить регистрацию») for other members.
+		Without a Mini App URL: only leave / disband buttons.
+
 		@return list<list<array<string, mixed>>>
 	*/
-	public function rows(Tournament $t, TeamEntry $entry, Player $actor): array {
+	public function rows(Tournament $t, TeamEntry $entry, Player $actor, ?int $chat_id = null): array {
 		if (!in_array($t->status, [TournamentStatus::REGISTRATION, TournamentStatus::CLOSED], true)) {
 			return [];
 		}
-		$rows = [];
 		$is_captain = $entry->team->captain_id === $actor->id;
-		$is_member = $this->teams->teamOf($t->id, $actor->id)?->team->id === $entry->team->id;
-
-		if ($this->canOfferAdd($t, $entry, $actor)) {
-			$rows[] = [[
-				'text' => '➕ Добавить игрока',
-				'callback_data' => 'padd:' . $entry->team->id,
-			]];
+		$is_member = false;
+		foreach ($entry->members as $m) {
+			$is_member = $is_member || $m->player_id === $actor->id;
 		}
-		if ($this->canOfferRemove($t, $entry, $actor)) {
-			$rows[] = [[
-				'text' => '➖ Удалить игрока',
-				'callback_data' => 'prem:' . $entry->team->id,
-			]];
+		if (!$is_member && !$this->access->canManageTournament($t, $actor->id)) {
+			return [];
+		}
+		$button = $this->form?->button($actor, $chat_id ?? (int) $actor->tg_user_id, $t->id, $entry->team->id);
+		if ($button !== null) {
+			return [[$button]];
 		}
 		if ($is_captain) {
-			$rows[] = [[
+			return [[[
 				'text' => '🚫 Распустить команду «' . $entry->team->name . '»',
 				'callback_data' => 'pdissolve:' . $entry->team->id,
-			]];
-		} elseif ($is_member) {
-			$rows[] = [[
+			]]];
+		}
+		if ($is_member) {
+			return [[[
 				'text' => '❌ Отменить регистрацию',
 				'callback_data' => 'pleave:' . $entry->team->id,
-			]];
+			]]];
 		}
-		if ($this->organizer !== null) {
-			foreach ($this->organizer->manageRows($t, $entry, $actor) as $row) {
-				$rows[] = $row;
-			}
-		}
-		return $rows;
-	}
-
-	public function canOfferAdd(Tournament $t, TeamEntry $entry, Player $actor): bool {
-		unset($t);
-		if ($entry->size() >= $this->tournaments->get($entry->team->tournament_id)->team_size) {
-			return false;
-		}
-		return $this->teams->canActorAddPlayer($actor->id, $entry->team->id);
-	}
-
-	public function canOfferRemove(Tournament $t, TeamEntry $entry, Player $actor): bool {
-		unset($t);
-		$removable = 0;
-		foreach ($entry->members as $member) {
-			if ($member->player_id !== $entry->team->captain_id) {
-				$removable++;
-			}
-		}
-		if ($removable === 0) {
-			return false;
-		}
-		return $this->teams->canActorRemovePlayer($actor->id, $entry->team->id);
-	}
-
-	/**
-		Inline buttons: members except captain.
-		@return list<list<array<string, string>>>
-	*/
-	public function removeMemberRows(TeamEntry $entry): array {
-		$rows = [];
-		foreach ($entry->members as $member) {
-			if ($member->player_id === $entry->team->captain_id) {
-				continue;
-			}
-			$player = $this->players->find($member->player_id);
-			$label = $player !== null ? $player->plainLabel() : ('#' . $member->player_id);
-			$rows[] = [[
-				'text' => '➖ ' . mb_substr($label, 0, 60),
-				'callback_data' => 'trem:' . $entry->team->id . ':' . $member->player_id,
-			]];
-		}
-		return $rows;
+		return [];
 	}
 
 	/**
 		Send one team card; returns last message id.
 	*/
 	public function send(int $chat_id, Tournament $t, TeamEntry $entry, Player $actor, ?int $reply_to = null): int {
-		$markup = PrivateViews::keyboard($this->rows($t, $entry, $actor));
+		$markup = PrivateViews::keyboard($this->rows($t, $entry, $actor, $chat_id));
 		return $this->api->sendMessage($chat_id, $this->text($t, $entry), $reply_to, $markup);
 	}
 }

@@ -15,65 +15,6 @@ class AssistantTest extends IntegrationTestCase {
 		return $config;
 	}
 
-	public function testRegisterTeamThroughFunctionCall(): void {
-		$t = $this->openTournament(3, '3,3,4');
-		$cap = $this->player('cap');
-		$this->ownerAbsentFromGroups();
-		$this->player('vasya');
-		$this->player('petya');
-		$this->http->queueOpenAi($this->functionCall('resp_1', 'call_1', 'register_team', [
-			'tournament_id' => $t->id,
-			'team_name' => 'Wolves',
-			'players' => ['@vasya', '@petya'],
-		]));
-		$this->http->queueOpenAi($this->text(
-			'resp_2',
-			'Записала Wolves: ты, @vasya и @petya. Вы в основном составе <3',
-		));
-
-		$update = $this->privateMessage($cap, '@' . self::BOT_USERNAME . ' запиши нас Wolves с @vasya и @petya');
-		$this->dispatch($update);
-
-		$entry = $this->app->teams->findByName($t->id, 'Wolves');
-		self::assertNotNull($entry);
-		self::assertTrue($entry->team->isRegistered());
-		self::assertSame($cap->id, $entry->team->captain_id);
-
-		$open_ai = array_values(array_filter(
-			$this->http->requests,
-			static fn (array $r): bool => str_ends_with($r['url'], '/responses'),
-		));
-		self::assertCount(2, $open_ai);
-		$first = $open_ai[0];
-		self::assertSame('Bearer sk-test', $first['headers']['Authorization']);
-		self::assertSame('gpt-6-luna', $first['json']['model']);
-		self::assertSame(['effort' => 'low'], $first['json']['reasoning']);
-		self::assertStringContainsString('Population: One', $first['json']['instructions']);
-		self::assertStringContainsString('@' . self::BOT_USERNAME, $first['json']['instructions']);
-		self::assertSame('developer', $first['json']['input'][0]['role']);
-		self::assertStringContainsString('№' . $t->id . ' Субботний кубок', $first['json']['input'][0]['content']);
-		self::assertSame(
-			['role' => 'user', 'content' => 'запиши нас Wolves с @vasya и @petya'],
-			$first['json']['input'][1],
-		);
-		$tool_names = array_column($first['json']['tools'], 'name');
-		self::assertContains('register_team', $tool_names);
-		self::assertNotContains('create_tournament', $tool_names, 'admin tools hidden from players');
-
-		$second = $open_ai[1]['json'];
-		self::assertSame('resp_1', $second['previous_response_id']);
-		self::assertSame('function_call_output', $second['input'][0]['type']);
-		self::assertSame('call_1', $second['input'][0]['call_id']);
-		$output = json_decode($second['input'][0]['output'], true);
-		self::assertTrue($output['ok']);
-		self::assertSame('основной состав', $output['placement']);
-
-		$reply = $this->http->sent('sendMessage');
-		$last = end($reply);
-		self::assertSame('Записала Wolves: ты, @vasya и @petya. Вы в основном составе &lt;3', $last['text']);
-		self::assertSame($update['message']['message_id'], $last['reply_parameters']['message_id']);
-	}
-
 	public function testReplyContinuesDialogAndExpires(): void {
 		$this->openTournament();
 		$vasya = $this->player('vasya');
@@ -333,30 +274,6 @@ class AssistantTest extends IntegrationTestCase {
 			static fn (array $r): array => $r['json'],
 			array_filter($this->http->requests, static fn (array $r): bool => str_ends_with($r['url'], '/responses')),
 		));
-	}
-
-	public function testLevelLimitErrorGoesBackToModel(): void {
-		$t = $this->openTournament(2, '3,3');
-		$cap = $this->player('cap');
-		$this->rate($cap, 5);
-		$this->player('pro');
-		$this->rate($this->app->players->findByUsername('pro'), 5);
-		$this->http->queueOpenAi($this->functionCall(
-			'r1',
-			'c1',
-			'register_team',
-			['team_name' => 'Pros', 'players' => ['@pro']],
-		));
-		$this->http->queueOpenAi($this->text('r2', 'Не выйдет: команда набирает 10 баллов.'));
-		$this->dispatch($this->privateMessage($cap, '@' . self::BOT_USERNAME . ' запиши Pros со @pro'));
-
-		$output = json_decode($this->lastOpenAiRequest()['input'][0]['output'], true);
-		self::assertFalse($output['ok']);
-		self::assertStringContainsString('Команда набирает 10 баллов', $output['error']);
-		self::assertStringContainsString('@cap 5', $output['error']);
-		self::assertStringContainsString('@pro 5', $output['error']);
-		self::assertStringContainsString('лимит турнира 6', $output['error']);
-		self::assertNull($this->app->teams->findByName($t->id, 'Pros'));
 	}
 
 	public function testApiFailureGivesFriendlyReply(): void {

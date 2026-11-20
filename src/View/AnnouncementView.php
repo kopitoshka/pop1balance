@@ -213,7 +213,7 @@ class AnnouncementView {
 		if ($lineup->forming_teams !== []) {
 			$forming = ['🧩 <b>Собираются:</b>'];
 			foreach ($lineup->forming_teams as $i => $e) {
-				$forming[] = TeamLetters::prefix($i) . Html::e($e->team->name) . ' — ' . $this->members($e)
+				$forming[] = TeamLetters::stored($e->team->letter) . Html::e($e->team->name) . ' — ' . $this->members($e)
 					. ' (' . count($e->members) . '/' . $team_size . ')';
 			}
 			$sections[] = $forming;
@@ -228,7 +228,7 @@ class AnnouncementView {
 	protected function teams(array $teams): array {
 		$rows = [];
 		foreach ($teams as $i => $entry) {
-			$rows[] = TeamLetters::prefix($i) . Html::b($entry->team->name) . ' — ' . $this->members($entry);
+			$rows[] = TeamLetters::stored($entry->team->letter) . Html::b($entry->team->name) . ' — ' . $this->members($entry);
 		}
 		return $rows;
 	}

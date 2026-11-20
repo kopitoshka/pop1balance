@@ -64,6 +64,18 @@ class WebAppContextRepository {
 		];
 	}
 
+	/**
+		Replace the stored payload (e.g. unsaved team form state before a contacts round trip).
+
+		@param array<string, mixed> $payload
+	*/
+	public function updatePayload(string $token, array $payload): void {
+		$this->db->run(
+			'UPDATE webapp_contexts SET payload_json = :p WHERE token = :t',
+			['p' => (string) json_encode($payload, JSON_UNESCAPED_UNICODE), 't' => $token],
+		);
+	}
+
 	public function delete(string $token): void {
 		$this->db->run('DELETE FROM webapp_contexts WHERE token = :t', ['t' => $token]);
 	}

@@ -91,7 +91,8 @@ class TeamService {
 			}
 			$this->assertWithinLimit($tournament, array_sum($levels), $breakdown);
 
-			$team = $this->teams->create($tournament->id, $captain_id, $name, $this->clock->now());
+			$this->lockTournament($tournament->id);
+			$team = $this->teams->create($tournament->id, $captain_id, $name, $this->clock->now(), $this->firstFreeLetter($tournament->id));
 			foreach (array_keys($levels) as $player_id) {
 				$this->solos->remove($tournament->id, $player_id);
 				$this->teams->addMember($team, $player_id, $this->clock->now());
@@ -135,7 +136,8 @@ class TeamService {
 				$breakdown[] = $row;
 			}
 			$this->assertWithinLimit($tournament, array_sum($levels), $breakdown);
-			$team = $this->teams->create($tournament->id, $captain_id, $name, $this->clock->now());
+			$this->lockTournament($tournament->id);
+			$team = $this->teams->create($tournament->id, $captain_id, $name, $this->clock->now(), $this->firstFreeLetter($tournament->id));
 			foreach (array_keys($levels) as $player_id) {
 				$this->solos->remove($tournament->id, $player_id);
 				$this->teams->addMember($team, $player_id, $this->clock->now());
@@ -168,6 +170,146 @@ class TeamService {
 			$this->syncStatus($team, $tournament);
 			return $this->get($team->id);
 		});
+	}
+
+	/**
+		Apply a complete form atomically. Validate the final roster, not intermediate additions,
+		so a swap at the level limit and an unchanged full team keep their queue position.
+		Only the current captain, organizer or owner may save. A new team's opener is captain.
+
+		@param list<int> $player_ids the complete roster, including captain
+	*/
+	public function saveForm(
+		int $actor_id,
+		int $tournament_id,
+		?int $team_id,
+		string $name,
+		array $player_ids,
+		int $captain_id,
+		bool $letter_touched = false,
+		?string $letter = null,
+	): TeamEntry {
+		return $this->db->transactional(function () use (
+			$actor_id, $tournament_id, $team_id, $name, $player_ids, $captain_id, $letter_touched, $letter,
+		): TeamEntry {
+			$this->lockTournament($tournament_id);
+			if ($team_id === null) {
+				$ids = array_values(array_unique($player_ids));
+				if ($captain_id === $actor_id && in_array($actor_id, $ids, true)) {
+					$entry = $this->createTeam($tournament_id, $actor_id, $name, $ids);
+				} else {
+					// Organizer/owner may build a team for someone else (existing organizer path).
+					$t = $this->tournaments->find($tournament_id) ?? throw new NotFound('Такого турнира нет.');
+					if (!$this->access->canManageTournament($t, $actor_id)) {
+						throw new PermissionDenied('Капитан новой команды — тот, кто открыл форму.');
+					}
+					if (!in_array($captain_id, $ids, true)) {
+						throw new ValidationError('Капитан должен быть в составе.');
+					}
+					$entry = $this->createTeamAsOrganizer(
+						$actor_id,
+						$tournament_id,
+						$captain_id,
+						$name,
+						array_values(array_diff($ids, [$captain_id])),
+					);
+				}
+				if ($letter_touched && $letter !== $entry->team->letter) {
+					$t = $this->tournaments->find($tournament_id) ?? throw new NotFound('Такого турнира нет.');
+					$this->applyLetter($t, $actor_id, $entry->team->id, $letter);
+					$entry = $this->get($entry->team->id);
+				}
+				return $entry;
+			}
+			[$team, $t] = $this->captainContext($actor_id, $team_id, false);
+			if ($team->tournament_id !== $tournament_id) {
+				throw new PermissionDenied('Эта команда с другого турнира.');
+			}
+			$ids = array_values(array_unique($player_ids));
+			if ($ids === [] || !in_array($captain_id, $ids, true)) {
+				throw new ValidationError('Капитан должен быть в составе. Сначала выбери капитана.');
+			}
+			if (count($ids) > $t->team_size) {
+				throw new ValidationError(sprintf(
+					'В команде этого турнира максимум %d %s, а указано %d.',
+					$t->team_size,
+					RuPlural::choose($t->team_size, ['игрок', 'игрока', 'игроков']),
+					count($ids),
+				));
+			}
+			$members = $this->teams->members($team->id);
+			$old_ids = array_map(static fn (TeamMember $m): int => $m->player_id, $members);
+			$add = array_diff($ids, $old_ids);
+			if ($add !== []) {
+				$this->openTournament($tournament_id, $actor_id);
+			}
+			$sum = 0;
+			$breakdown = [];
+			foreach ($ids as $id) {
+				if (!in_array($id, $old_ids, true)) {
+					$this->assertFreeForTeam($t, $id, $team->id);
+				}
+				[$level, $row] = $this->playerLevelRow($id);
+				$sum += $level;
+				$breakdown[] = $row;
+			}
+			$this->assertWithinLimit($t, $sum, $breakdown);
+			$name = $this->validName($tournament_id, $name, $team_id);
+			if ($letter_touched && $letter !== $team->letter) {
+				$this->applyLetter($t, $actor_id, $team_id, $letter);
+			}
+			$this->teams->rename($team_id, $name);
+			foreach ($add as $id) {
+				$this->solos->remove($tournament_id, $id);
+				$this->teams->addMember($team, $id, $this->clock->now());
+			}
+			if ($captain_id !== $team->captain_id) {
+				// Reuse the same domain access/membership checks as the existing captain flow.
+				$this->transferCaptain($actor_id, $team_id, $captain_id);
+			}
+			foreach (array_diff($old_ids, $ids) as $id) {
+				$this->teams->removeMember($team_id, $id);
+			}
+			$this->syncStatus($team, $t);
+			return $this->get($team_id);
+		});
+	}
+
+	/**
+		Organizer/owner only. NULL clears the letter; the unique index guards races.
+	*/
+	protected function applyLetter(Tournament $t, int $actor_id, int $team_id, ?string $letter): void {
+		if (!$this->access->canManageTournament($t, $actor_id)) {
+			throw new PermissionDenied('Букву команды назначает только организатор.');
+		}
+		if ($letter !== null && preg_match('/^[A-Z]$/D', $letter) !== 1) {
+			throw new ValidationError('Буква команды — от A до Z или без буквы.');
+		}
+		$taken = $this->teams->takenLetters($t->id);
+		if ($letter !== null && isset($taken[$letter]) && $taken[$letter] !== $team_id) {
+			throw new ValidationError('Буква ' . $letter . ' уже у другой команды.');
+		}
+		$this->teams->setLetter($team_id, $letter);
+	}
+
+	/**
+		Serialize new-letter allocation and form saves per tournament on MySQL/MariaDB.
+		SQLite already serializes writes. The unique index is the final protection.
+	*/
+	protected function lockTournament(int $tournament_id): void {
+		if ($this->db->pdo()->getAttribute(\PDO::ATTR_DRIVER_NAME) === 'mysql') {
+			$this->db->fetchValue('SELECT id FROM tournaments WHERE id = :id FOR UPDATE', ['id' => $tournament_id]);
+		}
+	}
+
+	protected function firstFreeLetter(int $tournament_id): ?string {
+		$taken = $this->teams->takenLetters($tournament_id);
+		foreach (range('A', 'Z') as $letter) {
+			if (!isset($taken[$letter])) {
+				return $letter;
+			}
+		}
+		return null;
 	}
 
 	/**

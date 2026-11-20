@@ -152,6 +152,9 @@ class PendingPlayerRunner {
 					throw new ValidationError('Действие больше недоступно.');
 				}
 				$tool = (string) ($action['tool'] ?? '');
+				if (in_array($tool, ['register_team', 'add_player', 'remove_player', 'replace_player', 'rename_team', 'transfer_captain'], true)) {
+					throw new ValidationError('Теперь состав меняется в форме команды. Открой её с карточки турнира.');
+				}
 				$args = is_array($action['args'] ?? null) ? $action['args'] : [];
 				$slot = (string) ($action['player_arg'] ?? 'player');
 				$insert = $chosen->username !== null ? '@' . $chosen->username : (string) $chosen->tg_user_id;

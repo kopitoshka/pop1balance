@@ -35,7 +35,6 @@ use P1Bot\Support\Clock;
 use P1Bot\Telegram\BotIdentity;
 use P1Bot\Telegram\TelegramApi;
 use P1Bot\View\DeepLink;
-use P1Bot\Support\TeamLetters;
 use P1Bot\View\Html;
 use P1Bot\View\Messages;
 use P1Bot\View\Texts;
@@ -798,7 +797,7 @@ class AdminCommands {
 		);
 		if ($teams === []) {
 			return "Сейчас ты не в команде ни на одном открытом турнире.\n"
-				. 'Собрать: открой турнир (/tournaments) → «👥 Собрать команду», '
+				. 'Собрать: открой турнир (/tournaments) → «🛡 Собрать команду», '
 				. 'или напиши мне «запиши команду …».';
 		}
 		if (count($teams) > 1) {
@@ -806,7 +805,7 @@ class AdminCommands {
 			$lines = ['Ты в нескольких командах — выбери:'];
 			foreach ($teams as $i => $team) {
 				$t = $this->tournaments->get($team->tournament_id);
-				$letter = TeamLetters::label($i);
+				$letter = $team->letter ?? '?';
 				$lines[] = $letter . '. «' . Html::e($team->name) . '» — ' . Html::e($t->title) . ' (№' . $t->id . ')';
 				$rows[] = [[
 					'text' => mb_substr($letter . '. 🛡 ' . $team->name . ' · ' . $t->title, 0, 64),

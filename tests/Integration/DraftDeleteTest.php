@@ -49,18 +49,24 @@ class DraftDeleteTest extends IntegrationTestCase {
 		self::assertContains('pub:' . $t->id, $this->allCallbacks());
 	}
 
-	public function testDeleteButtonConfirmsAndHardDeletes(): void {
+	public function testDeleteButtonHardDeletesAtOnce(): void {
 		$this->newDraft($this->owner, '14.11 19:00 | Черновой кубок | 2 | 3,3');
 		$t = $this->app->tournament_repo->find(1);
 		self::assertNotNull($t);
 		$this->http->reset();
 		$this->dispatch($this->press($this->owner, 'ddel:' . $t->id));
-		self::assertStringContainsString('Точно удалить черновик #' . $t->id, $this->http->lastText());
-		self::assertContains('ddelo:' . $t->id, $this->allCallbacks());
-
-		$this->http->reset();
-		$this->dispatch($this->press($this->owner, 'ddelo:' . $t->id));
 		self::assertStringContainsString('Черновик #' . $t->id . ' удалён', $this->http->lastText());
+		self::assertNull($this->app->tournament_repo->find($t->id));
+		self::assertStringNotContainsString('Точно', implode("\n", array_column($this->http->sent('sendMessage'), 'text')));
+		self::assertSame([], $this->allCallbacks(), 'no confirmation buttons');
+	}
+
+	public function testOldConfirmButtonsStillWork(): void {
+		$t = $this->makeDraft();
+		$this->dispatch($this->press($this->owner, 'ddeln:' . $t->id));
+		self::assertSame('Оставила', $this->http->lastText());
+		self::assertNotNull($this->app->tournament_repo->find($t->id));
+		$this->dispatch($this->press($this->owner, 'ddelo:' . $t->id));
 		self::assertNull($this->app->tournament_repo->find($t->id));
 	}
 

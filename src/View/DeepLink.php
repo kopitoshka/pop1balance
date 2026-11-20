@@ -5,7 +5,8 @@ declare(strict_types=1);
 namespace P1Bot\View;
 
 /**
-	t.me links into the private chat with the bot: start=t_<tournament id> or start=g_<group chat id>.
+	t.me links into the private chat with the bot: start=t_<tournament id>, start=g_<group chat id>
+	or start=tf_<team form token> (TeamForm handles that one on /start).
 */
 class DeepLink {
 
@@ -22,20 +23,17 @@ class DeepLink {
 	}
 
 	/**
-		@return array{tournament: ?int, group: ?int, reg_fill: ?int}
+		@return array{tournament: ?int, group: ?int}
 	*/
 	public static function parse(string $payload): array {
 		$payload = trim($payload);
 		if (preg_match('/^t_(\d+)$/', $payload, $m)) {
-			return ['tournament' => (int) $m[1], 'group' => null, 'reg_fill' => null];
+			return ['tournament' => (int) $m[1], 'group' => null];
 		}
 		if (preg_match('/^g_(-?\d+)$/', $payload, $m)) {
-			return ['tournament' => null, 'group' => (int) $m[1], 'reg_fill' => null];
+			return ['tournament' => null, 'group' => (int) $m[1]];
 		}
-		if (preg_match('/^rf_(\d+)$/', $payload, $m)) {
-			return ['tournament' => null, 'group' => null, 'reg_fill' => (int) $m[1]];
-		}
-		return ['tournament' => null, 'group' => null, 'reg_fill' => null];
+		return ['tournament' => null, 'group' => null];
 	}
 
 	/**

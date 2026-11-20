@@ -81,10 +81,12 @@ CREATE TABLE teams (
 	tournament_id   INTEGER NOT NULL REFERENCES tournaments(id) ON DELETE CASCADE,
 	captain_id      INTEGER NOT NULL REFERENCES players(id),
 	name            TEXT NOT NULL,
+	letter          TEXT NULL CHECK (letter IS NULL OR (LENGTH(letter) = 1 AND letter BETWEEN 'A' AND 'Z')),
 	status          TEXT NOT NULL DEFAULT 'forming' CHECK (status IN ('forming','registered')),
 	registered_at   TEXT NULL,
 	created_at      TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
 	UNIQUE (tournament_id, name),
+	UNIQUE (tournament_id, letter),
 	UNIQUE (id, tournament_id)
 );
 

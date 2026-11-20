@@ -265,12 +265,27 @@ for the webhook too, e.g. `sudo -u apache php bin/diag.php`.
 ### Private chat
 
 - `/start t_<id>` (from the announcement button): greeting, the full tournament view and buttons for the player's
-  state: «🙋 Записаться соло» + «👥 Собрать команду»; «❌ Отписаться» (solo); «🚪 Выйти из команды» (member);
-  «🚫 Распустить команду» (captain). Drafts open as the draft card for their organizer.
+  state: «🛡 Собрать команду» + «🙋 Участвовать соло»; «❌ Отписаться» (solo); «✏️ Редактировать команду «…»»
+  (member/captain). Drafts open as the draft card for their organizer.
 - `/start`, `/start g_<chat>`: greeting + active tournaments of all groups, each with an «open» button.
-- «Собрать команду» asks for the name and players; the answer goes to the AI (the question is saved as dialog
-  memory), e.g. «Wolves: @vasya, @petya». Adding/removing/replacing players, renaming, captain transfer — in plain text.
-- Plain text: «какие турниры скоро?», «запиши команду Wolves: я, @vasya, @petya», «хочу участвовать соло»,
+- **Team Mini App** (`public/webapp/team.*`, ops `team_bootstrap` / `team_search` / `team_submit` /
+  `team_contacts` / `team_leave` / `team_disband`, `webapp_contexts` action `team_form`, TTL 6 h). New team:
+  the opener is captain, the name is prefilled from their last team of an earlier tournament. Edit: captain,
+  tournament organizer and owner; a member sees it read-only with «❌ Отменить регистрацию» (captain gets a DM).
+  Roster 1…team_size, live level sum with a red over-limit error, search by IGN / @username / name (spaces and
+  `_` ignored), players of other teams disabled, «👤 Выбрать из Telegram» (form is saved as a draft, the app
+  closes, `request_users` id 5, then «✏️ Вернуться к форме» reopens it). Ordinary adds/removes send no DMs;
+  disband keeps the old notifications. Every save goes through `TeamService::saveForm` (one transaction:
+  rights, size, points, duplicate name, other teams, close window). In groups only `t.me/?start=tf_<token>`
+  links, never `web_app` buttons. Old roster buttons (`padd`, `prem`, `tadd`, `trem`, `ot*`) only reopen
+  the form; TeamAddFlow and RegistrationFillFlow are gone.
+- **Team letters** (migration 017): `teams.letter` A–Z, unique per tournament, first free on creation,
+  freed on disband, 27th team and later get none («?.»). Organizer/owner change it in the form grid.
+  All lists use the stored letter, never the list position.
+- AI team tools (`register_team`, `add_player`, `remove_player`, `replace_player`, `rename_team`,
+  `transfer_captain`) never change teams: they prefill the form, answer one short line and send the button;
+  unresolved names wait inside the form with suggestions.
+- Plain text: «какие турниры скоро?», «запиши нас: я, tired angel и стас», «хочу участвовать соло»,
   «замени @vasya на @kolya», «где я записан?». Commands: `/tournaments`, `/info N`, `/levels`, `/help`.
 - Anyone may join (solo/team); no group-membership check for registration. Create still requires a shared active
   group with the owner (or `ANYONE_CAN_CREATE_TOURNAMENT=1`).

@@ -12,6 +12,13 @@ namespace P1Bot\Support;
 class TeamLetters {
 
 	/**
+		Stored team letter, never a list index. Unlettered teams (more than 26, or cleared) show «?». 
+	*/
+	public static function stored(?string $letter): string {
+		return ($letter ?? '?') . '. ';
+	}
+
+	/**
 		0-based index → A, B, … Z, AA, AB…
 	*/
 	public static function label(int $index): string {

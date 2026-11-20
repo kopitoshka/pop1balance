@@ -1,0 +1,64 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+	<meta charset="utf-8">
+	<meta name="viewport" content="width=device-width, initial-scale=1">
+	<title>Команда</title>
+	<script src="https://telegram.org/js/telegram-web-app.js"></script>
+	<link rel="stylesheet" href="create.css">
+	<link rel="stylesheet" href="team.css">
+</head>
+<body>
+	<form id="form" novalidate>
+		<main>
+			<h1 id="heading">Команда</h1>
+			<p id="subtitle" class="tsub"></p>
+			<div id="error" class="error banner" role="alert" hidden></div>
+			<p id="loading" class="hint">Открываю форму…</p>
+			<fieldset id="fields" disabled hidden>
+				<section id="letter-section">
+					<p class="label" id="letter-label">Буква в игре</p>
+					<div id="letters" class="letters" role="radiogroup" aria-labelledby="letter-label" hidden></div>
+					<p id="letter-hint" class="hint" hidden></p>
+					<p id="letter-error" class="error" hidden></p>
+				</section>
+				<section>
+					<label class="label" for="name">Название</label>
+					<input id="name" name="name" type="text" placeholder="Например, Волки" autocomplete="off" aria-describedby="name-hint name-error">
+					<p id="name-hint" class="hint" hidden></p>
+					<p id="name-error" class="error" hidden></p>
+				</section>
+				<section>
+					<p class="label" id="roster-label">Состав</p>
+					<div id="roster"></div>
+					<div id="pending" hidden></div>
+					<div id="search-box" hidden>
+						<input id="search" type="search" placeholder="🔎 Найти игрока: ник, @username или имя" autocomplete="off" aria-label="Найти игрока" aria-controls="results">
+						<div id="results" class="res" role="listbox" hidden></div>
+					</div>
+					<button type="button" id="contacts" class="tglink" hidden>👤 Нет в списке? Выбрать из контактов Telegram</button>
+					<div id="sum" class="sum" aria-live="polite"></div>
+					<div id="bar" class="bar" hidden><i id="bar-fill"></i></div>
+					<p id="roster-error" class="error" hidden></p>
+					<p id="roster-hint" class="hint" hidden></p>
+				</section>
+				<p id="readonly-hint" class="hint" hidden>Состав меняют капитан и организатор. Ты можешь только отменить свою регистрацию.</p>
+			</fieldset>
+		</main>
+		<div id="menu" class="menu" hidden role="dialog" aria-modal="true" aria-labelledby="menu-title">
+			<div class="menu-card">
+				<p id="menu-title"></p>
+				<button type="button" id="menu-captain">👑 Сделать капитаном</button>
+				<button type="button" id="menu-remove" class="danger-text">✕ Убрать из команды</button>
+				<button type="button" id="menu-close">Отмена</button>
+			</div>
+		</div>
+		<footer>
+			<button type="button" id="disband" class="danger" hidden>🚫 Распустить команду</button>
+			<button type="button" id="leave" class="danger" hidden>❌ Отменить регистрацию</button>
+			<button type="submit" id="submit" disabled hidden>Сохранить</button>
+		</footer>
+	</form>
+	<script src="team.js"></script>
+</body>
+</html>

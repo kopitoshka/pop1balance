@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace P1Bot\Tests\Integration;
 
+use P1Bot\App\TeamForm;
+
 use P1Bot\Tests\Support\IntegrationTestCase;
 use P1Bot\View\Messages;
 
@@ -51,7 +53,7 @@ class CallbackHandlerTest extends IntegrationTestCase {
 		self::assertStringContainsString('Сняла тебя', $this->lastAnswer());
 		self::assertNull($this->app->tournaments->lineup($t->id)->placementOf($vasya->id));
 		$sent = $this->http->sent('sendMessage');
-		self::assertSame('psolo:' . $t->id, end($sent)['reply_markup']['inline_keyboard'][0][0]['callback_data']);
+		self::assertSame('psolo:' . $t->id, end($sent)['reply_markup']['inline_keyboard'][1][0]['callback_data']);
 	}
 
 	public function testTeamButtonsInPrivate(): void {
@@ -59,15 +61,12 @@ class CallbackHandlerTest extends IntegrationTestCase {
 		$cap = $this->player('cap');
 		$mate = $this->player('mate');
 
+		// Old «Собрать команду» button without a Mini App URL: no text questions any more.
 		$this->dispatch($this->press($cap, 'pteam:' . $t->id));
-		self::assertStringContainsString('Как назовём команду', $this->http->lastText());
-		$conversation = $this->app->conversations->findLatest($this->tgIdOf($cap), $cap->id, $this->clock->now());
-		self::assertNotNull($conversation, 'the AI continues the dialog');
-		self::assertStringContainsString('register_team', $conversation['history'][0]['content']);
+		self::assertSame(TeamForm::UNAVAILABLE_TEXT, $this->http->lastText());
+		self::assertNull($this->app->conversations->findLatest($this->tgIdOf($cap), $cap->id, $this->clock->now()));
 
 		$entry = $this->app->teams->createTeam($t->id, $cap->id, 'Wolves', [$mate->id]);
-		$this->dispatch($this->press($cap, 'pteam:' . $t->id));
-		self::assertStringContainsString('уже в команде', $this->lastAnswer());
 
 		$this->dispatch($this->press($mate, 'pleave:' . $entry->team->id));
 		self::assertStringContainsString('вышел из команды', $this->lastAnswer());
@@ -116,7 +115,7 @@ class CallbackHandlerTest extends IntegrationTestCase {
 		self::assertSame($this->tgIdOf($vasya), $last['chat_id']);
 		self::assertStringContainsString('Субботний кубок', $last['text']);
 		$buttons = array_column(array_merge(...$last['reply_markup']['inline_keyboard']), 'callback_data');
-		self::assertSame(['psolo:' . $t->id, 'pteam:' . $t->id], $buttons);
+		self::assertSame(['pteam:' . $t->id, 'psolo:' . $t->id], $buttons, 'no Mini App URL in this test: callback fallbacks');
 	}
 
 	public function testGroupPicker(): void {

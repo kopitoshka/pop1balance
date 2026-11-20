@@ -25,8 +25,11 @@ class Tools {
 	/**
 		Tools that change a tournament lineup or settings (announcement must be refreshed).
 	*/
+	/**
+		register_team, add_player, remove_player, replace_player, rename_team and transfer_captain
+		only prepare the team form (nothing is saved until it is submitted), so they are not here.
+	*/
 	public const MUTATING = [
-		'register_team', 'add_player', 'remove_player', 'replace_player', 'rename_team', 'transfer_captain',
 		'withdraw_team', 'leave_team', 'join_solo', 'leave_solo', 'edit_tournament', 'cancel_tournament',
 		'set_max_players',
 	];
@@ -141,45 +144,45 @@ class Tools {
 				'Показать свой игровой ник или ник названного игрока.',
 				['player' => ['type' => 'string', 'description' => self::PLAYER_REF . ' Пусто — автор.']],
 			),
-			self::fn('register_team', 'Записать новую команду. По умолчанию автор — капитан и в составе. Организатор/владелец может указать другого капитана (сам в команду не попадает). Вызывай сразу, как только известны название и кто играет; игроков передавай теми словами, что сказал человек, не прося @username.', [
+			self::fn('register_team', 'Подготовить форму новой команды (сама команда не записывается, пока человек не нажмёт кнопку в форме). Автор — капитан и в составе. Организатор/владелец может указать другого капитана. Вызывай сразу, как только человек хочет записать команду, даже без названия и без полного состава; игроков передавай теми словами, что сказал человек («я», имя, ник, часть ника), не прося @username. Ответ и кнопку формы бот отправит сам.', [
 				'tournament_id' => $tid,
-				'team_name' => ['type' => 'string', 'description' => 'Название команды.'],
+				'team_name' => ['type' => 'string', 'description' => 'Название команды, если его назвали.'],
 				'players' => [
 					'type' => 'array',
 					'items' => ['type' => 'string'],
-					'description' => 'Остальные игроки — как их назвал человек (имя, игровой ник, @username, часть ника). Автора/капитана можно не указывать. Не переспрашивай ники, передай как есть.',
+					'description' => 'Остальные игроки — как их назвал человек (имя, игровой ник, @username, часть ника). Автора/капитана можно не указывать. Не переспрашивай ники, передай как есть: кого не найду, человек выберет в форме.',
 				],
 				'captain' => [
 					'type' => 'string',
 					'description' => 'Капитан — как его назвал человек. Только для организатора/владельца; иначе автор сам капитан.',
 				],
-			], ['team_name']),
+			], []),
 			self::fn(
 				'add_player',
-				'Капитан добавляет игрока в свою команду.',
+				'Открыть форму команды с предложенным новым игроком (сохранит капитан или организатор в форме).',
 				['tournament_id' => $tid, 'player' => $player, 'team_name' => $team],
 				['player'],
 			),
 			self::fn(
 				'remove_player',
-				'Капитан убирает игрока из команды.',
+				'Открыть форму команды без названного игрока (сохранит капитан или организатор в форме).',
 				['tournament_id' => $tid, 'player' => $player, 'team_name' => $team],
 				['player'],
 			),
-			self::fn('replace_player', 'Капитан меняет одного игрока на другого, команда сохраняет место в очереди.', [
+			self::fn('replace_player', 'Открыть форму команды с заменой одного игрока на другого; при сохранении полная команда сохраняет место в очереди.', [
 				'tournament_id' => $tid,
 				'out_player' => ['type' => 'string', 'description' => 'Кто выходит: ' . self::PLAYER_REF],
 				'in_player' => ['type' => 'string', 'description' => 'Кто заходит: ' . self::PLAYER_REF],
 				'team_name' => $team,
 			], ['out_player', 'in_player']),
-			self::fn('rename_team', 'Капитан переименовывает команду.', [
+			self::fn('rename_team', 'Открыть форму команды с новым названием (сохранит капитан или организатор в форме).', [
 				'tournament_id' => $tid,
 				'new_name' => ['type' => 'string', 'description' => 'Новое название.'],
 				'team_name' => $team,
 			], ['new_name']),
 			self::fn(
 				'transfer_captain',
-				'Капитан передаёт капитанство игроку своей команды.',
+				'Открыть форму команды, где капитаном отмечен названный игрок этой команды.',
 				['tournament_id' => $tid, 'player' => $player, 'team_name' => $team],
 				['player'],
 			),

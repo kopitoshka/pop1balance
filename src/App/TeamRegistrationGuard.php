@@ -34,7 +34,7 @@ class TeamRegistrationGuard {
 
 	public static function isTeamRegistrationIntent(string $text): bool {
 		return preg_match(
-			'/команд|(запис(ать|ывай|и)|зарегистрир)|созда[йть].{0,40}команд/u',
+			'/команд|запиш|(запис(ать|ывай|и)|зарегистрир)|созда[йть].{0,40}команд/u',
 			mb_strtolower($text),
 		) === 1;
 	}
@@ -43,15 +43,35 @@ class TeamRegistrationGuard {
 		@return array{team_name: string, players: list<string>}|null
 	*/
 	public static function parse(string $text): ?array {
-		$name = self::extractTeamName($text);
-		if ($name === null) {
-			return null;
+		$name = self::extractTeamName($text) ?? '';
+		$players = $name !== '' ? self::extractPlayers($text, $name) : [];
+		if ($players === []) {
+			$players = self::colonList($text);
 		}
-		$players = self::extractPlayers($text, $name);
 		if ($players === []) {
 			return null;
 		}
 		return ['team_name' => $name, 'players' => $players];
+	}
+
+	/**
+		«запиши нас: я, tired angel и стас» → [я, tired angel, стас]. Words like «я» stay:
+		the team form drops them because the opener is already the captain.
+
+		@return list<string>
+	*/
+	public static function colonList(string $text): array {
+		if (!preg_match('/^[^:]{0,80}(?:запиш|запис|зарегистрир|собер|команд)[^:]*:\s*(.+)$/isu', $text, $m)) {
+			return [];
+		}
+		$out = [];
+		foreach (preg_split('/\s*(?:,|;|\s+и\s+|\s+and\s+)\s*/u', trim($m[1])) ?: [] as $raw) {
+			$raw = trim($raw, " \t\n«»\"'.!?");
+			if ($raw !== '' && mb_strlen($raw) <= 40) {
+				$out[] = $raw;
+			}
+		}
+		return self::uniqueTokens($out);
 	}
 
 	protected static function extractTeamName(string $text): ?string {

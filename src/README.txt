@@ -78,15 +78,14 @@ App/ — сценарии над доменом
     TeamDisbandNotifier.php
         Уведомление при роспуске команды
     OrganizerTeams.php
-        Организатор: список/создание/переименование/капитан/удаление команд
+        Организатор: список команд, каждая открывает форму
     PendingTextGuard.php
-        Сброс текстовых pending по чужой кнопке/команде; «✖️ Отмена»
-    TeamAddFlow.php
-        Капитан добавляет игрока (поиск / Telegram picker /
-        Mini App «Подобрать игрока»)
+        Сброс pending по чужой кнопке/команде; «✖️ Отмена»
+    TeamForm.php
+        Mini App команды: создание/правка, поиск, контакты
+        Telegram, выход, роспуск (initData HMAC)
     WebAppPicker.php
-        Mini App: токен контекста, поиск, добавление /
-        показ уровня (initData HMAC)
+        Mini App /level: показ и установка уровня
     CreateTournamentForm.php
         /create_tournament: предложение формы, кнопка под
         списком, Mini App создания черновика (initData HMAC)
@@ -224,9 +223,10 @@ PUBLIC/ — то, что отдает веб-сервер
 ----------------------------------
 
 webhook.php     приём апдейтов Telegram
-webapp_api.php  API Mini App: подбор игрока и форма
-                создания турнира (create_bootstrap,
-                create_submit, edit_bootstrap, edit_submit)
+webapp_api.php  API Mini App: уровень, форма турнира
+                (create_*, edit_*) и форма команды
+                (team_bootstrap, team_search, team_submit,
+                team_contacts, team_leave, team_disband)
 webapp/         страницы Mini App (HTML/JS/CSS, без
-                сборки): picker.* подбор, create.*
-                форма /create_tournament
+                сборки): picker.* уровень, create.*
+                форма /create_tournament, team.* команда

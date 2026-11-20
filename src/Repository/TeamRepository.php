@@ -56,11 +56,17 @@ class TeamRepository {
 		return array_map([Team::class, 'fromRow'], $rows);
 	}
 
-	public function create(int $tournament_id, int $captain_id, string $name, DateTimeImmutable $now): Team {
+	public function create(
+		int $tournament_id,
+		int $captain_id,
+		string $name,
+		DateTimeImmutable $now,
+		?string $letter = null,
+	): Team {
 		$id = $this->db->insert(
-			"INSERT INTO teams (tournament_id, captain_id, name, status, registered_at, created_at)
-				VALUES (:t, :c, :n, 'forming', NULL, :now)",
-			['t' => $tournament_id, 'c' => $captain_id, 'n' => $name, 'now' => DateFormat::toDb($now)],
+			"INSERT INTO teams (tournament_id, captain_id, name, letter, status, registered_at, created_at)
+				VALUES (:t, :c, :n, :l, 'forming', NULL, :now)",
+			['t' => $tournament_id, 'c' => $captain_id, 'n' => $name, 'l' => $letter, 'now' => DateFormat::toDb($now)],
 		);
 		return $this->find($id) ?? throw new \LogicException('Team insert failed');
 	}
@@ -84,6 +90,61 @@ class TeamRepository {
 
 	public function rename(int $team_id, string $name): void {
 		$this->db->run('UPDATE teams SET name = :n WHERE id = :id', ['n' => $name, 'id' => $team_id]);
+	}
+
+	public function setLetter(int $team_id, ?string $letter): void {
+		$this->db->run('UPDATE teams SET letter = :l WHERE id = :id', ['l' => $letter, 'id' => $team_id]);
+	}
+
+	/**
+		Letters already used in the tournament: letter => team id.
+
+		@return array<string, int>
+	*/
+	public function takenLetters(int $tournament_id): array {
+		$out = [];
+		foreach ($this->db->fetchAll(
+			'SELECT id, letter FROM teams WHERE tournament_id = :t AND letter IS NOT NULL',
+			['t' => $tournament_id],
+		) as $row) {
+			$out[strtoupper((string) $row['letter'])] = (int) $row['id'];
+		}
+		return $out;
+	}
+
+	/**
+		Name of the player's most recent team in an earlier tournament (latest start first),
+		or null. Disbanded teams are deleted, so they do not count.
+	*/
+	public function lastTeamName(int $player_id, int $tournament_id): ?string {
+		$value = $this->db->fetchValue(
+			'SELECT t.name FROM teams t
+				INNER JOIN team_members m ON m.team_id = t.id
+				INNER JOIN tournaments tr ON tr.id = t.tournament_id
+				WHERE m.player_id = :p AND tr.starts_at < (SELECT starts_at FROM tournaments WHERE id = :t)
+				ORDER BY tr.starts_at DESC, t.id DESC
+				LIMIT 1',
+			['p' => $player_id, 't' => $tournament_id],
+		);
+		return $value === null ? null : (string) $value;
+	}
+
+	/**
+		player id => name of their team in this tournament.
+
+		@return array<int, string>
+	*/
+	public function memberTeamNames(int $tournament_id): array {
+		$out = [];
+		foreach ($this->db->fetchAll(
+			'SELECT m.player_id, t.name FROM team_members m
+				INNER JOIN teams t ON t.id = m.team_id
+				WHERE m.tournament_id = :t',
+			['t' => $tournament_id],
+		) as $row) {
+			$out[(int) $row['player_id']] = (string) $row['name'];
+		}
+		return $out;
 	}
 
 	public function setCaptain(int $team_id, int $captain_id): void {

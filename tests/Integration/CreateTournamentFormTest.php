@@ -176,12 +176,9 @@ class CreateTournamentFormTest extends IntegrationTestCase {
 
 	public function testCommandCancelsPendingTextInput(): void {
 		$cap = $this->player('capx');
-		$t = $this->openTournament(3);
-		$entry = $this->app->teams->createTeam($t->id, $cap->id, 'Foxes', []);
-		$this->dispatch($this->press($cap, 'padd:' . $entry->team->id));
-		self::assertTrue($this->app->team_add->hasPending($cap->id, $this->tgIdOf($cap)));
+		$pending = $this->pendingFor($cap);
 		$this->dispatch($this->privateMessage($cap, '/create_tournament'));
-		self::assertFalse($this->app->team_add->hasPending($cap->id, $this->tgIdOf($cap)));
+		self::assertNull($pending->peekLatest($cap->id, $this->tgIdOf($cap), $this->clock->now()));
 	}
 
 	public function testListButtonOnlyForThoseWhoMayCreate(): void {
@@ -448,13 +445,27 @@ class CreateTournamentFormTest extends IntegrationTestCase {
 
 	public function testSubmitClearsPendingTextInput(): void {
 		$cap = $this->player('capy');
-		$t = $this->openTournament(3);
-		$entry = $this->app->teams->createTeam($t->id, $cap->id, 'Owls', []);
-		$this->dispatch($this->press($cap, 'padd:' . $entry->team->id));
-		self::assertTrue($this->app->team_add->hasPending($cap->id, $this->tgIdOf($cap)));
+		$this->openTournament(3);
+		$pending = $this->pendingFor($cap);
 		$this->everyoneIsGroupMember();
 		self::assertNull($this->submitForm($cap, $this->form()));
-		self::assertFalse($this->app->team_add->hasPending($cap->id, $this->tgIdOf($cap)));
+		self::assertNull($pending->peekLatest($cap->id, $this->tgIdOf($cap), $this->clock->now()));
 		self::assertSame($cap->id, $this->app->tournament_repo->find(2)->organizer_id);
+	}
+
+	/**
+		A pending player action (as a /level «Может, ты про…» pick leaves) in the private chat.
+	*/
+	protected function pendingFor(\P1Bot\Domain\Model\Player $who): \P1Bot\Repository\PendingActionRepository {
+		$pending = new \P1Bot\Repository\PendingActionRepository($this->db);
+		$pending->create(
+			$who->id,
+			$this->tgIdOf($who),
+			['kind' => 'level_show'],
+			$this->clock->now()->modify('+5 minutes'),
+			$this->clock->now(),
+		);
+		self::assertNotNull($pending->peekLatest($who->id, $this->tgIdOf($who), $this->clock->now()));
+		return $pending;
 	}
 }

@@ -4,7 +4,6 @@ declare(strict_types=1);
 
 namespace P1Bot\Tests\Unit;
 
-use P1Bot\Support\TeamLetters;
 use DateTimeImmutable;
 use DateTimeZone;
 use P1Bot\Domain\Lineup;
@@ -50,13 +49,18 @@ class AnnouncementViewTest extends TestCase {
 			string $name,
 			array $member_ids,
 			string $status = TeamStatus::REGISTERED,
+			?string $letter = null,
 		) use ($starts): TeamEntry {
 			$members = array_map(static fn (int $p): TeamMember => new TeamMember($id, 7, $p), $member_ids);
-			return new TeamEntry(new Team($id, 7, $member_ids[0], $name, $status, $starts, $starts), $members);
+			return new TeamEntry(new Team($id, 7, $member_ids[0], $name, $status, $starts, $starts, $letter), $members);
 		};
 		$lineup = Lineup::compute(
 			4,
-			[$team(1, 'Wolves', [2, 3]), $team(2, 'Bears', [4, 5]), $team(3, 'Late', [6, 7])],
+			[
+				$team(1, 'Wolves', [2, 3], TeamStatus::REGISTERED, 'C'),
+				$team(2, 'Bears', [4, 5], TeamStatus::REGISTERED, 'A'),
+				$team(3, 'Late', [6, 7], TeamStatus::REGISTERED, 'B'),
+			],
 			[new SoloPlayer(7, 8, $starts)],
 			[$team(4, 'Forming', [9], TeamStatus::FORMING)],
 		);
@@ -71,11 +75,11 @@ class AnnouncementViewTest extends TestCase {
 		self::assertStringContainsString('🟢 Идёт регистрация', $text);
 		self::assertStringContainsString('🎟 Занято 4/4 · запас 3', $text);
 		self::assertStringContainsString(
-			"🛡 <b>Команды:</b>\nA. <b>Wolves</b> — 👑 <a href=\"https://t.me/p2\">@p2</a>, <a href=\"https://t.me/p3\">@p3</a>\nB. <b>Bears</b> — 👑 <a href=\"https://t.me/p4\">@p4</a>, <a href=\"https://t.me/p5\">@p5</a>",
+			"🛡 <b>Команды:</b>\nC. <b>Wolves</b> — 👑 <a href=\"https://t.me/p2\">@p2</a>, <a href=\"https://t.me/p3\">@p3</a>\nA. <b>Bears</b> — 👑 <a href=\"https://t.me/p4\">@p4</a>, <a href=\"https://t.me/p5\">@p5</a>",
 			$text,
 		);
-		self::assertStringContainsString("⏳ <b>Запас:</b>\nA. <b>Late</b> — 👑 <a href=\"https://t.me/p6\">@p6</a>, <a href=\"https://t.me/p7\">@p7</a>\n🙋 Соло: <a href=\"https://t.me/p8\">@p8</a>", $text);
-		self::assertStringContainsString("🧩 <b>Собираются:</b>\nA. Forming — 👑 <a href=\"https://t.me/p9\">@p9</a> (1/2)", $text);
+		self::assertStringContainsString("⏳ <b>Запас:</b>\nB. <b>Late</b> — 👑 <a href=\"https://t.me/p6\">@p6</a>, <a href=\"https://t.me/p7\">@p7</a>\n🙋 Соло: <a href=\"https://t.me/p8\">@p8</a>", $text);
+		self::assertStringContainsString("🧩 <b>Собираются:</b>\n?. Forming — 👑 <a href=\"https://t.me/p9\">@p9</a> (1/2)", $text);
 		self::assertDoesNotMatchRegularExpression('/средний \(3\)|\(3\)/u', $text, 'player levels are not shown');
 		self::assertStringContainsString('в личке у @pop1_bot', $text);
 	}
@@ -127,7 +131,7 @@ class AnnouncementViewTest extends TestCase {
 			}
 			$members = array_map(static fn (int $p): TeamMember => new TeamMember($i, 9, $p), $ids);
 			$teams[] = new TeamEntry(
-				new Team($i, 9, $ids[0], 'Команда номер ' . $i, TeamStatus::REGISTERED, $starts, $starts),
+				new Team($i, 9, $ids[0], 'Команда номер ' . $i, TeamStatus::REGISTERED, $starts, $starts, $i <= 26 ? chr(64 + $i) : null),
 				$members,
 			);
 		}
@@ -149,6 +153,6 @@ class AnnouncementViewTest extends TestCase {
 		foreach ($messages as $m) {
 			self::assertLessThanOrEqual(4000, mb_strlen($m));
 		}
-		self::assertStringContainsString(TeamLetters::prefix(99) . '<b>Команда номер 100</b>', end($messages));
+		self::assertStringContainsString('?. <b>Команда номер 100</b>', end($messages));
 	}
 }

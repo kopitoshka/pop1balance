@@ -196,8 +196,8 @@ class Assistant {
 	}
 
 	/**
-		If the model asked for @usernames instead of calling register_team, run the
-		registration (and the missing-player buttons) from the user's original text.
+		If the model asked for @usernames instead of calling register_team, prepare the team
+		form from the user's original text (never a chat picker, never a registration).
 		@return array{text: string, suggest_markup: array<string, mixed>, followup: ?array, groups: array<int, string>}|null
 	*/
 	protected function recoverUsernameAsk(Context $ctx, string $user_text, string $model_text): ?array {
@@ -222,18 +222,6 @@ class Assistant {
 				'suggest_markup' => is_array($result['suggest_markup'] ?? null) ? $result['suggest_markup'] : [],
 				'followup' => is_array($result['followup'] ?? null) ? $result['followup'] : null,
 				'groups' => is_array($result['choose_group_ids'] ?? null) ? $result['choose_group_ids'] : [],
-			];
-		}
-		if (!empty($result['ok']) && empty($result['error'])) {
-			$team = trim((string) ($result['team'] ?? $parsed['team_name']));
-			$text = $team !== ''
-				? 'Записала команду «' . $team . '».'
-				: (string) ($result['message'] ?? 'Команда создана.');
-			return [
-				'text' => $text,
-				'suggest_markup' => [],
-				'followup' => null,
-				'groups' => [],
 			];
 		}
 		return null;

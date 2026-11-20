@@ -94,23 +94,48 @@ class CancelTournamentButtonTest extends IntegrationTestCase {
 		$t = $this->openTournament(2, null);
 		$this->dispatch($this->press($this->owner, 'tcancel:' . $t->id));
 		$this->http->reset();
-		$this->dispatch($this->press($this->owner, 'tcanceln:' . $t->id));
+		$this->dispatch($this->press($this->owner, 'tcanceln:' . $t->id, 77));
 		self::assertSame(TournamentStatus::REGISTRATION, $this->app->tournament_repo->find($t->id)->status);
+		self::assertSame('Оставила', $this->http->lastText(), 'a real chat message, not a toast');
+		$answers = $this->http->sent('answerCallbackQuery');
+		self::assertArrayNotHasKey('text', end($answers));
+		$edits = $this->http->sent('editMessageText');
+		self::assertCount(1, $edits, 'the confirmation loses its buttons');
+		self::assertSame(77, $edits[0]['message_id']);
+		self::assertArrayNotHasKey('reply_markup', $edits[0]);
+		self::assertStringContainsString('Точно отменить турнир', $edits[0]['text']);
+	}
+
+	public function testCancelDraftFromCardDeletesAtOnce(): void {
+		$t = $this->app->tournaments->create(new \P1Bot\Domain\CreateTournament(
+			self::CHAT_ID,
+			$this->owner->id,
+			'Черновой',
+			'2026-11-14 19:00',
+			2,
+			'3,3',
+		));
+		$this->http->reset();
+		$this->dispatch($this->press($this->owner, 'tcancel:' . $t->id));
+		self::assertNull($this->app->tournament_repo->find($t->id));
+		self::assertStringContainsString('Черновик #' . $t->id . ' удалён', $this->http->lastText());
 	}
 
 	public function testCancelClearsPendingText(): void {
 		$t = $this->openTournament(2, null);
-		$cap = $this->player('cap');
-		$this->rate($cap, 3);
-		$entry = $this->app->teams->createTeamAsOrganizer($this->owner->id, $t->id, $cap->id, 'Wolves', []);
-		$this->dispatch($this->press($this->owner, 'otren:' . $entry->team->id));
-		self::assertSame('org_rename', $this->app->organizer_teams->hasPending($this->owner->id, self::OWNER_TG_ID));
-
+		$pending = new \P1Bot\Repository\PendingActionRepository($this->db);
+		$pending->create(
+			$this->owner->id,
+			self::OWNER_TG_ID,
+			['kind' => 'level_show'],
+			$this->clock->now()->modify('+5 minutes'),
+			$this->clock->now(),
+		);
 		$this->http->reset();
 		$this->dispatch($this->press($this->owner, 'tcancel:' . $t->id));
 		self::assertNull(
-			$this->app->organizer_teams->hasPending($this->owner->id, self::OWNER_TG_ID),
-			'pressing cancel tournament must clear pending text input',
+			$pending->peekLatest($this->owner->id, self::OWNER_TG_ID, $this->clock->now()),
+			'pressing cancel tournament must clear pending player actions',
 		);
 	}
 

@@ -18,6 +18,7 @@ class Team {
 		public string $status,
 		public ?DateTimeImmutable $registered_at,
 		public DateTimeImmutable $created_at,
+		public ?string $letter = null,
 	) {
 	}
 
@@ -33,6 +34,7 @@ class Team {
 			TeamStatus::assertValid((string) $row['status']),
 			DateFormat::fromDbNullable($row['registered_at'] === null ? null : (string) $row['registered_at']),
 			DateFormat::fromDb((string) $row['created_at']),
+			isset($row['letter']) && $row['letter'] !== '' ? strtoupper((string) $row['letter']) : null,
 		);
 	}
 

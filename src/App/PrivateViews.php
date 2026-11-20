@@ -15,7 +15,7 @@ use P1Bot\View\Html;
 
 /**
 	What the private chat shows: a tournament with buttons for the player's state and the list of
-	tournaments with «open» buttons (+ «➕ Создать турнир» for creators). Tournament card: psolo/punsolo/pteam, «🛡 Моя команда» (tcard),
+	tournaments with «open» buttons (+ «➕ Создать турнир» for creators). Tournament card: psolo/punsolo/pteam, «✏️ Редактировать команду» (team form),
 	«👥 Команды» (oteams), «❌ Отменить турнир» (tcancel) for author/owner. Team manage on TeamCards.
 */
 class PrivateViews {
@@ -56,6 +56,12 @@ class PrivateViews {
 		return $message_id;
 	}
 
+	protected ?TeamForm $team_form = null;
+
+	public function setTeamForm(?TeamForm $form): void {
+		$this->team_form = $form;
+	}
+
 	/**
 		Buttons for the player's state in the tournament.
 
@@ -80,16 +86,17 @@ class PrivateViews {
 			if (!($time_locked && !$can_manage)) {
 				// Tournament info card: only tournament-level actions. Team manage lives on team cards.
 				$team = $this->teams->teamOf($t->id, $player->id);
+				$chat_id = (int) $player->tg_user_id;
 				if ($team !== null) {
-					$rows[] = [[
-						'text' => '🛡 Моя команда «' . mb_substr($team->team->name, 0, 40) . '»',
-						'callback_data' => 'tcard:' . $team->team->id,
-					]];
+					$text = '✏️ Редактировать команду «' . mb_substr($team->team->name, 0, 40) . '»';
+					$rows[] = [$this->team_form?->button($player, $chat_id, $t->id, $team->team->id, null, $text)
+						?? ['text' => $text, 'callback_data' => 'tcard:' . $team->team->id]];
 				} elseif (($placement = $this->tournaments->lineup($t->id)->placementOf($player->id)) !== null) {
 					$rows[] = [['text' => '❌ Отписаться', 'callback_data' => 'punsolo:' . $t->id]];
 				} elseif ($this->tournaments->isUserRegistrationOpen($t)) {
-					$rows[] = [['text' => '🙋 Записаться соло', 'callback_data' => 'psolo:' . $t->id]];
-					$rows[] = [['text' => '👥 Собрать команду', 'callback_data' => 'pteam:' . $t->id]];
+					$rows[] = [$this->team_form?->button($player, $chat_id, $t->id, null)
+						?? ['text' => TeamForm::NEW_BUTTON, 'callback_data' => 'pteam:' . $t->id]];
+					$rows[] = [['text' => '🙋 Участвовать соло', 'callback_data' => 'psolo:' . $t->id]];
 				}
 			}
 			if (

@@ -8,10 +8,8 @@ use P1Bot\App\CreateAccess;
 use P1Bot\App\CreateTournamentForm;
 use P1Bot\App\DraftCards;
 use P1Bot\App\PrivateGroups;
-use P1Bot\App\OrganizerTeams;
 use P1Bot\App\PendingTextGuard;
-use P1Bot\App\TeamAddFlow;
-use P1Bot\App\RegistrationFillFlow;
+use P1Bot\App\TeamForm;
 use P1Bot\App\PrivateViews;
 use P1Bot\Domain\AccessPolicy;
 use P1Bot\Domain\Exception\DomainError;
@@ -88,10 +86,8 @@ class PrivateChatHandler {
 		protected MessageHandler $messages,
 		protected Clock $clock,
 		protected ?CreateAccess $create_access = null,
-		protected ?TeamAddFlow $team_add = null,
-		protected ?OrganizerTeams $organizer = null,
+		protected ?TeamForm $team_form = null,
 		protected ?PendingTextGuard $pending_guard = null,
-		protected ?RegistrationFillFlow $reg_fill = null,
 	) {
 	}
 
@@ -128,9 +124,6 @@ class PrivateChatHandler {
 				if ($payload['group'] !== null) {
 					return ['kind' => self::START_GROUP, 'group' => $payload['group']] + $decision;
 				}
-				if (($payload['reg_fill'] ?? null) !== null) {
-					return ['kind' => self::START, 'command' => 'start', 'args' => 'rf_' . (int) $payload['reg_fill'], 'tournament' => null, 'group' => null];
-				}
 				return ['kind' => self::START] + $decision;
 			}
 			if (!$this->commands->supports($name)) {
@@ -146,38 +139,12 @@ class PrivateChatHandler {
 			// Help / levels / tournaments: always deterministic, never via the model.
 			return ['kind' => $keyword] + $decision;
 		}
-		$pending = $this->pendingKind($actor, $message);
-		if ($pending !== null) {
-			return ['kind' => self::PENDING, 'command' => $pending] + $decision;
-		}
 		if (!$this->messages->hasAi()) {
 			return ['kind' => self::FALLBACK] + $decision;
 		}
 		// Tournament numbers are global: free-text AI does not need a chosen group.
 		// Tournaments are global: free-text AI does not need a chosen group to create.
 		return $decision;
-	}
-
-	/**
-		Pending text flow (organizer create/rename or team-add search), if any.
-	*/
-	protected function pendingKind(Player $actor, Message $message): ?string {
-		if ($message->text === '') {
-			return null;
-		}
-		if ($this->organizer !== null) {
-			$op = $this->organizer->hasPending($actor->id, $message->chat_id);
-			if ($op !== null) {
-				return $op;
-			}
-		}
-		if ($this->team_add !== null && $this->team_add->hasPending($actor->id, $message->chat_id)) {
-			return 'team_add';
-		}
-		if ($this->reg_fill !== null && $this->reg_fill->hasPending($actor->id, $message->chat_id)) {
-			return 'reg_fill';
-		}
-		return null;
 	}
 
 	/**
@@ -204,11 +171,8 @@ class PrivateChatHandler {
 	public function handle(Message $message, Player $actor, array $decision): void {
 		$this->players->markDmStarted($actor->id, $this->clock->now());
 		$chat_id = $message->chat_id;
-		$rf_start = $decision['kind'] === self::START
-			&& str_starts_with((string) ($decision['args'] ?? ''), 'rf_');
 		if (
 			$this->pending_guard !== null
-			&& !$rf_start
 			&& in_array($decision['kind'], [
 				self::COMMAND,
 				self::UNKNOWN_COMMAND,
@@ -231,8 +195,8 @@ class PrivateChatHandler {
 				return;
 			case self::START:
 				if (
-					$this->reg_fill !== null
-					&& $this->reg_fill->continueFromStart($chat_id, $actor, (string) ($decision['args'] ?? ''))
+					$this->team_form !== null
+					&& $this->team_form->continueFromStart($chat_id, $actor, trim((string) ($decision['args'] ?? '')), $message->message_id)
 				) {
 					return;
 				}
@@ -264,30 +228,6 @@ class PrivateChatHandler {
 			case self::USERS_SHARED:
 				$this->onUsersShared($message, $actor);
 				return;
-		}
-		if (
-			$this->organizer !== null
-			&& in_array($decision['kind'], [self::AI, self::FALLBACK, self::PENDING], true)
-			&& $message->text !== ''
-			&& $this->organizer->handlePendingText($chat_id, $actor, $message->text, $message->message_id)
-		) {
-			return;
-		}
-		if (
-			$this->team_add !== null
-			&& in_array($decision['kind'], [self::AI, self::FALLBACK, self::PENDING], true)
-			&& $message->text !== ''
-			&& $this->team_add->handleSearchText($chat_id, $actor, $message->text, $message->message_id)
-		) {
-			return;
-		}
-		if (
-			$this->reg_fill !== null
-			&& in_array($decision['kind'], [self::AI, self::FALLBACK, self::PENDING], true)
-			&& $message->text !== ''
-			&& $this->reg_fill->handleSearchText($chat_id, $actor, $message->text, $message->message_id)
-		) {
-			return;
 		}
 		$this->messages->handle($this->context($message, $actor));
 	}
@@ -335,8 +275,6 @@ class PrivateChatHandler {
 				return 'fallback text (AI off: OPENAI_API_KEY is empty)';
 			case self::USERS_SHARED:
 				return 'users_shared';
-			case self::PENDING:
-				return 'pending ' . (string) ($decision['command'] ?? '');
 		}
 		return $decision['kind'];
 	}
@@ -382,29 +320,21 @@ class PrivateChatHandler {
 		$chat_id = $message->chat_id;
 		$remove = ['reply_markup' => ['remove_keyboard' => true]];
 		$shared = $message->users_shared;
+		if (
+			$shared !== null
+			&& $this->team_form !== null
+			&& $this->team_form->handleUsersShared(
+				$chat_id,
+				$actor,
+				(int) ($shared['request_id'] ?? 0),
+				$shared['users'],
+				$message->message_id,
+			)
+		) {
+			return;
+		}
 		if ($shared === null || $shared['users'] === []) {
 			$this->api->sendMessage($chat_id, 'Никого не выбрали.', $message->message_id, $remove);
-			return;
-		}
-		if (
-			$this->organizer !== null
-			&& (int) ($shared['request_id'] ?? 0) === OrganizerTeams::REQUEST_CAPTAIN_ID
-			&& $this->organizer->handleUsersShared($chat_id, $actor, $shared['users'], $message->message_id)
-		) {
-			return;
-		}
-		if (
-			$this->team_add !== null
-			&& (int) ($shared['request_id'] ?? 0) === TeamAddFlow::REQUEST_USERS_ID
-			&& $this->team_add->handleUsersShared($chat_id, $actor, $shared['users'], $message->message_id)
-		) {
-			return;
-		}
-		if (
-			$this->reg_fill !== null
-			&& (int) ($shared['request_id'] ?? 0) === RegistrationFillFlow::REQUEST_USERS_ID
-			&& $this->reg_fill->handleUsersShared($chat_id, $actor, $shared['users'], $message->message_id)
-		) {
 			return;
 		}
 		$lines = [];

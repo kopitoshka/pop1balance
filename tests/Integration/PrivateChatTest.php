@@ -104,7 +104,7 @@ class PrivateChatTest extends IntegrationTestCase {
 				self::assertStringStartsNotWith($prefix, $b);
 			}
 		}
-		// Team card still has manage actions.
+		// Without a Mini App URL the team card keeps only the disband button (no text pickers).
 		$this->http->reset();
 		$this->dispatch($this->press($this->owner, 'tcard:' . $entry->team->id));
 		$team_btns = [];
@@ -115,9 +115,7 @@ class PrivateChatTest extends IntegrationTestCase {
 				}
 			}
 		}
-		self::assertContains('padd:' . $entry->team->id, $team_btns);
-		self::assertContains('otren:' . $entry->team->id, $team_btns);
-		self::assertContains('oteams:' . $t->id, $team_btns, 'back to list on team card');
+		self::assertSame(['pdissolve:' . $entry->team->id], $team_btns);
 	}
 
 	public function testStartWithTournamentShowsItWithButtons(): void {
@@ -126,7 +124,7 @@ class PrivateChatTest extends IntegrationTestCase {
 		$reply = $this->say($vasya, '/start t_' . $t->id);
 		self::assertStringContainsString('Привет, Vasya!', $reply);
 		self::assertStringContainsString('Субботний кубок', $reply);
-		self::assertSame(['psolo:' . $t->id, 'pteam:' . $t->id], $this->lastButtons());
+		self::assertSame(['pteam:' . $t->id, 'psolo:' . $t->id], $this->lastButtons());
 		self::assertStringContainsString('private: start t_' . $t->id, $this->log->text());
 		self::assertTrue($this->app->players->dmOk($vasya->id), 'started the bot');
 		self::assertSame(self::CHAT_ID, $this->app->players->dmGroup($vasya->id));
@@ -390,25 +388,6 @@ class PrivateChatTest extends IntegrationTestCase {
 		$this->http->queueOpenAi($this->text('Привет!'));
 		$this->say($vasya, 'и ещё');
 		self::assertCount(2, $this->aiRequests()[0]['json']['input']);
-	}
-
-	public function testTeamButtonThenAiRegistersTheTeam(): void {
-		$t = $this->openTournament(3);
-		$cap = $this->player('cap');
-		$this->player('vasya');
-		$this->player('petya');
-		$this->dispatch($this->press($cap, 'pteam:' . $t->id));
-
-		$this->http->queueOpenAi($this->functionCall('register_team', [
-			'tournament_id' => 1,
-			'team_name' => 'Wolves',
-			'players' => ['@vasya', '@petya'],
-		]));
-		$this->http->queueOpenAi($this->text('Команда Wolves записана!'));
-		self::assertSame('Команда Wolves записана!', $this->say($cap, 'Wolves: @vasya, @petya'));
-		$input = $this->aiRequests()[0]['json']['input'];
-		self::assertStringContainsString('Собираем команду на турнир №1', $input[1]['content']);
-		self::assertNotNull($this->app->teams->findByName($t->id, 'Wolves'));
 	}
 
 	public function testAiJoinDoesNotRequireGroupMembership(): void {

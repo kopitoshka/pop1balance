@@ -7,8 +7,7 @@ namespace P1Bot\Ai;
 use P1Bot\App\Announcer;
 use P1Bot\App\CreateAccess;
 use P1Bot\App\TeamDisbandNotifier;
-use P1Bot\App\TeamAddFlow;
-use P1Bot\App\RegistrationFillFlow;
+use P1Bot\App\TeamForm;
 use P1Bot\App\Confirmation;
 use P1Bot\App\DraftCards;
 use P1Bot\App\NeedGroupChoice;
@@ -39,6 +38,7 @@ use P1Bot\Repository\BalanceRepository;
 use P1Bot\Repository\PlayerRepository;
 use P1Bot\Support\Clock;
 use P1Bot\Support\Logger;
+use P1Bot\Support\RuPlural;
 use P1Bot\View\Messages;
 use Throwable;
 
@@ -66,8 +66,7 @@ class Dispatcher {
 		protected ?CreateAccess $create_access = null,
 		protected ?TeamDisbandNotifier $disband_notifier = null,
 		protected ?NickService $nicks = null,
-		protected ?TeamAddFlow $team_add = null,
-		protected ?RegistrationFillFlow $reg_fill = null,
+		protected ?TeamForm $team_form = null,
 	) {
 	}
 
@@ -288,82 +287,65 @@ class Dispatcher {
 				];
 
 			case 'register_team':
+				// Never registers from chat: prepares the team form with what could be resolved.
 				$t = $this->tournament($ctx, $a);
-				$fill = $this->collectRegisterTeam($ctx, $actor, $t, $a);
-				if ($fill !== null) {
-					return $fill;
+				$current = $this->teams->teamOf($t->id, $actor->id);
+				if ($current !== null) {
+					return $this->teamForm($ctx, $t, $current, $this->draftOf($current), [], (array) ($a['players'] ?? []));
 				}
-				$ids = $a['_resolved_ids'] ?? [];
-				$captain_id = $a['_captain_id'] ?? null;
-				if ($captain_id !== null) {
-					$entry = $this->teams->createTeamAsOrganizer(
-						$actor->id,
-						$t->id,
-						(int) $captain_id,
-						(string) ($a['team_name'] ?? ''),
-						$ids,
-					);
-				} else {
-					$entry = $this->teams->createTeam($t->id, $actor->id, (string) ($a['team_name'] ?? ''), $ids);
+				$draft = ['name' => trim((string) ($a['team_name'] ?? '')), 'player_ids' => [$actor->id], 'captain_id' => $actor->id];
+				$captain_ref = trim((string) ($a['captain'] ?? ''));
+				$pending = [];
+				if ($captain_ref !== '' && $this->canManageTeams($t, $actor)) {
+					$probe = $this->player_resolver->tryResolve($captain_ref, $actor);
+					if ($probe['player'] !== null && $probe['player']->id !== $actor->id) {
+						$draft['player_ids'] = [$probe['player']->id];
+						$draft['captain_id'] = $probe['player']->id;
+					} elseif ($probe['player'] === null) {
+						$pending[] = self::pendingItem($captain_ref, $probe['suggestions']);
+					}
 				}
-				return $this->teamResult($t, $entry, 'Команда создана.');
+				return $this->teamForm($ctx, $t, null, $draft, $pending, (array) ($a['players'] ?? []));
 
 			case 'add_player':
 				[$t, $entry] = $this->team($ctx, $a);
-				$ref = trim((string) ($a['player'] ?? ''));
-				if ($ref === '') {
-					return $this->addPlayerOffer($ctx, $actor, $entry->team->id);
-				}
-				// Partial nick without @: suggest matches instead of hard fail.
-				if ($ref[0] !== '@' && !preg_match('/^[A-Za-z][A-Za-z0-9_]{2,31}$/', $ref)) {
-					$partial = $this->players->searchPartial($ref, 5, $this->players->playersOnTeamsOfTournament($t->id));
-					if ($partial !== [] && $this->players->findKnownByUsername(ltrim($ref, '@')) === null
-						&& $this->players->findByIgnNorm(mb_strtolower($ref)) === null) {
-						return $this->partialPlayerSuggest($ctx, $actor, $entry->team->id, $ref, $partial, $a);
-					}
-				}
-				$player = $this->resolvePlayer($ref, $actor, $ctx, 'add_player', $a, 'player');
-				return $this->teamResult(
-					$t,
-					$this->teams->addPlayer($actor->id, $entry->team->id, $player->id),
-					'Игрок добавлен.',
-				);
+				return $this->teamForm($ctx, $t, $entry, $this->draftOf($entry), [], [(string) ($a['player'] ?? '')]);
 
 			case 'remove_player':
 				[$t, $entry] = $this->team($ctx, $a);
-				$player = $this->resolvePlayer((string) ($a['player'] ?? ''), $actor, $ctx, 'remove_player', $a, 'player');
-				return $this->teamResult(
-					$t,
-					$this->teams->removePlayer($actor->id, $entry->team->id, $player->id),
-					'Игрок убран.',
-				);
+				$draft = $this->draftOf($entry);
+				$out = $this->memberOf($entry, (string) ($a['player'] ?? ''), $actor);
+				if ($out !== null && $out !== $draft['captain_id']) {
+					$draft['player_ids'] = array_values(array_diff($draft['player_ids'], [$out]));
+				}
+				return $this->teamForm($ctx, $t, $entry, $draft, [], []);
 
 			case 'replace_player':
 				[$t, $entry] = $this->team($ctx, $a);
-				$out = $this->resolvePlayer((string) ($a['out_player'] ?? ''), $actor, $ctx, 'replace_player', $a, 'out_player');
-				$in = $this->resolvePlayer((string) ($a['in_player'] ?? ''), $actor, $ctx, 'replace_player', $a, 'in_player');
-				return $this->teamResult(
-					$t,
-					$this->teams->replacePlayer($actor->id, $entry->team->id, $out->id, $in->id),
-					'Замена сделана.',
-				);
+				$draft = $this->draftOf($entry);
+				$out = $this->memberOf($entry, (string) ($a['out_player'] ?? ''), $actor);
+				if ($out !== null && $out !== $draft['captain_id']) {
+					$draft['player_ids'] = array_values(array_diff($draft['player_ids'], [$out]));
+				}
+				return $this->teamForm($ctx, $t, $entry, $draft, [], [(string) ($a['in_player'] ?? '')]);
 
 			case 'rename_team':
 				[$t, $entry] = $this->team($ctx, $a);
-				return $this->teamResult(
-					$t,
-					$this->teams->renameTeam($actor->id, $entry->team->id, (string) ($a['new_name'] ?? '')),
-					'Команда переименована.',
-				);
+				$draft = $this->draftOf($entry);
+				$new = trim((string) ($a['new_name'] ?? ''));
+				if ($new !== '') {
+					$draft['name'] = $new;
+				}
+				return $this->teamForm($ctx, $t, $entry, $draft, [], []);
 
 			case 'transfer_captain':
 				[$t, $entry] = $this->team($ctx, $a);
-				$player = $this->resolvePlayer((string) ($a['player'] ?? ''), $actor, $ctx, 'transfer_captain', $a, 'player');
-				return $this->teamResult(
-					$t,
-					$this->teams->transferCaptain($actor->id, $entry->team->id, $player->id),
-					'Капитан сменился.',
-				);
+				$draft = $this->draftOf($entry);
+				$new = $this->memberOf($entry, (string) ($a['player'] ?? ''), $actor);
+				if ($new !== null) {
+					$draft['captain_id'] = $new;
+				}
+				return $this->teamForm($ctx, $t, $entry, $draft, [], []);
 
 			case 'withdraw_team':
 				[$t, $entry] = $this->team($ctx, $a);
@@ -565,86 +547,6 @@ class Dispatcher {
 	/**
 		@param array<string, mixed> $tool_args full tool args for resume
 	*/
-	/**
-		Resolve every name on register_team. When some are missing, start the fill UI
-		instead of failing the first one (and letting the model invent a button-less ask).
-		@param array<string, mixed> $a
-		@return array<string, mixed>|null fill-UI result, or null when everyone is resolved ($a is then annotated)
-	*/
-	protected function collectRegisterTeam(Context $ctx, Player $actor, Tournament $t, array &$a): ?array {
-		$exclude = $this->players->playersOnTeamsOfTournament($t->id);
-		$resolved = [];
-		$missing = [];
-		$captain_id = null;
-		$captain_missing = null;
-		$organizer_mode = false;
-
-		$captain_ref = trim((string) ($a['captain'] ?? ''));
-		if ($captain_ref !== '') {
-			$organizer_mode = true;
-			$probe = $this->player_resolver->tryResolve($captain_ref, $actor, $exclude);
-			if ($probe['player'] !== null) {
-				$captain_id = $probe['player']->id;
-				$exclude[] = $captain_id;
-			} else {
-				$captain_missing = [
-					'label' => $captain_ref,
-					'role' => 'captain',
-					'suggestion_ids' => array_map(static fn (Player $p): int => $p->id, $probe['suggestions']),
-				];
-			}
-		} else {
-			$exclude[] = $actor->id;
-		}
-
-		foreach ((array) ($a['players'] ?? []) as $ref) {
-			$ref = trim((string) $ref);
-			if ($ref === '') {
-				continue;
-			}
-			$probe = $this->player_resolver->tryResolve($ref, $actor, $exclude);
-			if ($probe['player'] !== null) {
-				$pid = $probe['player']->id;
-				if ($pid === $actor->id && !$organizer_mode) {
-					continue;
-				}
-				if ($captain_id !== null && $pid === $captain_id) {
-					continue;
-				}
-				$resolved[] = $pid;
-				$exclude[] = $pid;
-				continue;
-			}
-			$missing[] = [
-				'label' => $ref,
-				'role' => 'player',
-				'suggestion_ids' => array_map(static fn (Player $p): int => $p->id, $probe['suggestions']),
-			];
-		}
-
-		if ($missing === [] && $captain_missing === null) {
-			$a['_resolved_ids'] = $resolved;
-			$a['_captain_id'] = $captain_id;
-			return null;
-		}
-		if ($this->reg_fill === null) {
-			$first = $captain_missing['label'] ?? ($missing[0]['label'] ?? '');
-			throw new ValidationError(sprintf(
-				'Не могу найти игрока «%s». Укажи @username человека, который уже писал мне, или игровой ник.',
-				$first,
-			));
-		}
-		return $this->reg_fill->start($ctx, $actor, [
-			'tournament_id' => $t->id,
-			'team_name' => (string) ($a['team_name'] ?? ''),
-			'organizer_mode' => $organizer_mode,
-			'captain_id' => $captain_id,
-			'resolved_ids' => $resolved,
-			'missing' => $missing,
-			'captain_missing' => $captain_missing,
-		]);
-	}
-
 	protected function resolvePlayer(string $ref, Player $actor, Context $ctx, string $tool, array $tool_args, string $player_arg, bool $owner_only = false): Player {
 		$resume = [
 			'kind' => 'tool',
@@ -853,60 +755,131 @@ class Dispatcher {
 	}
 
 	/**
-		«добавь в мою команду» without a nick — candidate buttons + pending text search.
-		@return array<string, mixed>
+		Current roster of a team as an unsaved form draft.
+
+		@return array{name: string, player_ids: list<int>, captain_id: int}
 	*/
-	protected function addPlayerOffer(Context $ctx, \P1Bot\Domain\Model\Player $actor, int $team_id): array {
-		if ($this->team_add === null || !$ctx->isPrivate()) {
-			return [
-				'ok' => false,
-				'error' => 'Открой карточку команды (/team) и нажми «➕ Добавить игрока», или укажи @username.',
-			];
-		}
-		$markup = $this->team_add->suggestMarkup($actor, $team_id, $ctx->chatId());
-		// also send the telegram picker via offer? suggestMarkup only inline. Call offer for full UX.
-		$this->team_add->offer($ctx->chatId(), $actor, $team_id, $ctx->message->message_id);
+	protected function draftOf(TeamEntry $entry): array {
 		return [
-			'message' => 'Кого добавить? Выбери кнопкой, из Telegram или напиши часть ника.',
-			'suggest_markup' => [],
-			'note' => 'Кнопки уже отправлены в чат. Не дублируй список ников.',
+			'name' => $entry->team->name,
+			'player_ids' => array_map(static fn ($m): int => $m->player_id, $entry->members),
+			'captain_id' => $entry->team->captain_id,
 		];
 	}
 
 	/**
-		Partial nick match → pick buttons that add to the team (reuse sug: pending with resume add_player).
-		@param list<\P1Bot\Domain\Model\Player> $partial
-		@param array<string, mixed> $args
-		@return array<string, mixed>
+		Team member matching a reference, without any chat prompt.
 	*/
-	protected function partialPlayerSuggest(
-		Context $ctx,
-		\P1Bot\Domain\Model\Player $actor,
-		int $team_id,
-		string $ref,
-		array $partial,
-		array $args,
-	): array {
-		// Store resume as add_player with team fixed via args; sug callback re-runs tool.
-		$resume = [
-			'kind' => 'tool',
-			'tool' => 'add_player',
-			'args' => array_merge($args, ['_team_id' => $team_id]),
-			'player_field' => 'player',
-		];
-		// Use PlayerSuggestError path via pending in player_resolver — simpler: tadd buttons directly.
-		$rows = [];
-		foreach ($partial as $player) {
-			$rows[] = [[
-				'text' => mb_substr($player->hasIgn() ? ((string) $player->ign) : $player->mention(), 0, 64),
-				'callback_data' => 'tadd:' . $team_id . ':' . $player->id,
-			]];
+	protected function memberOf(TeamEntry $entry, string $ref, Player $actor): ?int {
+		$ids = array_map(static fn ($m): int => $m->player_id, $entry->members);
+		$probe = $this->player_resolver->tryResolve($ref, $actor);
+		if ($probe['player'] !== null && in_array($probe['player']->id, $ids, true)) {
+			return $probe['player']->id;
 		}
+		$hits = array_values(array_filter($probe['suggestions'], static fn (Player $p): bool => in_array($p->id, $ids, true)));
+		return count($hits) === 1 ? $hits[0]->id : null;
+	}
+
+	/**
+		@param list<Player> $suggestions
+		@return array{label: string, suggestion_ids: list<int>}
+	*/
+	protected static function pendingItem(string $label, array $suggestions): array {
 		return [
-			'message' => 'Нашла похожих по «' . $ref . '» — выбери:',
-			'suggest_markup' => $rows === [] ? [] : ['reply_markup' => ['inline_keyboard' => $rows]],
+			'label' => $label,
+			'suggestion_ids' => array_slice(array_map(static fn (Player $p): int => $p->id, $suggestions), 0, 5),
 		];
 	}
 
+	/**
+		@param list<string> $names
+	*/
+	protected static function joinNames(array $names): string {
+		if (count($names) <= 1) {
+			return implode('', $names);
+		}
+		$last = array_pop($names);
+		return implode(', ', $names) . ' и ' . $last;
+	}
 
+	protected function canManageTeams(Tournament $t, Player $actor): bool {
+		try {
+			$this->tournaments->assertCanManage($actor->id, $t->id);
+			return true;
+		} catch (DomainError $e) {
+			return false;
+		}
+	}
+
+	/**
+		Resolve the named players into the draft (no chat buttons, no «Может, ты про…»), keep the
+		rest as names to look up in the form, and answer with a short fixed text plus the button.
+
+		@param array{name: string, player_ids: list<int>, captain_id: int} $draft
+		@param list<array{label: string, suggestion_ids: list<int>}> $pending
+		@param array<int, mixed> $refs
+		@return array<string, mixed>
+	*/
+	protected function teamForm(Context $ctx, Tournament $t, ?TeamEntry $entry, array $draft, array $pending, array $refs): array {
+		$actor = $ctx->actor;
+		$taken = array_fill_keys($this->players->playersOnTeamsOfTournament($t->id), true);
+		$own = $entry !== null ? array_fill_keys(array_map(static fn ($m): int => $m->player_id, $entry->members), true) : [];
+		$added = [];
+		foreach ($refs as $ref) {
+			$ref = trim((string) $ref);
+			if ($ref === '') {
+				continue;
+			}
+			if (preg_match('/^(я|меня|мне|себя|сам|сама)$/u', mb_strtolower($ref))) {
+				continue; // the opener is already in the new team
+			}
+			$probe = $this->player_resolver->tryResolve($ref, $actor);
+			$player = $probe['player'];
+			if ($player !== null && in_array($player->id, $draft['player_ids'], true)) {
+				continue;
+			}
+			if ($player !== null && (!isset($taken[$player->id]) || isset($own[$player->id]))) {
+				$draft['player_ids'][] = $player->id;
+				$added[] = $player->plainLabel();
+				continue;
+			}
+			$pending[] = self::pendingItem($ref, $player !== null ? [$player] : $probe['suggestions']);
+		}
+		if ($pending !== []) {
+			$draft['pending'] = array_slice($pending, 0, TeamForm::MAX_PENDING);
+		}
+		$button = $this->team_form?->button($actor, $ctx->chatId(), $t->id, $entry?->team->id, $draft);
+		if ($button === null) {
+			throw new ValidationError(TeamForm::UNAVAILABLE_TEXT);
+		}
+		$names = [];
+		foreach ($draft['player_ids'] as $id) {
+			$p = $this->players->find($id);
+			$names[] = $id === $actor->id ? 'тебя' : ($p === null ? '#' . $id : ($p->hasIgn() ? (string) $p->ign : $p->mention()));
+		}
+		$lines = [];
+		if ($entry === null) {
+			$lines[] = 'Открой форму команды: уже добавила ' . self::joinNames($names) . '.';
+		} else {
+			$lines[] = 'Открой форму команды «' . $entry->team->name . '»: подготовила изменения, сохрани их там.';
+		}
+		foreach ($pending as $item) {
+			$n = count($item['suggestion_ids']);
+			$lines[] = match (true) {
+				$n > 1 => sprintf('«%s»: нашла %d %s, выбери нужного там.', $item['label'], $n, RuPlural::choose($n, ['вариант', 'варианта', 'вариантов'])),
+				$n === 1 => sprintf('«%s»: проверь вариант там.', $item['label']),
+				default => sprintf('«%s» поищи там же, поиском или в контактах.', $item['label']),
+			};
+		}
+		if ($ctx->chatId() < 0) {
+			$lines[] = 'Форма откроется у меня в личке.';
+		}
+		return [
+			'form' => true,
+			'say' => implode(' ', $lines),
+			'suggest_markup' => ['reply_markup' => ['inline_keyboard' => [[$button]]]],
+			'note' => 'Кнопка формы уже в чате. Команда ещё не сохранена.',
+			'added' => $added,
+		];
+	}
 }
