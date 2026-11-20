@@ -270,7 +270,9 @@ for the webhook too, e.g. `sudo -u apache php bin/diag.php`.
 - `/start`, `/start g_<chat>`: greeting + active tournaments of all groups, each with an «open» button.
 - **Team Mini App** (`public/webapp/team.*`, ops `team_bootstrap` / `team_search` / `team_submit` /
   `team_contacts` / `team_leave` / `team_disband`, `webapp_contexts` action `team_form`, TTL 6 h). New team:
-  the opener is captain, the name is prefilled from their last team of an earlier tournament.
+  the opener is captain, the name is prefilled from `players.preferred_team_name` (migration 018: the
+  last team they captained, set at once on creation, rename and captain transfer, never cleared;
+  skipped if taken in this tournament).
   The organizer/owner may remove anyone (themselves and the captain included) and build a team of
   other people: the captain is the one picked with «сделать капитаном», by default the first player
   of the roster. An organizer who already plays in this tournament gets an empty roster. Regular

@@ -11,7 +11,8 @@ CREATE TABLE players (
 	created_at    TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
 	dm_ok         INTEGER NOT NULL DEFAULT 0,
 	dm_started_at TEXT NULL,
-	dm_group_id   INTEGER NULL
+	dm_group_id   INTEGER NULL,
+	preferred_team_name TEXT NULL
 );
 
 CREATE TABLE player_ign_history (

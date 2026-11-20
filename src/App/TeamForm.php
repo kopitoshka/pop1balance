@@ -59,7 +59,7 @@ class TeamForm {
 	public const REOPEN_BUTTON = '✏️ Вернуться к форме';
 	public const CONTACTS_BUTTON = '👤 Выбрать из Telegram';
 
-	public const NAME_HINT = 'Подставила название твоей прошлой команды, можно поменять.';
+	public const NAME_HINT = 'Подставила последнее название твоей команды, можно поменять.';
 	public const LETTER_HINT = 'Зачёркнутые уже у других команд. Назначает только организатор.';
 	public const EXPIRED_TEXT = 'Форма устарела. Закрой её и открой заново с карточки турнира или команды.';
 	public const UNAVAILABLE_TEXT = 'Форма команды сейчас недоступна. Попробуй чуть позже.';
@@ -164,7 +164,7 @@ class TeamForm {
 		if ($entry === null) {
 			$name = isset($draft['name']) ? (string) $draft['name'] : '';
 			if ($name === '' && !$start_empty) {
-				$last = $this->team_repo->lastTeamName($actor->id, $t->id);
+				$last = $this->team_repo->preferredTeamName($actor->id);
 				if ($last !== null && $this->team_repo->findByName($t->id, $last) === null) {
 					$name = $last;
 					$name_hint = true;

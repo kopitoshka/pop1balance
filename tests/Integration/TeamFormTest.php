@@ -344,7 +344,7 @@ class TeamFormTest extends IntegrationTestCase {
 		$t = $this->app->tournaments->openRegistration($this->owner->id, $t->id);
 		$b = $this->boot($cap, $this->formToken($cap, $t, null));
 		self::assertSame('Секта', $b['team']['name']);
-		self::assertSame('Подставила название твоей прошлой команды, можно поменять.', $b['name_hint']);
+		self::assertSame('Подставила последнее название твоей команды, можно поменять.', $b['name_hint']);
 
 		$this->app->teams->createTeam($t->id, $this->player('thief')->id, 'Секта', []);
 		$b = $this->boot($cap, $this->formToken($cap, $t, null));
@@ -654,5 +654,97 @@ class TeamFormTest extends IntegrationTestCase {
 		self::assertSame(\P1Bot\Domain\TeamService::EMPTY_ROSTER, $e?->getMessage());
 		$e = $this->submit($new, $token, ['name' => 'Без себя', 'player_ids' => [$this->player('x')->id], 'captain_id' => 0]);
 		self::assertSame(WebAppFormError::FORBIDDEN, $e?->reason);
+	}
+
+	protected function tournamentAt(string $starts_msk, string $title): \P1Bot\Domain\Model\Tournament {
+		$t = $this->app->tournament_repo->create([
+			'chat_id' => self::CHAT_ID, 'organizer_id' => $this->owner->id, 'title' => $title,
+			'starts_at' => \P1Bot\Domain\MoscowTime::parse($starts_msk), 'team_size' => 3,
+			'balance_id' => null, 'reference_team' => null, 'max_points' => null, 'max_players' => 24,
+			'status' => TournamentStatus::DRAFT,
+		], $this->clock->now());
+		return $this->app->tournaments->openRegistration($this->owner->id, $t->id);
+	}
+
+	protected function prefill(Player $who, \P1Bot\Domain\Model\Tournament $t): string {
+		return (string) $this->boot($who, $this->formToken($who, $t, null))['team']['name'];
+	}
+
+	public function testPreferredNameIsTheLatestRegisteredTeamWhateverTheStart(): void {
+		$cap = $this->player('kopitoshka');
+		$past = $this->tournamentAt('2026-11-10 19:00', 'Старый');
+		$this->app->teams->createTeam($past->id, $cap->id, 'Драконы', []);
+		$this->app->tournament_repo->update($past->id, ['status' => TournamentStatus::FINISHED]);
+		$middle = $this->tournamentAt('2026-11-20 19:00', 'Средний');
+		$earlier = $this->tournamentAt('2026-11-15 19:00', 'Раньше');
+		$later = $this->tournamentAt('2026-11-28 19:00', 'Позже');
+		self::assertSame('Драконы', $this->prefill($cap, $middle));
+
+		// Registered through the form: remembered at once.
+		self::assertNull($this->submit($cap, $this->formToken($cap, $middle, null), ['name' => 'Секта', 'player_ids' => [$cap->id], 'captain_id' => $cap->id]));
+		self::assertSame('Секта', $this->app->team_repo->preferredTeamName($cap->id));
+		self::assertSame('Секта', $this->prefill($cap, $earlier), 'a tournament that starts earlier');
+		self::assertSame('Секта', $this->prefill($cap, $later), 'a tournament that starts later');
+
+		// Rename by an admin updates it; disbanding does not clear it.
+		$entry = $this->app->teams->findByName($middle->id, 'Секта');
+		self::assertNull($this->submit($this->owner, $this->formToken($this->owner, $middle, $entry->team->id), ['name' => 'Секта 2', 'player_ids' => [$cap->id], 'captain_id' => $cap->id]));
+		self::assertSame('Секта 2', $this->prefill($cap, $later));
+		$this->app->teams->renameTeam($cap->id, $entry->team->id, 'Секта 3');
+		self::assertSame('Секта 3', $this->prefill($cap, $later));
+		$this->app->teams->withdrawTeam($cap->id, $entry->team->id);
+		self::assertSame('Секта 3', $this->prefill($cap, $later));
+	}
+
+	public function testOrganizerTeamAndCaptainTransferSetTheCaptainsName(): void {
+		$t = $this->openTournament(3);
+		$later = $this->tournamentAt('2026-11-28 19:00', 'Позже');
+		$a = $this->player('aaa');
+		$b = $this->player('bbb');
+		self::assertNull($this->submit($this->owner, $this->formToken($this->owner, $t, null), ['name' => 'Чужие', 'player_ids' => [$a->id, $b->id], 'captain_id' => $b->id]));
+		self::assertSame('Чужие', $this->app->team_repo->preferredTeamName($b->id), 'the chosen captain');
+		self::assertNull($this->app->team_repo->preferredTeamName($a->id));
+		self::assertNull($this->app->team_repo->preferredTeamName($this->owner->id), 'the organizer is not the captain');
+		$entry = $this->app->teams->findByName($t->id, 'Чужие');
+		$this->app->teams->transferCaptain($b->id, $entry->team->id, $a->id);
+		self::assertSame('Чужие', $this->prefill($a, $later), 'the new captain');
+		self::assertSame('Чужие', $this->prefill($b, $later), 'the old captain keeps it');
+
+		$c = $this->player('ccc');
+		$this->app->teams->createTeamAsOrganizer($this->owner->id, $t->id, $c->id, 'Третьи', []);
+		self::assertSame('Третьи', $this->app->team_repo->preferredTeamName($c->id));
+	}
+
+	public function testPreferredNameNotPrefilledWhenTakenOrRosterEmpty(): void {
+		$t = $this->openTournament(3);
+		$later = $this->tournamentAt('2026-11-28 19:00', 'Позже');
+		$cap = $this->player('cap');
+		$this->app->teams->createTeam($t->id, $cap->id, 'Секта', []);
+		$this->app->teams->createTeam($later->id, $this->player('thief')->id, 'Секта', []);
+		$boot = $this->boot($cap, $this->formToken($cap, $later, null));
+		self::assertSame(['', null], [$boot['team']['name'], $boot['name_hint']], 'taken in this tournament');
+
+		// The organizer already plays here: empty roster, no prefill of their own team.
+		$this->app->teams->createTeam($later->id, $this->owner->id, 'Админы', []);
+		self::assertSame('Админы', $this->app->team_repo->preferredTeamName($this->owner->id));
+		$boot = $this->boot($this->owner, $this->formToken($this->owner, $later, null));
+		self::assertSame([[], '', null], [$boot['team']['members'], $boot['team']['name'], $boot['name_hint']]);
+	}
+
+	public function testMigrationBackfillsFromTheLastCaptainedTeam(): void {
+		$cap = $this->player('cap');
+		$mate = $this->player('mate');
+		$t1 = $this->openTournament(3);
+		$t2 = $this->tournamentAt('2026-11-25 19:00', 'Другой');
+		$old = $this->app->teams->createTeam($t1->id, $cap->id, 'Драконы', [$mate->id]);
+		$new = $this->app->teams->createTeam($t2->id, $cap->id, 'Секта', []);
+		$this->db->run("UPDATE teams SET created_at = '2026-11-01 10:00:00' WHERE id = :id", ['id' => $old->team->id]);
+		$this->db->run("UPDATE teams SET created_at = '2026-11-05 10:00:00' WHERE id = :id", ['id' => $new->team->id]);
+		$this->db->run('UPDATE players SET preferred_team_name = NULL');
+		$sql = (string) file_get_contents(dirname(__DIR__, 2) . '/migrations/018_preferred_team_name.sql');
+		self::assertSame(1, preg_match('/UPDATE players SET preferred_team_name = .*?WHERE preferred_team_name IS NULL;/s', $sql, $m));
+		$this->db->pdo()->exec($m[0]);
+		self::assertSame('Секта', $this->app->team_repo->preferredTeamName($cap->id), 'latest created, not latest start');
+		self::assertNull($this->app->team_repo->preferredTeamName($mate->id), 'only captains');
 	}
 }

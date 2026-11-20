@@ -68,7 +68,20 @@ class TeamRepository {
 				VALUES (:t, :c, :n, :l, 'forming', NULL, :now)",
 			['t' => $tournament_id, 'c' => $captain_id, 'n' => $name, 'l' => $letter, 'now' => DateFormat::toDb($now)],
 		);
+		$this->rememberForCaptain($id);
 		return $this->find($id) ?? throw new \LogicException('Team insert failed');
+	}
+
+	/**
+		The captain's preferred team name (players.preferred_team_name, the new-team form prefill)
+		follows their team at once: on creation, rename and captain transfer. Never cleared.
+	*/
+	protected function rememberForCaptain(int $team_id): void {
+		$this->db->run(
+			'UPDATE players SET preferred_team_name = (SELECT name FROM teams WHERE id = :t1)
+				WHERE id = (SELECT captain_id FROM teams WHERE id = :t2)',
+			['t1' => $team_id, 't2' => $team_id],
+		);
 	}
 
 	public function delete(int $team_id): void {
@@ -90,6 +103,7 @@ class TeamRepository {
 
 	public function rename(int $team_id, string $name): void {
 		$this->db->run('UPDATE teams SET name = :n WHERE id = :id', ['n' => $name, 'id' => $team_id]);
+		$this->rememberForCaptain($team_id);
 	}
 
 	public function setLetter(int $team_id, ?string $letter): void {
@@ -113,20 +127,11 @@ class TeamRepository {
 	}
 
 	/**
-		Name of the player's most recent team in an earlier tournament (latest start first),
-		or null. Disbanded teams are deleted, so they do not count.
+		Name of the last team the player captained (set on creation, rename, captain transfer), or null.
 	*/
-	public function lastTeamName(int $player_id, int $tournament_id): ?string {
-		$value = $this->db->fetchValue(
-			'SELECT t.name FROM teams t
-				INNER JOIN team_members m ON m.team_id = t.id
-				INNER JOIN tournaments tr ON tr.id = t.tournament_id
-				WHERE m.player_id = :p AND tr.starts_at < (SELECT starts_at FROM tournaments WHERE id = :t)
-				ORDER BY tr.starts_at DESC, t.id DESC
-				LIMIT 1',
-			['p' => $player_id, 't' => $tournament_id],
-		);
-		return $value === null ? null : (string) $value;
+	public function preferredTeamName(int $player_id): ?string {
+		$value = $this->db->fetchValue('SELECT preferred_team_name FROM players WHERE id = :p', ['p' => $player_id]);
+		return $value === null || $value === '' ? null : (string) $value;
 	}
 
 	/**
@@ -149,6 +154,7 @@ class TeamRepository {
 
 	public function setCaptain(int $team_id, int $captain_id): void {
 		$this->db->run('UPDATE teams SET captain_id = :c WHERE id = :id', ['c' => $captain_id, 'id' => $team_id]);
+		$this->rememberForCaptain($team_id);
 	}
 
 	/**
