@@ -539,6 +539,13 @@
 		captain_id = team.captain_id;
 		letter = team.letter;
 		letter_touched = !!team.letter_touched;
+		if (data.mode === 'new' && data.can_letter && letter === null && !letter_touched) {
+			// The server gives a new team the first free letter, so show it picked.
+			var free = (data.letters || []).filter(function (item) {
+				return !item.taken;
+			});
+			letter = free.length ? free[0].letter : null;
+		}
 		pending = (data.pending || []).slice();
 		el.heading.textContent = data.mode === 'new' ? 'Новая команда' : 'Команда «' + data.team_name_saved + '»';
 		el.subtitle.textContent = data.tournament.subtitle;
