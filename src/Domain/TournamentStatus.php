@@ -53,7 +53,7 @@ class TournamentStatus {
 	}
 
 	/**
-		Finished or cancelled — shown in /history; /info N still works by id.
+		Finished or cancelled — shown in /history; /tournaments N still works by id.
 		@return list<string>
 	*/
 	public static function past(): array {
@@ -61,7 +61,7 @@ class TournamentStatus {
 	}
 
 	/**
-		Statuses /info may open by number (active + past; not drafts).
+		Statuses /tournaments N (and the silent /info alias) may open by number (active + past; not drafts).
 		@return list<string>
 	*/
 	public static function infoable(): array {

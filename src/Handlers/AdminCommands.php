@@ -44,7 +44,7 @@ use P1Bot\View\Texts;
 	Slash commands: the fallback that works without AI.
 */
 class AdminCommands {
-	protected const PUBLIC = ['help', 'start', 'tournaments', 'history', 'info', 'level', 'players', 'nick', 'addplayer', 'team'];
+	protected const PUBLIC = ['help', 'help_level', 'start', 'tournaments', 'history', 'info', 'level', 'players', 'nick', 'addplayer', 'team'];
 
 	protected const CREATE = ['create_tournament'];
 	/*
@@ -165,8 +165,12 @@ class AdminCommands {
 					DeepLink::url($this->bot->username),
 				);
 				return Texts::groupHelp($this->bot->username);
+			case 'help_level':
+				return Texts::levels();
 			case 'tournaments':
-				return $this->listTournaments($ctx);
+			case 'info':
+				// /info is kept as a silent alias of /tournaments (not advertised).
+				return $this->listTournaments($ctx, $args);
 			case 'history':
 				return $this->listHistory($ctx);
 			case 'addplayer':
@@ -175,10 +179,6 @@ class AdminCommands {
 				return $this->playersImport($ctx, $args);
 			case 'players':
 				return $this->playersList($ctx);
-			case 'info':
-				[$id] = self::splitId($args);
-				$t = $this->resolver->resolve($this->resolveScope($ctx), $id, TournamentStatus::infoable());
-				return $this->sendAllButLast($ctx, $this->announcer->infoMessages($t));
 			case 'create_tournament':
 				return $this->createTournament($ctx);
 			case 'open':
@@ -193,7 +193,12 @@ class AdminCommands {
 		return '';
 	}
 
-	protected function listTournaments(Context $ctx): string {
+	protected function listTournaments(Context $ctx, string $args = ''): string {
+		[$id] = self::splitId($args);
+		if ($id !== null) {
+			$t = $this->resolver->resolve($this->resolveScope($ctx), $id, TournamentStatus::infoable());
+			return $this->sendAllButLast($ctx, $this->announcer->infoMessages($t));
+		}
 		if ($ctx->isPrivate() && $this->groups !== null) {
 			$groups = $this->groups->all();
 			$messages = $this->listing->privateMessages($groups, $ctx->actor->id, $ctx->is_owner);
@@ -504,7 +509,7 @@ class AdminCommands {
 	}
 
 	protected function levelFooter(bool $is_owner): string {
-		$footer = "\n\nКак устроены уровни — /help, все игроки — /players";
+		$footer = "\n\nКак устроены уровни — /help_level, все игроки — /players";
 		if ($is_owner) {
 			$footer .= "\nПоставить: /level @ник 4";
 		}
@@ -788,7 +793,7 @@ class AdminCommands {
 				$lines[] = '• ' . self::playerLine($player);
 			}
 		}
-		$footer = "\n\nКак устроены уровни — /help";
+		$footer = "\n\nКак устроены уровни — /help_level";
 		if ($ctx->is_owner) {
 			$footer .= "\nПоставить уровень: /level @ник 4, ник: /nick @ник НикВИгре";
 		}

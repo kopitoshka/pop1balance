@@ -10,7 +10,7 @@ PHP 8.0+ (tested on 8.0 and 8.3), MySQL 8 / MariaDB 10.5+, no framework.
 ## How it works
 
 - Webhook: `public/webhook.php`. **Everything happens in the private chat with the bot.** The group gets only
-  announcements (cards), reminders and the info commands `/tournaments`, `/info N`, `/level`, `/players`, `/help`
+  announcements (cards), reminders and the info commands `/tournaments`, `/tournaments N`, `/level`, `/players`, `/help`, `/help_level`
   (`/history`, `/level all` and `/nick` are private-only).
   Any other command, @mention or reply to the bot in the group (joining, creating, editing, questions — admins
   included) gets one reply «Давай в личке 👉» with a URL button `https://t.me/<bot>?start=…` (see «Group»).
@@ -203,7 +203,7 @@ Decisions: `ignored: no mention/reply`, `ignored: wrong bot username in mention`
 `ignored: command /x@other_bot is for another bot`, `ignored: unknown command /x`,
 `group: info /tournaments` (info commands answered in the group), `group: redirect (/create_tournament|mention|reply) start=t_5|g_-100…`,
 `group: old button solo:5 -> private`, `private: start t_5`, `private: start g_-100…`, `private: start`,
-`private: command /open`, `private: unknown command /x`, `private: ask group (/info)`, `private: card reply`,
+`private: command /open`, `private: unknown command /x`, `private: ask group (/tournaments)`, `private: card reply`,
 `private: ai`, `private: help` / `levels` / `tournaments` / `fallback text (AI off…)` (keywords, AI off),
 `private: button psolo:5`, `private: edited: replied once`, `edited: replied once`, `ignored: edited, …`.
 
@@ -249,12 +249,12 @@ for the webhook too, e.g. `sudo -u apache php bin/diag.php`.
 - The bot posts announcements (one URL button «💬 Записаться / вопросы в личке» → `start=t_<id>`), edits them when
   someone joins or leaves (no join messages in the group), and posts reminders.
 - Tournaments are **global**: on publish the announcement is posted into **every** active group in `chats`.
-  `/tournaments` and `/info` in any group list all tournaments. `tournaments.chat_id` is kept as optional origin (nullable).
+  `/tournaments` in any group lists active tournaments; `/tournaments N` shows one (including finished). `tournaments.chat_id` is kept as optional origin (nullable).
 - Reminders (`REMINDER_MINUTES`, default `60,15`) for published tournaments: with `REMIND_ALL_GROUPS=1` (default)
   only the **largest** mark (60 = hour before) posts the short «⏰ Через час стартует турнир …» notice into **every**
   active group (deep-link button). The 15-minute mark does **not** broadcast to groups. Deduped via `group_notices`.
   `REMIND_ALL_GROUPS=0` turns group broadcasts off (no private DM reminders yet). `REMINDER_MINUTES` key unchanged.
-- In the group when mentioned/replied: info (`/tournaments`, `/info`, `/level`, `/help`, «какие турниры?», «какие уровни?»,
+- In the group when mentioned/replied: info (`/tournaments`, `/tournaments N`, `/level`, `/help`, `/help_level`, «какие турниры?», «какие уровни?»,
   «что нового?», «какой у меня уровень?»…) is answered there (help ends with a private-chat hint + button); «запиши меня» /
   «удали меня» join/leave solo when the tournament is unambiguous; management and private-only (`/create_tournament`, `/history`,
   «прошлые турниры»…) → random private redirect phrase + deep link; anything else → fixed
@@ -293,7 +293,7 @@ for the webhook too, e.g. `sudo -u apache php bin/diag.php`.
   `transfer_captain`) never change teams: they prefill the form, answer one short line and send the button;
   unresolved names wait inside the form with suggestions.
 - Plain text: «какие турниры скоро?», «запиши нас: я, tired angel и стас», «хочу участвовать соло»,
-  «замени @vasya на @kolya», «где я записан?». Commands: `/tournaments`, `/info N`, `/players`, `/help`.
+  «замени @vasya на @kolya», «где я записан?». Commands: `/tournaments`, `/tournaments N`, `/players`, `/help`, `/help_level`.
 - Anyone may join (solo/team); no group-membership check for registration. Create still requires a shared active
   group with the owner (or `ANYONE_CAN_CREATE_TOURNAMENT=1`).
 - Every private message marks the player as having started the bot (`players.dm_ok`, `dm_started_at`, migration 006).
@@ -381,7 +381,8 @@ tournament's scale; everyone else gets «Уровни игроков меняе�
 (see `AccessPolicy::LEVELS_OWNER_ONLY`), so this can be switched back on later.
 - `/tournaments` — pretty list of active tournaments with teams (👑 captain), solo players, reserve and forming teams
   (in private also your own drafts; all drafts for the owner); `/history` — last 10 finished/cancelled (private only;
-  compact, № = id); `/info [N]` — full lineup of one tournament (works for finished too); `/help` — for everyone
+  compact, № = id); `/tournaments N` — full lineup of one tournament (works for finished too; `/info` is a silent alias);
+  `/help` — commands; `/help_level` — how levels and team strength are counted. The command menu no longer lists `/start` or `/info`.
 
 The number can be omitted when only one tournament fits.
 
@@ -392,19 +393,19 @@ webhook's `allowed_updates`, so after updating rerun `php bin/set_webhook.php`.
 
 ### Tournament numbers
 
-`№N` everywhere (lists, cards, announcements, `/info N`, `/open N`, the AI's
+`№N` everywhere (lists, cards, announcements, `/tournaments N`, `/open N`, the AI's
 `tournament_id`) is the tournament's **database id** — the same number in every group. Finished and cancelled
-tournaments leave the active `/tournaments` list but keep their № for `/history` and `/info N`. Numbers do **not** shift when
+tournaments leave the active `/tournaments` list but keep their № for `/history` and `/tournaments N`. Numbers do **not** shift when
 another tournament finishes. No extra column or migration: the id is the number.
 Inline buttons also use that id, so old buttons stay correct.
 
 ### Output format
 
-`/tournaments`, `/info`, announcements and the AI list share one renderer (`View\AnnouncementView`):
+`/tournaments`, `/tournaments N`, announcements and the AI list share one renderer (`View\AnnouncementView`):
 🏆 title · №N, 🗓 date ⏰ time МСК, 👤 organizer, ⚖️ level, 👥 team size, status, 🎟 occupied/reserve, then
 🛡 teams (👑 captain), 🙋 solo players, ⏳ reserve, 🧩 forming teams. Player levels are never shown.
 Messages stay under Telegram's 4096 characters: the list is split into several messages, a too long
-tournament block is cut with «…и ещё N строк. Полный состав: /info N», `/info` sends the full lineup in parts.
+tournament block is cut with «…и ещё N строк. Полный состав: /tournaments N», `/tournaments N` sends the full lineup in parts.
 When the AI calls `list_tournaments`, the bot sends this block itself and the model only adds a short phrase.
 
 ### Creating a tournament (draft → card → confirmation)

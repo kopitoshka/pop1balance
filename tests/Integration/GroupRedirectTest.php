@@ -57,7 +57,9 @@ class GroupRedirectTest extends IntegrationTestCase {
 		$help = $this->http->lastText();
 		self::assertStringContainsString(Messages::GROUP_HELP_HINT, $help);
 		self::assertStringContainsString('/tournaments', $help);
+		self::assertStringContainsString('/help_level', $help);
 		self::assertStringNotContainsString('/new', $help);
+		self::assertStringNotContainsString('/info', $help);
 		$help_msg = $this->http->sent('sendMessage');
 		$markup = end($help_msg)['reply_markup']['inline_keyboard'][0][0];
 		self::assertSame(Messages::GROUP_REDIRECT_BUTTON, $markup['text']);

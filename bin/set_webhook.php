@@ -39,11 +39,11 @@ try {
 	fwrite(STDOUT, "Webhook set: $url\n");
 	fwrite(STDOUT, "allowed_updates: " . implode(", ", Update::ALLOWED_UPDATES) . "\n");
 	$common = [
-		['command' => 'start', 'description' => 'Турниры с кнопками записи'],
 		['command' => 'tournaments', 'description' => 'Активные турниры'],
 		['command' => 'level', 'description' => 'Свой или чужой уровень'],
 		['command' => 'players', 'description' => 'Все игроки: уровень и ник'],
-		['command' => 'help', 'description' => 'Команды и как устроены уровни'],
+		['command' => 'help', 'description' => 'Справка по командам'],
+		['command' => 'help_level', 'description' => 'Как считаются уровни и сила команды'],
 	];
 	// Private: no /start (Telegram has Start); no /history|/info in menu; /addplayer for the owner only.
 	$private = [
@@ -53,7 +53,8 @@ try {
 		['command' => 'level', 'description' => 'Свой или чужой уровень'],
 		['command' => 'nick', 'description' => 'Свой игровой ник'],
 		['command' => 'players', 'description' => 'Все игроки: уровень и ник'],
-		['command' => 'help', 'description' => 'Команды и как устроены уровни'],
+		['command' => 'help', 'description' => 'Справка по командам'],
+		['command' => 'help_level', 'description' => 'Как считаются уровни и сила команды'],
 	];
 	$api->setMyCommands($common);
 	$api->setMyCommands($common, ['type' => 'all_group_chats']);
@@ -69,7 +70,7 @@ try {
 		$api->setMyCommands($owner, ['type' => 'chat', 'chat_id' => $owner_tg_id]);
 		fwrite(STDOUT, "Owner private commands refreshed with /addplayer and /players_import (chat {$owner_tg_id})\n");
 	}
-	fwrite(STDOUT, "Bot commands updated (menus without /history|/info; /addplayer and /players_import only for the owner)\n");
+	fwrite(STDOUT, "Bot commands updated (menus without /start|/history|/info; /help_level added; /addplayer and /players_import only for the owner)\n");
 } catch (Throwable $e) {
 	fwrite(STDERR, 'Error: ' . $e->getMessage() . "\n");
 	exit(1);

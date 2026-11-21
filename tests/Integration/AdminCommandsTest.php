@@ -452,30 +452,44 @@ class AdminCommandsTest extends IntegrationTestCase {
 		$this->dispatch($this->privateMessage($vasya, '/help'));
 		$help_user = $this->http->lastText();
 		foreach ([
-			'1 — начальный (1 балл). Синонимы: базовый, начинающий',
-			'5 — высокий (5 баллов). Синоним: танк',
-			'6 — высокий+ (6 баллов)',
-			'Игрок, которому ещё не поставили уровень, считается средним (3).',
-			'⚖️ <b>Уровень турнира</b>',
 			'/players — все игроки',
 			'/history',
 			'/nick — свой игровой ник',
 			'<code>/nick игровой_ник</code>',
 			'/team',
+			'/tournaments 2 — состав одного турнира',
+			'Как считаются уровни и сила команды — /help_level',
 		] as $needle) {
 			self::assertStringContainsString($needle, $help_user);
 		}
-		foreach (['/levels', '/edit', '/cancel', '/level @user 4', '/nick @user', 'обычным языком', 'запиши команду'] as $needle) {
+		foreach (['/levels', '/edit', '/cancel', '/level @user 4', '/nick @user', 'обычным языком', 'запиши команду', '/info', '📊 <b>Уровни игроков</b>'] as $needle) {
 			self::assertStringNotContainsString($needle, $help_user);
+		}
+
+		$this->dispatch($this->privateMessage($vasya, '/help_level'));
+		$levels = $this->http->lastText();
+		foreach ([
+			'1 — начальный (1 балл). Синонимы: базовый, начинающий',
+			'5 — высокий (5 баллов). Синоним: танк',
+			'6 — высокий+ (6 баллов)',
+			'Игрок, которому ещё не поставили уровень, считается средним (3).',
+			'⚖️ <b>Уровень турнира</b>',
+			'К сумме я добавляю бонус',
+		] as $needle) {
+			self::assertStringContainsString($needle, $levels);
 		}
 
 		$this->dispatch($this->groupMessage($vasya, '/help'));
 		$help_group = $this->http->lastText();
 		self::assertStringContainsString('/level — свой уровень', $help_group);
+		self::assertStringContainsString('/tournaments 2 — состав турнира', $help_group);
+		self::assertStringContainsString('Как считаются уровни и сила команды — /help_level', $help_group);
 		self::assertStringNotContainsString('/levels', $help_group);
 		self::assertStringNotContainsString('запиши меня', $help_group);
 		self::assertStringNotContainsString('/new', $help_group);
 		self::assertStringNotContainsString('/nick', $help_group);
+		self::assertStringNotContainsString('/info', $help_group);
+		self::assertStringNotContainsString('📊 <b>Уровни игроков</b>', $help_group);
 
 		$this->dispatch($this->privateMessage($this->owner, '/help'));
 		$help = $this->http->lastText();
@@ -513,9 +527,18 @@ class AdminCommandsTest extends IntegrationTestCase {
 		self::assertStringContainsString('отменён', $text);
 		// newest first by starts_at: 14.11 before 10.11
 		self::assertLessThan(strpos($text, 'Отменённый кубок'), strpos($text, 'Субботний кубок'));
+		self::assertStringContainsString('Состав: /tournaments N', $text);
 		$this->dispatch($this->privateMessage($this->owner, '/info ' . $a->id));
 		self::assertStringContainsString('Субботний кубок', $this->http->lastText());
 		self::assertStringContainsString('№' . $a->id, $this->http->lastText());
+		$this->dispatch($this->privateMessage($this->owner, '/tournaments ' . $a->id));
+		self::assertStringContainsString('Субботний кубок', $this->http->lastText());
+		self::assertStringContainsString('№' . $a->id, $this->http->lastText());
+		$this->http->reset();
+		$this->dispatch($this->privateMessage($this->owner, '/info'));
+		$bare = implode("\n", array_column($this->http->sent('sendMessage'), 'text'));
+		self::assertStringNotContainsString('Субботний кубок', $bare, 'bare /info lists only active tournaments');
+		self::assertStringNotContainsString('Отменённый кубок', $bare);
 	}
 
 	public function testLevelViewOwnOtherAllAndGroupRedirect(): void {
@@ -527,7 +550,7 @@ class AdminCommandsTest extends IntegrationTestCase {
 
 		$this->dispatch($this->privateMessage($vasya, '/level'));
 		self::assertStringContainsString('Твой уровень: высокий (5)', $this->http->lastText());
-		self::assertStringContainsString('Как устроены уровни — /help, все игроки — /players', $this->http->lastText());
+		self::assertStringContainsString('Как устроены уровни — /help_level, все игроки — /players', $this->http->lastText());
 
 		$this->dispatch($this->privateMessage($petya, '/level'));
 		self::assertStringContainsString('Твой уровень: начальный+ (2)', $this->http->lastText());

@@ -207,7 +207,11 @@ class PrivateChatHandler {
 				) {
 					return;
 				}
-				$this->views->list($chat_id, $actor, $is_owner, Texts::welcome($first_name));
+				// Deep links and first-open /start stay handled; a bare /start shows help, not the list.
+				$this->api->sendMessage(
+					$chat_id,
+					Texts::help($this->bot->username, $this->canCreate($actor), $is_owner),
+				);
 				return;
 			case self::UNKNOWN_COMMAND:
 				$this->api->sendMessage($chat_id, 'Такой команды я не знаю 🤔 Подсказка: /help', $message->message_id);

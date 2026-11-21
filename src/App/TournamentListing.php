@@ -98,7 +98,7 @@ class TournamentListing {
 	}
 
 	/**
-		Recent finished/cancelled tournaments, newest first. Number (= id) stays so /info N works.
+		Recent finished/cancelled tournaments, newest first. Number (= id) stays so /tournaments N works.
 
 		@return list<string> HTML messages; empty when there is nothing to show
 	*/
@@ -122,7 +122,7 @@ class TournamentListing {
 		if ($blocks === []) {
 			return [];
 		}
-		$hint = "\n\n<i>Состав: /info N</i>";
+		$hint = "\n\n<i>Состав: /tournaments N</i>";
 		$messages = [];
 		$current = self::HISTORY_TITLE;
 		foreach ($blocks as $block) {

@@ -46,4 +46,12 @@ class CommandMenuTest extends TestCase {
 		);
 		self::assertStringContainsString("\$api->setMyCommands(\$owner, ['type' => 'chat', 'chat_id' => \$owner_tg_id])", $owner);
 	}
+
+	public function testStartAndInfoAreOffTheMenusAndHelpLevelIsOn(): void {
+		$src = (string) file_get_contents(dirname(__DIR__, 2) . '/bin/set_webhook.php');
+		self::assertStringNotContainsString("'command' => 'start'", $src);
+		self::assertStringNotContainsString("'command' => 'info'", $src);
+		self::assertSame(2, substr_count($src, "'command' => 'help_level'"), 'common and private menus');
+		self::assertSame(2, substr_count($src, "'command' => 'help'"), 'common and private menus');
+	}
 }

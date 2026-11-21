@@ -48,7 +48,10 @@ class DialogLogTest extends IntegrationTestCase {
 
 		$log = $this->dialog('vasya.log');
 		self::assertStringStartsWith("[2026-11-09 15:00:00 MSK] личка @vasya: /start\n", $log);
-		self::assertStringContainsString('[2026-11-09 15:00:00 MSK] личка бот → @vasya: Привет, Vasya! 👋', $log);
+		self::assertStringContainsString('[2026-11-09 15:00:00 MSK] личка бот → @vasya: Я помогаю записываться на турниры', $log);
+		self::assertStringContainsString("\n\t/tournaments — активные турниры", $log, 'continuation lines are indented');
+		$this->dispatch($this->privateMessage($vasya, '/tournaments'));
+		$log = $this->dialog('vasya.log');
 		self::assertStringContainsString(
 			"\n\t🏆 Субботний кубок · №1",
 			$log,

@@ -17,7 +17,7 @@ use P1Bot\Support\TeamLetters;
 
 /**
 	Tournament block (HTML): header with icons + teams, solo players, reserve and forming teams.
-	One rendering for the announcement, /tournaments, /info and the AI list. Each team is two lines:
+	One rendering for the announcement, /tournaments, /tournaments N and the AI list. Each team is two lines:
 	letter, name, status, total points («N из LIMIT» when the tournament has a sum limit) and
 	«⚠️ выше уровня» when over the limit; then the players, captain first with a crown.
 	Individual player levels are never shown.
@@ -70,7 +70,7 @@ class AnnouncementView {
 	}
 
 	/**
-		Block for /tournaments and the AI list. Too long lineups are cut with a hint to /info N.
+		Block for /tournaments and the AI list. Too long lineups are cut with a hint to /tournaments N.
 	*/
 	public function listBlock(
 		Tournament $t,
@@ -82,7 +82,7 @@ class AnnouncementView {
 	}
 
 	/**
-		The whole lineup without cutting, split into several messages when needed (for /info).
+		The whole lineup without cutting, split into several messages when needed (for /tournaments N).
 
 		@return list<string>
 	*/
@@ -191,7 +191,7 @@ class AnnouncementView {
 
 	protected static function cutHint(int $left, ?int $number): string {
 		$more = sprintf('…и ещё %d %s.', $left, RuPlural::choose($left, ['строка', 'строки', 'строк']));
-		return '<i>' . $more . ($number !== null ? ' Полный состав: /info ' . $number : '') . '</i>';
+		return '<i>' . $more . ($number !== null ? ' Полный состав: /tournaments ' . $number : '') . '</i>';
 	}
 
 	/**
@@ -211,7 +211,7 @@ class AnnouncementView {
 	protected function sections(Lineup $lineup, Tournament $t): array {
 		$sections = [];
 		if ($lineup->main_teams !== []) {
-			$sections[] = array_merge(['🛡 <b>Команды:</b>'], $this->teams($lineup->main_teams, $t, 'записана'));
+			$sections[] = array_merge(['🛡 <b>Команды:</b>'], $this->teams(Lineup::sortByLetter($lineup->main_teams), $t, 'записана'));
 		}
 		if ($lineup->main_solo !== []) {
 			// In a 1-player format nobody looks for a team: solos already play on their own.
@@ -220,7 +220,7 @@ class AnnouncementView {
 		}
 		if ($lineup->reserve_teams !== [] || $lineup->reserve_solo !== []) {
 			$reserve = ['⏳ <b>Запас:</b>'];
-			$reserve = array_merge($reserve, $this->teams($lineup->reserve_teams, $t, 'запас'));
+			$reserve = array_merge($reserve, $this->teams(Lineup::sortByLetter($lineup->reserve_teams), $t, 'запас'));
 			foreach ($this->solos($lineup->reserve_solo) as $i => $line) {
 				$reserve[] = ($i === 0 ? '🙋 Соло: ' : '') . $line;
 			}
@@ -228,7 +228,7 @@ class AnnouncementView {
 		}
 		if ($lineup->forming_teams !== []) {
 			$forming = ['🧩 <b>Собираются:</b>'];
-			foreach ($lineup->forming_teams as $e) {
+			foreach (Lineup::sortByLetter($lineup->forming_teams) as $e) {
 				$forming[] = $this->teamBlock($e, $t, 'собирается ' . count($e->members) . '/' . $t->team_size);
 			}
 			$sections[] = $forming;

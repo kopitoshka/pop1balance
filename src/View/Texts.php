@@ -27,15 +27,16 @@ class Texts {
 			. "Записаться — кнопкой под анонсом.\n\n"
 			. "Команды здесь:\n"
 			. "/tournaments — все активные турниры\n"
-			. "/info 2 — состав турнира (номер — из /tournaments)\n"
+			. "/tournaments 2 — состав турнира (номер — из списка)\n"
 			. "/level — свой уровень (или /level @ник — чужой)\n"
 			. "/players — все игроки: уровень и игровой ник\n"
-			. "/help — эта подсказка\n\n"
+			. "/help — эта подсказка\n"
+			. "Как считаются уровни и сила команды — /help_level\n\n"
 			. Messages::GROUP_HELP_HINT;
 	}
 
 	/**
-		/help in private: commands, then how levels work (the old /levels reference).
+		/help in private: commands, then a one-line pointer to /help_level.
 		Tournament numbers (№N) are global — the same in every group.
 	*/
 	public static function help(string $bot_username, bool $is_admin, bool $is_owner = false): string {
@@ -44,6 +45,7 @@ class Texts {
 			. "или поправить команду — кнопками на карточке турнира (/tournaments).\n\n"
 			. "Команды:\n"
 			. "/tournaments — активные турниры (кнопка открывает состав)\n"
+			. "/tournaments 2 — состав одного турнира (номер — из списка)\n"
 			. "/history — прошедшие турниры (последние 10)\n"
 			. "/team — карточка твоей команды на ближайших турнирах\n"
 			. "/players — все игроки: уровень и игровой ник\n"
@@ -73,7 +75,7 @@ class Texts {
 				. "/players_import — добавить или обновить игроков списком (ник или @username, в конце уровень 1–6). "
 				. "Без аргументов жду список следующим сообщением (или отправь его с командой)";
 		}
-		return $text . "\n\n" . self::levels();
+		return $text . "\n\nКак считаются уровни и сила команды — /help_level";
 	}
 
 	/**
@@ -123,7 +125,7 @@ class Texts {
 		Reply to a message when the AI is not configured.
 	*/
 	public static function fallback(string $bot_username): string {
-		return 'Я сейчас понимаю только команды и кнопки. Турниры: /start, подсказка: /help.';
+		return 'Я сейчас понимаю только команды и кнопки. Турниры: /tournaments, подсказка: /help.';
 	}
 
 	public static function somethingWentWrong(): string {

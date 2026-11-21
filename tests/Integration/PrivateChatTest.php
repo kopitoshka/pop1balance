@@ -152,13 +152,15 @@ class PrivateChatTest extends IntegrationTestCase {
 		self::assertSame(['popen:1'], $this->lastButtons());
 	}
 
-	public function testPlainStartGreetsAndListsTournaments(): void {
+	public function testPlainStartShowsHelp(): void {
 		$this->openTournament(3);
 		$vasya = $this->player('vasya');
 		$reply = $this->say($vasya, '/start');
-		self::assertStringContainsString('Привет, Vasya!', $reply);
-		self::assertStringContainsString('Субботний кубок', $reply);
-		self::assertSame(['popen:1'], $this->lastButtons());
+		self::assertStringContainsString('/tournaments — активные турниры', $reply);
+		self::assertStringContainsString('Как считаются уровни и сила команды — /help_level', $reply);
+		self::assertStringNotContainsString('📊 <b>Уровни игроков</b>', $reply);
+		self::assertStringNotContainsString('Субботний кубок', $reply);
+		self::assertSame([], $this->lastButtons());
 		self::assertStringContainsString('private: start ', $this->log->text());
 
 		$this->say($vasya, '/start g_' . self::CHAT_ID);
@@ -170,7 +172,11 @@ class PrivateChatTest extends IntegrationTestCase {
 		$this->withoutSharedOwnerGroup($vasya);
 		$reply = $this->say($vasya, '/help');
 		self::assertStringNotContainsString('обычным языком', $reply);
-		self::assertStringContainsString('📊 <b>Уровни игроков</b>', $reply, 'levels reference lives in /help');
+		self::assertStringNotContainsString('📊 <b>Уровни игроков</b>', $reply, 'full levels text moved to /help_level');
+		self::assertStringContainsString('Как считаются уровни и сила команды — /help_level', $reply);
+		$levels = $this->say($vasya, '/help_level');
+		self::assertStringContainsString('📊 <b>Уровни игроков</b>', $levels);
+		self::assertStringContainsString('К сумме я добавляю бонус', $levels);
 		self::assertStringNotContainsString('Создание турниров', $reply);
 		self::assertStringNotContainsString('/level @user 4', $reply);
 		self::assertStringNotContainsString('/group', $reply);

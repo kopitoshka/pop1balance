@@ -139,7 +139,7 @@ class Announcer {
 	}
 
 	/**
-		Pretty block for /tournaments and the AI list, cut with a hint to /info N when too long.
+		Pretty block for /tournaments and the AI list, cut with a hint to /tournaments N when too long.
 	*/
 	public function listBlock(
 		Tournament $t,
@@ -151,7 +151,7 @@ class Announcer {
 	}
 
 	/**
-		@return list<string> full tournament info for /info, split into messages when needed
+		@return list<string> full tournament info for /tournaments N, split into messages when needed
 	*/
 	public function infoMessages(Tournament $t): array {
 		$lineup = $this->tournaments->lineup($t->id);

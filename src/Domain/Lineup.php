@@ -143,6 +143,31 @@ class Lineup {
 		return null;
 	}
 
+	/**
+		Display order: assigned letter A–Z, teams without a letter last.
+		Does not change who is in the main lineup or the reserve queue.
+
+		@param list<TeamEntry> $teams
+		@return list<TeamEntry>
+	*/
+	public static function sortByLetter(array $teams): array {
+		$entries = array_values($teams);
+		usort($entries, static function (TeamEntry $a, TeamEntry $b): int {
+			$la = strtoupper((string) ($a->team->letter ?? ''));
+			$lb = strtoupper((string) ($b->team->letter ?? ''));
+			$a_empty = $la === '';
+			$b_empty = $lb === '';
+			if ($a_empty !== $b_empty) {
+				return $a_empty ? 1 : -1;
+			}
+			if ($la !== $lb) {
+				return $la <=> $lb;
+			}
+			return $a->team->id <=> $b->team->id;
+		});
+		return $entries;
+	}
+
 	protected static function teamPlayers(array $teams): int {
 		return array_sum(array_map(static fn (TeamEntry $e): int => $e->size(), $teams));
 	}

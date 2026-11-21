@@ -14,7 +14,7 @@ use P1Bot\Repository\TournamentRepository;
 /**
 	Global tournament numbers and lookup.
 
-	The number users see and type (№1, №2, /info 1, /open 1, /history) is the tournament's
+	The number users see and type (№1, №2, /tournaments 1, /open 1, /history) is the tournament's
 	database id — the same in every group, including finished and cancelled.
 */
 class TournamentResolver {
@@ -39,7 +39,7 @@ class TournamentResolver {
 	}
 
 	/**
-		Sets $t->number (= id) and returns the same object. Past tournaments keep the id so /info N works.
+		Sets $t->number (= id) and returns the same object. Past tournaments keep the id so /tournaments N works.
 	*/
 	public function number(Tournament $t): Tournament {
 		$t->number = $t->id;
@@ -68,7 +68,7 @@ class TournamentResolver {
 			if (in_array($t->status, TournamentStatus::numbered(), true)) {
 				return $this->number($t);
 			}
-			// Finished/cancelled: only when the caller asked for them (e.g. /info, history).
+			// Finished/cancelled: only when the caller asked for them (e.g. /tournaments N, history).
 			if (in_array($t->status, $statuses, true)) {
 				return $this->number($t);
 			}

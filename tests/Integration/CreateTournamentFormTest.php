@@ -182,8 +182,8 @@ class CreateTournamentFormTest extends IntegrationTestCase {
 	}
 
 	public function testListButtonOnlyForThoseWhoMayCreate(): void {
-		// Empty list, owner, private: /tournaments, «турниры» and /start all carry the button.
-		foreach (['/tournaments', 'турниры', '/start'] as $text) {
+		// Empty list, owner, private: /tournaments and the «турниры» keyword carry the button.
+		foreach (['/tournaments', 'турниры'] as $text) {
 			$this->http->reset();
 			$this->dispatch($this->privateMessage($this->owner, $text));
 			$btn = $this->findButton('➕ Создать турнир');

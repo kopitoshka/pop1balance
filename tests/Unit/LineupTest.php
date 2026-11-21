@@ -61,9 +61,25 @@ class LineupTest extends TestCase {
 		self::assertNull($lineup->placementOf(9999));
 	}
 
-	protected function team(int $id, int $size, string $status = TeamStatus::REGISTERED): TeamEntry {
+	public function testSortByLetterPutsUnletteredLast(): void {
+		$c = $this->team(1, 2, TeamStatus::REGISTERED, 'C');
+		$none = $this->team(2, 2, TeamStatus::REGISTERED, null);
+		$a = $this->team(3, 2, TeamStatus::REGISTERED, 'A');
+		$z = $this->team(4, 2, TeamStatus::REGISTERED, 'Z');
+		$sorted = Lineup::sortByLetter([$c, $none, $a, $z]);
+		self::assertSame(
+			['A', 'C', 'Z', null],
+			array_map(static fn (TeamEntry $e): ?string => $e->team->letter, $sorted),
+		);
+		// Queue assignment stays in the original order, not letter order.
+		$lineup = Lineup::compute(2, [$c, $none], []);
+		self::assertSame([1], array_map(static fn (TeamEntry $e): int => $e->team->id, $lineup->main_teams));
+		self::assertSame([2], array_map(static fn (TeamEntry $e): int => $e->team->id, $lineup->reserve_teams));
+	}
+
+	protected function team(int $id, int $size, string $status = TeamStatus::REGISTERED, ?string $letter = null): TeamEntry {
 		$now = new DateTimeImmutable('2026-11-09 12:00:00');
-		$team = new Team($id, 1, $this->next_player, "Team $id", $status, $now, $now);
+		$team = new Team($id, 1, $this->next_player, "Team $id", $status, $now, $now, $letter);
 		$members = [];
 		for ($i = 0; $i < $size; $i++) {
 			$members[] = new TeamMember($id, 1, $this->next_player++);

@@ -78,7 +78,7 @@ class ScaleHiddenTest extends IntegrationTestCase {
 		$this->http->reset();
 		$this->dispatch($this->privateMessage($vasya, '/level'));
 		self::assertStringContainsString('Твой уровень: высокий (5)', $this->http->lastText());
-		self::assertStringContainsString('Как устроены уровни — /help', $this->http->lastText());
+		self::assertStringContainsString('Как устроены уровни — /help_level', $this->http->lastText());
 		self::assertStringNotContainsString('Поставить:', $this->http->lastText());
 		$this->dispatch($this->privateMessage($this->admin, '/level @vasya'));
 		self::assertStringContainsString('@vasya — высокий (5)', $this->http->lastText());
@@ -164,7 +164,7 @@ class ScaleHiddenTest extends IntegrationTestCase {
 			self::assertStringContainsString('• <a href="https://t.me/petya">Petya</a> · @petya · <i>без ника</i>', $text);
 			self::assertStringContainsString('• <a href="tg://user?id=777555">Без &lt;ника&gt;</a> · <i>без ника</i>', $text);
 			self::assertLessThan(strpos($text, 'Petya'), strpos($text, 'Vasya Pro'), 'rated levels first');
-			self::assertStringContainsString('Как устроены уровни — /help', $text);
+			self::assertStringContainsString('Как устроены уровни — /help_level', $text);
 			self::assertStringNotContainsString('📊 <b>Уровни игроков</b>', $text, 'no level help in /players');
 			self::assertSame(
 				$viewer->id === $this->owner->id,

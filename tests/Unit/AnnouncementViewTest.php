@@ -75,7 +75,7 @@ class AnnouncementViewTest extends TestCase {
 		self::assertStringContainsString('🟢 Идёт регистрация', $text);
 		self::assertStringContainsString('🎟 Занято 4/4 · запас 3', $text);
 		self::assertStringContainsString(
-			"🛡 <b>Команды:</b>\nC. <b>Wolves</b> · записана · 6 из 7\n👑 <a href=\"https://t.me/p2\">@p2</a>, <a href=\"https://t.me/p3\">@p3</a>\nA. <b>Bears</b> · записана · 6 из 7\n👑 <a href=\"https://t.me/p4\">@p4</a>, <a href=\"https://t.me/p5\">@p5</a>",
+			"🛡 <b>Команды:</b>\nA. <b>Bears</b> · записана · 6 из 7\n👑 <a href=\"https://t.me/p4\">@p4</a>, <a href=\"https://t.me/p5\">@p5</a>\nC. <b>Wolves</b> · записана · 6 из 7\n👑 <a href=\"https://t.me/p2\">@p2</a>, <a href=\"https://t.me/p3\">@p3</a>",
 			$text,
 		);
 		self::assertStringContainsString("⏳ <b>Запас:</b>\nB. <b>Late</b> · запас · 6 из 7\n👑 <a href=\"https://t.me/p6\">@p6</a>, <a href=\"https://t.me/p7\">@p7</a>\n🙋 Соло: <a href=\"https://t.me/p8\">@p8</a>", $text);
@@ -140,7 +140,7 @@ class AnnouncementViewTest extends TestCase {
 
 		$block = $view->listBlock($t, $lineup, 4000);
 		self::assertLessThanOrEqual(4000, mb_strlen($block));
-		self::assertMatchesRegularExpression('~<i>…и ещё \d+ строк[аи]?\. Полный состав: /info 1</i>$~u', $block);
+		self::assertMatchesRegularExpression('~<i>…и ещё \d+ строк[аи]?\. Полный состав: /tournaments 1</i>$~u', $block);
 		self::assertStringContainsString('A. <b>Команда номер 1</b>', $block);
 		self::assertSame(substr_count($block, '<b>'), substr_count($block, '</b>'), 'no broken tags');
 
@@ -168,5 +168,32 @@ class AnnouncementViewTest extends TestCase {
 		$view = new AnnouncementView('pop1_bot', $players, [1 => 5, 2 => 5]);
 		$text = $view->lineupText(\P1Bot\Domain\Lineup::compute(24, [$entry], []), $t);
 		self::assertStringContainsString("A. <b>Драконы</b> · записана · 12 из 6 ⚠️ выше уровня\n👑 <a href=\"https://t.me/a\">@a</a>, <a href=\"https://t.me/b\">@b</a>", $text);
+	}
+
+	public function testTeamsAreListedByLetter(): void {
+		$starts = new DateTimeImmutable('2026-11-14 16:00:00', new DateTimeZone('UTC'));
+		$t = new Tournament(1, -100, 1, 'Кубок', $starts, 2, 1, '3,3', 6, 24, TournamentStatus::REGISTRATION, null, null);
+		$now = $starts;
+		$make = static function (int $id, string $name, ?string $letter) use ($now): TeamEntry {
+			$team = new Team($id, 1, $id, $name, TeamStatus::REGISTERED, $now, $now, $letter);
+			return new TeamEntry($team, [new TeamMember($id, 1, $id), new TeamMember($id, 1, $id + 10)]);
+		};
+		$c = $make(1, 'Чарли', 'C');
+		$none = $make(2, 'Без буквы', null);
+		$a = $make(3, 'Альфа', 'A');
+		$players = [];
+		foreach ([1, 11, 2, 12, 3, 13] as $id) {
+			$players[$id] = new Player($id, 100 + $id, 'p' . $id, 'P' . $id);
+		}
+		$view = new AnnouncementView('pop1_bot', $players, []);
+		$text = $view->lineupText(Lineup::compute(24, [$c, $none, $a], []), $t);
+		$pos_a = strpos($text, 'A. <b>Альфа</b>');
+		$pos_c = strpos($text, 'C. <b>Чарли</b>');
+		$pos_none = strpos($text, '?. <b>Без буквы</b>');
+		self::assertNotFalse($pos_a);
+		self::assertNotFalse($pos_c);
+		self::assertNotFalse($pos_none);
+		self::assertLessThan($pos_c, $pos_a);
+		self::assertLessThan($pos_none, $pos_c);
 	}
 }
