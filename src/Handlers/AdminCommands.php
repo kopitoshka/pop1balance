@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace P1Bot\Handlers;
 
+use DateInterval;
 use P1Bot\App\Announcer;
 use P1Bot\App\CreateAccess;
 use P1Bot\App\CreateTournamentForm;
@@ -11,6 +12,7 @@ use P1Bot\App\WebAppPicker;
 use P1Bot\App\DraftCards;
 use P1Bot\App\NeedGroupChoice;
 use P1Bot\App\PrivateGroups;
+use P1Bot\App\PendingTextGuard;
 use P1Bot\App\PlayerResolver;
 use P1Bot\App\TournamentListing;
 use P1Bot\App\TournamentResolver;
@@ -22,11 +24,13 @@ use P1Bot\Domain\Exception\PlayerSuggestError;
 use P1Bot\Domain\Exception\ValidationError;
 use P1Bot\Domain\Levels;
 use P1Bot\Domain\NickService;
+use P1Bot\Domain\PlayersImport;
 use P1Bot\Domain\Model\Player;
 use P1Bot\Domain\Model\Tournament;
 use P1Bot\Domain\TournamentService;
 use P1Bot\Domain\TournamentStatus;
 use P1Bot\Repository\BalanceRepository;
+use P1Bot\Repository\PendingActionRepository;
 use P1Bot\Repository\PlayerRepository;
 use P1Bot\Support\Clock;
 use P1Bot\Telegram\BotIdentity;
@@ -52,7 +56,7 @@ class AdminCommands {
 	/**
 		Owner only for now (scales are hidden from users, see AccessPolicy::LEVELS_OWNER_ONLY).
 	*/
-	protected const OWNER = [];
+	protected const OWNER = ['players_import'];
 
 	protected const LEVEL_ALL_LIMIT = 80;
 
@@ -85,6 +89,8 @@ class AdminCommands {
 		protected ?\P1Bot\App\TeamCards $team_cards = null,
 		protected ?\P1Bot\Repository\TeamRepository $team_repo = null,
 		protected ?WebAppPicker $webapp = null,
+		protected ?PendingActionRepository $pending = null,
+		protected ?PlayersImport $players_import = null,
 	) {
 	}
 
@@ -165,6 +171,8 @@ class AdminCommands {
 				return $this->listHistory($ctx);
 			case 'addplayer':
 				return $this->addPlayer($ctx, $args);
+			case 'players_import':
+				return $this->playersImport($ctx, $args);
 			case 'players':
 				return $this->playersList($ctx);
 			case 'info':
@@ -843,6 +851,96 @@ class AdminCommands {
 		// Prefer TeamService when available via tournaments path — use team_repo members.
 		$team = $this->team_repo->find($team_id) ?? throw new \P1Bot\Domain\Exception\NotFound('Такой команды нет.');
 		return new \P1Bot\Domain\Model\TeamEntry($team, $this->team_repo->members($team_id));
+	}
+
+	/**
+		/players_import [list]: owner, private only. No args: wait for the next message.
+	*/
+	protected function playersImport(Context $ctx, string $args): string {
+		if (!$ctx->isPrivate()) {
+			$this->reply_extra = DeepLink::button(
+				Messages::GROUP_REDIRECT_BUTTON,
+				DeepLink::url($this->bot->username),
+			);
+			return Messages::GROUP_REDIRECT;
+		}
+		$args = trim($args);
+		if ($args === '') {
+			return $this->promptPlayersImport($ctx);
+		}
+		return $this->runPlayersImport($ctx, $args);
+	}
+
+	/**
+		A list arrived while waiting after a bare /players_import.
+	*/
+	public function importFromText(Context $ctx, string $text): void {
+		if (!$ctx->isPrivate()) {
+			$this->api->sendMessage(
+				$ctx->chatId(),
+				Messages::GROUP_REDIRECT,
+				$ctx->message->message_id,
+				DeepLink::button(Messages::GROUP_REDIRECT_BUTTON, DeepLink::url($this->bot->username)),
+			);
+			return;
+		}
+		if (!$ctx->is_owner) {
+			$this->api->sendMessage($ctx->chatId(), AccessPolicy::OWNER_ONLY, $ctx->message->message_id);
+			return;
+		}
+		if ($this->pending === null || $this->pending->takeLatest(
+			$ctx->actor->id,
+			$ctx->chatId(),
+			$this->clock->now(),
+			PlayersImport::OP,
+		) === null) {
+			$this->api->sendMessage(
+				$ctx->chatId(),
+				'Время на список вышло. Пришли /players_import ещё раз.',
+				$ctx->message->message_id,
+			);
+			return;
+		}
+		try {
+			$reply = $this->runPlayersImport($ctx, $text);
+		} catch (DomainError $e) {
+			$reply = Html::e($e->getMessage());
+		}
+		if ($reply !== '') {
+			$this->api->sendMessage($ctx->chatId(), $reply, $ctx->message->message_id);
+		}
+		$this->reply_extra = [];
+	}
+
+	protected function promptPlayersImport(Context $ctx): string {
+		if ($this->pending === null) {
+			throw new ValidationError('Импорт игроков пока недоступен.');
+		}
+		$now = $this->clock->now();
+		$this->pending->clearChat($ctx->actor->id, $ctx->chatId());
+		$this->pending->create(
+			$ctx->actor->id,
+			$ctx->chatId(),
+			['op' => PlayersImport::OP],
+			$now->add(new DateInterval('PT' . PlayersImport::WAIT_TTL_SECONDS . 'S')),
+			$now,
+		);
+		$this->reply_extra = [
+			'reply_markup' => [
+				'inline_keyboard' => [[
+					['text' => PlayersImport::CANCEL_BUTTON, 'callback_data' => PendingTextGuard::CANCEL_DATA],
+				]],
+			],
+		];
+		return PlayersImport::PROMPT;
+	}
+
+	protected function runPlayersImport(Context $ctx, string $text): string {
+		if ($this->players_import === null) {
+			throw new ValidationError('Импорт игроков пока недоступен.');
+		}
+		$result = $this->players_import->apply($ctx->actor->id, $ctx->chatId(), $text);
+		return $this->sendAllButLast($ctx, $this->splitTelegramMessages(PlayersImport::format($result)));
 	}
 
 	protected function addPlayer(Context $ctx, string $args): string {

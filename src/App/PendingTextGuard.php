@@ -29,6 +29,18 @@ class PendingTextGuard {
 		return $this->pending->clearChat($actor_id, $chat_id);
 	}
 
+	public function isWaiting(int $actor_id, int $chat_id, string $op): bool {
+		return $this->pending->peekLatest($actor_id, $chat_id, $this->clock->now(), $op) !== null;
+	}
+
+	/**
+		@return array{id: int, actor_player_id: int, chat_id: int, action: array<string, mixed>}|null
+	*/
+	public function takeWaiting(int $actor_id, int $chat_id, string $op): ?array {
+		return $this->pending->takeLatest($actor_id, $chat_id, $this->clock->now(), $op);
+	}
+
+
 	/**
 		Before handling a private callback: drop pendings unless this button belongs to them.
 	*/

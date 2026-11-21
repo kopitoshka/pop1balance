@@ -32,6 +32,7 @@ use P1Bot\Domain\AccessPolicy;
 use P1Bot\Domain\BalanceService;
 use P1Bot\Domain\TeamService;
 use P1Bot\Domain\NickService;
+use P1Bot\Domain\PlayersImport;
 use P1Bot\Domain\TournamentService;
 use P1Bot\Handlers\AdminCommands;
 use P1Bot\Handlers\CallbackHandler;
@@ -82,6 +83,7 @@ class Bootstrap {
 	public BalanceService $balances;
 	public TournamentService $tournaments;
 	public NickService $nicks;
+	public PlayersImport $players_import;
 	public TeamService $teams;
 
 	public Logger $logger;
@@ -278,6 +280,13 @@ class Bootstrap {
 			$this->db,
 			$clock,
 		);
+		$this->players_import = new PlayersImport(
+			$this->nicks,
+			$this->players,
+			$this->balances,
+			$this->access,
+			$this->db,
+		);
 		$this->team_cards = new TeamCards(
 			$this->telegram,
 			$this->tournaments,
@@ -361,6 +370,8 @@ class Bootstrap {
 			$this->team_cards,
 			$this->team_repo,
 			$this->webapp_picker,
+			$pending_actions,
+			$this->players_import,
 		);
 		$commands->setCreateForm($this->create_form);
 		$this->drafts->setCreateForm($this->create_form);

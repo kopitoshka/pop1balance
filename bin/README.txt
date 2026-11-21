@@ -28,7 +28,8 @@ set_webhook.php
   Также обновляет меню команд (личка: /tournaments,
   /create_tournament, /team, /level, /nick, /players, /help; без /history,
   /info и без дубля /start; /levels, /edit, /cancel убраны). В личке
-  владельца (BOT_OWNER_TG_ID) меню ещё показывает /addplayer.
+  владельца (BOT_OWNER_TG_ID) меню ещё показывает
+  /addplayer и /players_import.
   Запустить заново после git pull, если меню команд менялось.
 
 cron.php

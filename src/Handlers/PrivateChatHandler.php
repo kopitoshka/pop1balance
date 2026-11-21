@@ -10,6 +10,7 @@ use P1Bot\App\DraftCards;
 use P1Bot\App\PrivateGroups;
 use P1Bot\App\PendingTextGuard;
 use P1Bot\App\TeamForm;
+use P1Bot\Domain\PlayersImport;
 use P1Bot\App\PrivateViews;
 use P1Bot\Domain\AccessPolicy;
 use P1Bot\Domain\Exception\DomainError;
@@ -131,6 +132,12 @@ class PrivateChatHandler {
 			}
 			return ['kind' => self::COMMAND] + $decision;
 		}
+		if (
+			$this->pending_guard !== null
+			&& $this->pending_guard->isWaiting($actor->id, $message->chat_id, PlayersImport::OP)
+		) {
+			return ['kind' => self::PENDING] + $decision;
+		}
 		if ($this->isCardReply($message, $actor)) {
 			return ['kind' => self::CARD_REPLY] + $decision;
 		}
@@ -225,6 +232,9 @@ class PrivateChatHandler {
 					(string) $decision['command'],
 					$decision['args'],
 				);
+				return;
+			case self::PENDING:
+				$this->commands->importFromText($this->context($message, $actor), $message->text);
 				return;
 			case self::USERS_SHARED:
 				$this->onUsersShared($message, $actor);

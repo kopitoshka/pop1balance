@@ -30,6 +30,13 @@ class CommandMenuTest extends TestCase {
 		[$general, $owner] = explode("if (\$owner_tg_id > 0) {", $src, 2);
 		self::assertStringNotContainsString("'command' => 'addplayer'", $general);
 		self::assertSame(1, substr_count($owner, "'command' => 'addplayer'"));
+		self::assertStringNotContainsString("'command' => 'players_import'", $general);
+		self::assertSame(1, substr_count($owner, "'command' => 'players_import'"));
+		self::assertLessThan(
+			strpos($owner, "'command' => 'players_import'"),
+			strpos($owner, "'command' => 'addplayer'"),
+			'/players_import follows /addplayer in the owner menu',
+		);
 		self::assertStringContainsString("\$api->setMyCommands(\$owner, ['type' => 'chat', 'chat_id' => \$owner_tg_id])", $owner);
 	}
 }

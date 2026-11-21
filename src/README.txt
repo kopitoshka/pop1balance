@@ -41,7 +41,7 @@ Handlers/ — вход с Telegram
         Личка: /start, команды, keywords, AI
     AdminCommands.php
         Реализация slash-команд (/create_tournament, /level,
-        /nick, …)
+        /nick, /players_import, …)
     CallbackHandler.php
         Нажатия inline-кнопок
     MessageHandler.php

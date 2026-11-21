@@ -65,11 +65,12 @@ try {
 		$owner = $private;
 		array_splice($owner, count($owner) - 1, 0, [
 			['command' => 'addplayer', 'description' => 'Добавить игроков из контактов Telegram'],
+			['command' => 'players_import', 'description' => 'Добавить игроков списком с уровнями'],
 		]);
 		$api->setMyCommands($owner, ['type' => 'chat', 'chat_id' => $owner_tg_id]);
-		fwrite(STDOUT, "Owner private commands refreshed with /addplayer (chat {$owner_tg_id})\n");
+		fwrite(STDOUT, "Owner private commands refreshed with /addplayer and /players_import (chat {$owner_tg_id})\n");
 	}
-	fwrite(STDOUT, "Bot commands updated (menus without /history|/info; /addplayer only for the owner)\n");
+	fwrite(STDOUT, "Bot commands updated (menus without /history|/info; /addplayer and /players_import only for the owner)\n");
 } catch (Throwable $e) {
 	fwrite(STDERR, 'Error: ' . $e->getMessage() . "\n");
 	exit(1);

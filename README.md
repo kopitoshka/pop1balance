@@ -366,6 +366,7 @@ Creating:
 - All of this in plain text too («создай турнир на субботу в 20:00, тройки, уровень 10»).
 
 Owner only (`BOT_OWNER_TG_ID`, shown in `/help` to the owner only):
+- `/players_import` — bulk add or update players (private only). Each line is an in-game nick or `@username`; the last space-separated token, if it is a number 1–6, is the level (digits outside 1–6 are an error). A new player without a level gets 3; an existing player without a level on the line is skipped; a given level is set (the same level is skipped). Last duplicate line wins, cap 300 lines, one transaction (error lines are reported, they do not abort the rest). Bare command waits for the next message with «✖️ Отмена». Reply lists added and updated players separately, then skip/error counts, and is split if longer than a Telegram message.
 - `/level @user 4 [balance]`, `/balance [id]`; in plain text: set a player's level, create/show scales,
   pick a scale for a new tournament.
 
