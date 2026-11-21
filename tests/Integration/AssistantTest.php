@@ -81,7 +81,7 @@ class AssistantTest extends IntegrationTestCase {
 
 		$t = $this->app->tournament_repo->find(1);
 		self::assertSame('draft', $t->status, 'never published without confirming the card');
-		self::assertSame(9, $t->max_points);
+		self::assertSame(10, $t->max_points);
 		self::assertNull($t->announce_msg_id);
 		$card = $this->http->sent('sendMessage');
 		self::assertCount(1, $card);

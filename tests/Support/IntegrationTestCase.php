@@ -93,6 +93,8 @@ abstract class IntegrationTestCase extends TestCase {
 				'default_max_players' => 24,
 				'anyone_can_create' => false,
 				'registration_close_minutes' => 20,
+				'pair_bonus_min_level' => 4,
+				'pair_bonus_offset' => 3,
 			],
 			'cron' => ['reminder_minutes' => [60, 15], 'finish_after_hours' => 2],
 			'random' => new FixedRandom(0),

@@ -41,14 +41,38 @@ class TeamServiceTest extends IntegrationTestCase {
 			$this->app->teams->createTeam($t->id, $cap->id, 'Too strong', [$a->id, $b->id]);
 			self::fail('Expected LevelLimitExceeded');
 		} catch (LevelLimitExceeded $e) {
-			self::assertSame(2, $e->excess());
-			self::assertStringContainsString('Команда набирает 12', $e->getMessage());
+			self::assertSame(5, $e->excess());
+			self::assertStringContainsString('Команда набирает 15', $e->getMessage());
 			self::assertStringContainsString('лимит турнира 10', $e->getMessage());
 			self::assertStringContainsString('@cap 4', $e->getMessage());
 			self::assertStringContainsString('@a 4', $e->getMessage());
 			self::assertStringContainsString('@b 4', $e->getMessage());
 		}
 		self::assertNull($this->app->teams->findByName($t->id, 'Too strong'), 'nothing persisted');
+	}
+
+	public function testPairBonusCountsInLimitCheck(): void {
+		$t = $this->openTournament(3, '5,3,3'); // 11, no pair bonus on the reference
+		[$cap, $a, $b] = [$this->player('cap'), $this->player('a'), $this->player('b')];
+		$this->rate($cap, 5);
+		$this->rate($a, 3);
+		$this->rate($b, 3);
+		$ok = $this->app->teams->createTeam($t->id, $cap->id, 'Even', [$a->id, $b->id]);
+		self::assertSame(11, $this->app->teams->pointsOf($ok));
+
+		[$c2, $d, $e] = [$this->player('c2'), $this->player('d'), $this->player('e')];
+		$this->rate($c2, 5);
+		$this->rate($d, 4);
+		$this->rate($e, 2);
+		try {
+			$this->app->teams->createTeam($t->id, $c2->id, 'Core', [$d->id, $e->id]);
+			self::fail('Expected LevelLimitExceeded');
+		} catch (LevelLimitExceeded $e) {
+			self::assertSame(12, $e->team_points);
+			self::assertSame(1, $e->excess());
+			self::assertStringContainsString('Команда набирает 12', $e->getMessage());
+			self::assertStringContainsString('лимит турнира 11', $e->getMessage());
+		}
 	}
 
 	public function testPartialTeamIsFormingAndRegistersWhenFull(): void {

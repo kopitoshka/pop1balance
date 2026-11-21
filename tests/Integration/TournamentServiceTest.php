@@ -38,7 +38,14 @@ class TournamentServiceTest extends IntegrationTestCase {
 
 	public function testElevenPointsForThreeIsAveragePlus(): void {
 		$t = $this->openTournament(3, '3,4,4');
-		self::assertSame('средний+ (11 баллов на троих)', $t->levelLabel());
+		self::assertSame(12, $t->max_points, '4+4 pair adds 1 to the raw 11');
+		self::assertSame('средний+ (12 баллов на троих)', $t->levelLabel(), 'label uses the reference levels, not the bonus-inflated total');
+	}
+
+	public function testFourFourFourKeepsAveragePlusLabel(): void {
+		$t = $this->openTournament(3, '4,4,4');
+		self::assertSame(15, $t->max_points);
+		self::assertSame('средний+ (15 баллов на троих)', $t->levelLabel());
 	}
 
 	/**
@@ -105,7 +112,7 @@ class TournamentServiceTest extends IntegrationTestCase {
 				'средний',
 			),
 			'total too small' => new CreateTournament(self::CHAT_ID, $this->owner->id, 'X', '2026-11-14 19:00', 3, '2'),
-			'total too big' => new CreateTournament(self::CHAT_ID, $this->owner->id, 'X', '2026-11-14 19:00', 3, '19'),
+			'total too big' => new CreateTournament(self::CHAT_ID, $this->owner->id, 'X', '2026-11-14 19:00', 3, '28'),
 			'digit out of range in list' => new CreateTournament(
 				self::CHAT_ID,
 				$this->owner->id,
@@ -207,7 +214,7 @@ class TournamentServiceTest extends IntegrationTestCase {
 			new EditTournament(team_size: 2, reference_team: '4,4'),
 		);
 		self::assertSame(2, $t->team_size);
-		self::assertSame(8, $t->max_points);
+		self::assertSame(9, $t->max_points);
 
 		$this->app->teams->joinSolo($t->id, $this->player('vasya')->id);
 		$t = $this->app->tournaments->edit(

@@ -303,8 +303,8 @@ class CreateTournamentFormTest extends IntegrationTestCase {
 			'levels count' => [['levels' => [3, 3]], 'Укажи уровень каждого игрока: 3 игрока'],
 			'level 7' => [['levels' => [3, 3, 7]], 'от 1 до 6'],
 			'no mode' => [['level_mode' => ''], 'по игрокам или суммой'],
-			'sum too big' => [['level_mode' => 'sum', 'points' => 19], 'от 3 до 18'],
-			'sum too small' => [['level_mode' => 'sum', 'points' => 2], 'от 3 до 18'],
+			'sum too big' => [['level_mode' => 'sum', 'points' => 28], 'от 3 до 27'],
+			'sum too small' => [['level_mode' => 'sum', 'points' => 2], 'от 3 до 27'],
 			'limit below team' => [['max_players' => 2], 'от 3 до 1000'],
 			'limit too big' => [['max_players' => 1001], 'от 3 до 1000'],
 		];
@@ -386,8 +386,8 @@ class CreateTournamentFormTest extends IntegrationTestCase {
 			'max_players' => 1000,
 		])));
 		self::assertSame(72, $this->app->tournament_repo->find(2)->max_points);
-		$e = $this->formError($this->owner, $this->form(['team_size' => 12, 'level_mode' => 'sum', 'points' => 73]));
-		self::assertStringContainsString('от 12 до 72', $e->getMessage());
+		$e = $this->formError($this->owner, $this->form(['team_size' => 12, 'level_mode' => 'sum', 'points' => 271]));
+		self::assertStringContainsString('от 12 до 270', $e->getMessage());
 		$e = $this->formError($this->owner, $this->form(['team_size' => 12, 'levels' => [3, 3, 3], 'max_players' => 11]));
 		self::assertSame(['level', 'max_players'], array_keys($e->fields));
 	}

@@ -434,18 +434,23 @@ text via the `levels_help` tool when asked «какие есть уровни»)
 
 ### Tournament level
 
-«уровень», «уровень турнира», «максимальный уровень», «макс. уровень» are the same thing: the maximum total
-points of a team (`tournaments.max_points`). A team is accepted when the sum of its players' levels fits.
+«уровень», «уровень турнира», «максимальный уровень», «макс. уровень» are the same thing: the maximum
+team strength (`tournaments.max_points`). Strength is the sum of the players' levels plus a pair bonus:
+for every unordered pair where both levels are ≥ 4, add `min(level_i, level_j) - 3`. So `5+4+2` is 12
+and `5+3+3` stays 11. A team is accepted when its strength fits the limit.
 It is set (in the form and plain text) in one of two ways:
 
 - **one number** — the total itself: `10` for a team of 3 means `max_points = 10`. Allowed range:
-  team_size × 1 … team_size × 6 (3–18 for threes). Stored with `reference_team = NULL`.
+  team_size × 1 … the strength of a team of all 6s with pair bonuses (3–27 for threes). Stored with
+  `reference_team = NULL`.
 - **levels of all players**, exactly team_size of them (names, synonyms or digits 1–6):
-  «средний, средний, высокий» / `3,3,5` → `max_points = 11`, `reference_team = '3,3,5'`.
+  «средний, средний, высокий» / `3,3,5` → `max_points = 11`, `reference_team = '3,3,5'`;
+  `4,4,4` → `max_points = 15` (12 plus three pair bonuses of 1).
 
 A single level name («средний») is accepted only for one-player teams (team_size = 1). Anything else (no value, wrong number
 of levels, digit outside 1–6, total out of range, unknown word) is rejected with the reason plus the usage
 help. The label («средний (10 баллов на троих)») is
+round(sum of the reference-team levels / team_size) when the limit was set per player, otherwise
 round(max_points / team_size). Changing the team size needs a new level.
 After the first sign-up (team or solo) team size is locked (disabled in the form); the tournament
 level may still be changed. Teams that then go over the limit stay registered and are marked

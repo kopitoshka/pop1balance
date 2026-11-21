@@ -54,6 +54,10 @@ return [
 		'anyone_can_create'   => Env::bool('ANYONE_CAN_CREATE_TOURNAMENT', false),
 		// Minutes before start when registration auto-closes for players (0 = only manual /close)
 		'registration_close_minutes' => Env::int('REGISTRATION_CLOSE_MINUTES', 20),
+		// Team strength pair bonus (not .env keys). A pair of players both at
+		// this level or higher adds min(level_i, level_j) minus the offset.
+		'pair_bonus_min_level' => 4,
+		'pair_bonus_offset' => 3,
 	],
 	'admins_cache_minutes'     => Env::int('ADMINS_CACHE_MINUTES', 10),
 	'conversation_ttl_minutes' => Env::int('CONVERSATION_TTL_MINUTES', 30),

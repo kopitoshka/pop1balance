@@ -167,6 +167,6 @@ class AnnouncementViewTest extends TestCase {
 		];
 		$view = new AnnouncementView('pop1_bot', $players, [1 => 5, 2 => 5]);
 		$text = $view->lineupText(\P1Bot\Domain\Lineup::compute(24, [$entry], []), $t);
-		self::assertStringContainsString("A. <b>Драконы</b> · записана · 10 из 6 ⚠️ выше уровня\n👑 <a href=\"https://t.me/a\">@a</a>, <a href=\"https://t.me/b\">@b</a>", $text);
+		self::assertStringContainsString("A. <b>Драконы</b> · записана · 12 из 6 ⚠️ выше уровня\n👑 <a href=\"https://t.me/a\">@a</a>, <a href=\"https://t.me/b\">@b</a>", $text);
 	}
 }

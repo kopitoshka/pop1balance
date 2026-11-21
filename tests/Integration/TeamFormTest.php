@@ -862,7 +862,7 @@ class TeamFormTest extends IntegrationTestCase {
 	}
 
 	public function testOverLimitTeamCanSaveEditsThatDoNotMakeItWorse(): void {
-		$t = $this->openTournament(3, '5,5,5'); // max 15, then we lower it
+		$t = $this->openTournament(3, '5,5,5'); // max 21 with pair bonus, then we lower it
 		$cap = $this->player('cap');
 		$ace = $this->player('ace');
 		$low = $this->player('low');
@@ -872,11 +872,11 @@ class TeamFormTest extends IntegrationTestCase {
 		$entry = $this->app->teams->createTeam($t->id, $cap->id, 'Драконы', [$ace->id, $low->id]);
 		$this->app->tournament_repo->update($t->id, ['max_points' => 10, 'reference_team' => '10']);
 		$t = $this->app->tournament_repo->find($t->id);
-		self::assertSame(13, $this->app->teams->pointsOf($entry));
+		self::assertSame(15, $this->app->teams->pointsOf($entry));
 
 		$token = $this->formToken($cap, $t, $entry->team->id);
 		$boot = $this->boot($cap, $token);
-		self::assertSame(13, $boot['team']['saved_points']);
+		self::assertSame(15, $boot['team']['saved_points']);
 		self::assertNull($this->submit($cap, $token, [
 			'name' => 'Драконы 2',
 			'player_ids' => [$cap->id, $ace->id, $low->id],

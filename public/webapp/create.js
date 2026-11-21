@@ -231,9 +231,39 @@
 		el.time.value = m[1] + ':' + m[2];
 	}
 
+	function pairBonus() {
+		var cfg = boot.pair_bonus || {};
+		return {
+			min_level: cfg.min_level != null ? cfg.min_level : 4,
+			offset: cfg.offset != null ? cfg.offset : 3
+		};
+	}
+
+	// Same formula as Levels::teamPoints: sum of levels plus a bonus for
+	// every unordered pair where both players are at least min_level.
+	function teamPoints(list) {
+		var cfg = pairBonus();
+		var sum = 0;
+		var i, j;
+		for (i = 0; i < list.length; i++) {
+			sum += list[i];
+			for (j = i + 1; j < list.length; j++) {
+				if (list[i] >= cfg.min_level && list[j] >= cfg.min_level) {
+					sum += Math.min(list[i], list[j]) - cfg.offset;
+				}
+			}
+		}
+		return sum;
+	}
+
 	function pointsRange() {
 		var n = teamSize();
-		return { min: n * boot.level_min, max: n * boot.level_max };
+		var caps = [];
+		var i;
+		for (i = 0; i < n; i++) {
+			caps.push(boot.level_max);
+		}
+		return { min: n * boot.level_min, max: teamPoints(caps) };
 	}
 
 	function validate() {
@@ -315,7 +345,7 @@
 			el.close_hint.hidden = true;
 		}
 
-		var sum = levels.reduce(function (a, b) { return a + b; }, 0);
+		var sum = teamPoints(levels);
 		el.total.textContent = sum + ' ' + plural(sum, ['балл', 'балла', 'баллов']);
 
 		var r = pointsRange();

@@ -96,7 +96,7 @@ class TeamService {
 				$levels[$player_id] = $level;
 				$breakdown[] = $row;
 			}
-			$this->assertWithinLimit($tournament, array_sum($levels), $breakdown);
+			$this->assertWithinLimit($tournament, Levels::teamPoints(array_values($levels)), $breakdown);
 
 			$this->lockTournament($tournament->id);
 			$team = $this->teams->create($tournament->id, $captain_id, $name, $this->clock->now(), $this->firstFreeLetter($tournament->id));
@@ -143,7 +143,7 @@ class TeamService {
 				$levels[$player_id] = $level;
 				$breakdown[] = $row;
 			}
-			$this->assertWithinLimit($tournament, array_sum($levels), $breakdown);
+			$this->assertWithinLimit($tournament, Levels::teamPoints(array_values($levels)), $breakdown);
 			$this->lockTournament($tournament->id);
 			$team = $this->teams->create($tournament->id, $captain_id, $name, $this->clock->now(), $this->firstFreeLetter($tournament->id));
 			foreach (array_keys($levels) as $player_id) {
@@ -171,7 +171,12 @@ class TeamService {
 			[$level, $row] = $this->playerLevelRow($player_id);
 			$breakdown = $this->membersBreakdown($members);
 			$breakdown[] = $row;
-			$this->assertWithinLimit($tournament, $this->pointsOfMembers($members) + $level, $breakdown);
+			$levels = [];
+			foreach ($members as $member) {
+				$levels[] = $this->liveLevel($member->player_id);
+			}
+			$levels[] = $level;
+			$this->assertWithinLimit($tournament, Levels::teamPoints($levels), $breakdown);
 
 			$this->solos->remove($tournament->id, $player_id);
 			$this->teams->addMember($team, $player_id, $this->clock->now());
@@ -263,18 +268,18 @@ class TeamService {
 			if ($add !== []) {
 				$this->openTournament($tournament_id, $actor_id);
 			}
-			$sum = 0;
+			$levels = [];
 			$breakdown = [];
 			foreach ($ids as $id) {
 				if (!in_array($id, $old_ids, true)) {
 					$this->assertFreeForTeam($t, $id, $team->id);
 				}
 				[$level, $row] = $this->playerLevelRow($id);
-				$sum += $level;
+				$levels[] = $level;
 				$breakdown[] = $row;
 			}
 			$allow_upto = $this->pointsOfMembers($members);
-			$this->assertWithinLimit($t, $sum, $breakdown, $allow_upto);
+			$this->assertWithinLimit($t, Levels::teamPoints($levels), $breakdown, $allow_upto);
 			$name = $this->validName($tournament_id, $name, $team_id);
 			if ($letter_touched && $letter !== $team->letter) {
 				$this->applyLetter($t, $actor_id, $team_id, $letter);
@@ -374,8 +379,12 @@ class TeamService {
 			$breakdown = $this->membersBreakdown(array_values($members));
 			$breakdown[] = $row;
 			$old_sum = $this->pointsOf($this->get($team->id));
-			$new_sum = $this->pointsOfMembers(array_values($members)) + $level;
-			$this->assertWithinLimit($tournament, $new_sum, $breakdown, $old_sum);
+			$levels = [];
+			foreach ($members as $member) {
+				$levels[] = $this->liveLevel($member->player_id);
+			}
+			$levels[] = $level;
+			$this->assertWithinLimit($tournament, Levels::teamPoints($levels), $breakdown, $old_sum);
 
 			$this->teams->removeMember($team->id, $out_player_id);
 			$this->solos->remove($tournament->id, $in_player_id);
@@ -678,11 +687,11 @@ class TeamService {
 		@param list<TeamMember> $members
 	*/
 	protected function pointsOfMembers(array $members): int {
-		$sum = 0;
+		$levels = [];
 		foreach ($members as $member) {
-			$sum += $this->liveLevel($member->player_id);
+			$levels[] = $this->liveLevel($member->player_id);
 		}
-		return $sum;
+		return Levels::teamPoints($levels);
 	}
 
 	/**

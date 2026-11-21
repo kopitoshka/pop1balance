@@ -285,6 +285,10 @@ class TeamForm {
 			'letter_hint' => self::LETTER_HINT,
 			'pending' => $pending,
 			'default_level' => Levels::DEFAULT,
+			'pair_bonus' => [
+				'min_level' => Levels::pairBonusMinLevel(),
+				'offset' => Levels::pairBonusOffset(),
+			],
 		];
 	}
 

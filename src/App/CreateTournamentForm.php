@@ -302,6 +302,10 @@ class CreateTournamentForm {
 			'level_min' => Levels::MIN,
 			'level_max' => Levels::MAX,
 			'default_level' => Levels::DEFAULT,
+			'pair_bonus' => [
+				'min_level' => Levels::pairBonusMinLevel(),
+				'offset' => Levels::pairBonusOffset(),
+			],
 		];
 	}
 
@@ -579,7 +583,7 @@ class CreateTournamentForm {
 		if ($mode === 'sum') {
 			$points = self::intValue($input['points'] ?? null);
 			$min = $team_size * Levels::MIN;
-			$max = $team_size * Levels::MAX;
+			$max = Levels::maxTeamPoints($team_size);
 			if ($points === null || $points < $min || $points > $max) {
 				$errors['level'] = sprintf('Сумма баллов для этой команды — от %d до %d', $min, $max);
 				return null;

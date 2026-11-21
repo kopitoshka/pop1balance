@@ -29,6 +29,7 @@ use P1Bot\App\TournamentListing;
 use P1Bot\App\WebAppPicker;
 use P1Bot\App\TournamentResolver;
 use P1Bot\Domain\AccessPolicy;
+use P1Bot\Domain\Levels;
 use P1Bot\Domain\BalanceService;
 use P1Bot\Domain\TeamService;
 use P1Bot\Domain\NickService;
@@ -134,6 +135,7 @@ class Bootstrap {
 		$this->config = $config;
 		$this->logger = $logger ?? Logger::null();
 		$this->http = $http ?? new CurlHttpClient();
+		Levels::configure($config['tournament'] ?? []);
 
 		$this->players = new PlayerRepository($db);
 		$this->chats = new ChatRepository($db);

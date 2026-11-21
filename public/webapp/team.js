@@ -99,12 +99,35 @@
 		return boot.tournament.team_size;
 	}
 
-	function points() {
+	function pairBonus() {
+		var cfg = boot.pair_bonus || {};
+		return {
+			min_level: cfg.min_level != null ? cfg.min_level : 4,
+			offset: cfg.offset != null ? cfg.offset : 3
+		};
+	}
+
+	// Same formula as Levels::teamPoints: sum of levels plus a bonus for
+	// every unordered pair where both players are at least min_level.
+	function teamPoints(levels) {
+		var cfg = pairBonus();
 		var sum = 0;
-		members.forEach(function (m) {
-			sum += m.level;
-		});
+		var i, j;
+		for (i = 0; i < levels.length; i++) {
+			sum += levels[i];
+			for (j = i + 1; j < levels.length; j++) {
+				if (levels[i] >= cfg.min_level && levels[j] >= cfg.min_level) {
+					sum += Math.min(levels[i], levels[j]) - cfg.offset;
+				}
+			}
+		}
 		return sum;
+	}
+
+	function points() {
+		return teamPoints(members.map(function (m) {
+			return m.level;
+		}));
 	}
 
 	function overLimit() {

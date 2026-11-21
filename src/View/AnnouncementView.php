@@ -273,11 +273,11 @@ class AnnouncementView {
 	}
 
 	protected function pointsOf(TeamEntry $entry): int {
-		$sum = 0;
+		$levels = [];
 		foreach ($entry->members as $member) {
-			$sum += $this->levels[$member->player_id] ?? Levels::DEFAULT;
+			$levels[] = $this->levels[$member->player_id] ?? Levels::DEFAULT;
 		}
-		return $sum;
+		return Levels::teamPoints($levels);
 	}
 
 	protected function members(TeamEntry $entry): string {

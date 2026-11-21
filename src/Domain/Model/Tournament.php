@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace P1Bot\Domain\Model;
 
 use DateTimeImmutable;
+use P1Bot\Domain\Exception\InvalidLevel;
 use P1Bot\Domain\Levels;
 use P1Bot\Domain\TournamentStatus;
 use P1Bot\Support\DateFormat;
@@ -67,7 +68,31 @@ class Tournament {
 	}
 
 	public function averageLevel(): ?int {
-		return $this->hasLevelLimit() ? Levels::averageLevel((int) $this->max_points, $this->team_size) : null;
+		if (!$this->hasLevelLimit()) {
+			return null;
+		}
+		$levels = $this->referenceLevels();
+		if ($levels !== null) {
+			return Levels::averageLevel(array_sum($levels), count($levels));
+		}
+		return Levels::averageLevel((int) $this->max_points, $this->team_size);
+	}
+
+	/**
+		Per-player levels of the reference team, or null when the limit is a plain total.
+
+		@return list<int>|null
+	*/
+	protected function referenceLevels(): ?array {
+		if ($this->reference_team === null || $this->reference_team === '') {
+			return null;
+		}
+		try {
+			$levels = Levels::parseReferenceTeam($this->reference_team);
+		} catch (InvalidLevel $e) {
+			return null;
+		}
+		return $levels !== [] ? $levels : null;
 	}
 
 	/**

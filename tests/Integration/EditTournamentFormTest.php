@@ -97,7 +97,7 @@ class EditTournamentFormTest extends IntegrationTestCase {
 		self::assertSame('edit', $boot['mode']);
 		self::assertSame([
 			'id' => 1, 'number' => 1, 'title' => 'Кубок <тест>', 'date' => '2026-11-23', 'time' => '20:07',
-			'team_size' => 3, 'level_mode' => 'players', 'levels' => [3, 4, 5], 'points' => 12, 'max_players' => 30,
+			'team_size' => 3, 'level_mode' => 'players', 'levels' => [3, 4, 5], 'points' => 13, 'max_players' => 30,
 		], $boot['tournament']);
 	}
 
@@ -122,7 +122,7 @@ class EditTournamentFormTest extends IntegrationTestCase {
 		self::assertSame('2026-12-31 20:07:00', DateFormat::toDb($t->starts_at));
 		self::assertSame(5, $t->team_size);
 		self::assertSame('2,3,4,5,6', $t->reference_team);
-		self::assertSame(20, $t->max_points);
+		self::assertSame(24, $t->max_points);
 		self::assertSame(45, $t->max_players);
 		self::assertSame(TournamentStatus::DRAFT, $t->status);
 		self::assertNotSame($old, $t->card_msg_id);
@@ -337,7 +337,7 @@ class EditTournamentFormTest extends IntegrationTestCase {
 		$this->rate($a, 5);
 		$this->rate($b, 3);
 		$entry = $this->app->teams->createTeam(1, $cap->id, 'Драконы', [$a->id, $b->id]);
-		self::assertSame(13, $this->app->teams->pointsOf($entry));
+		self::assertSame(15, $this->app->teams->pointsOf($entry));
 		$this->http->reset();
 		$this->app->create_form->editSubmit($this->initDataFor($this->owner), $this->token(), [
 			'title' => 'Кубок', 'date' => '2026-11-23', 'time' => '20:00', 'team_size' => 3,
@@ -347,10 +347,10 @@ class EditTournamentFormTest extends IntegrationTestCase {
 		self::assertSame(10, $t->max_points);
 		self::assertNotNull($this->app->teams->findByName(1, 'Драконы'), 'the team stays in the tournament');
 		$lineup = $this->app->announcer->lineupText($t);
-		self::assertStringContainsString('13 из 10 ⚠️ выше уровня', $lineup);
-		self::assertStringContainsString("A. <b>Драконы</b> · записана · 13 из 10 ⚠️ выше уровня\n👑", $lineup);
+		self::assertStringContainsString('15 из 10 ⚠️ выше уровня', $lineup);
+		self::assertStringContainsString("A. <b>Драконы</b> · записана · 15 из 10 ⚠️ выше уровня\n👑", $lineup);
 		$card = $this->app->team_cards->text($t, $this->app->teams->get($entry->team->id));
-		self::assertStringContainsString('13 из 10 ⚠️ выше уровня', $card);
+		self::assertStringContainsString('15 из 10 ⚠️ выше уровня', $card);
 		$dms = array_filter(
 			$this->http->sent('sendMessage'),
 			fn (array $m): bool => (int) $m['chat_id'] > 0 && (int) $m['chat_id'] !== self::OWNER_TG_ID,

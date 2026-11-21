@@ -96,12 +96,15 @@ class LevelsTest extends TestCase {
 		return [
 			'total' => ['10', 3, null, 10],
 			'total min' => ['3', 3, null, 3],
-			'total max' => ['18', 3, null, 18],
+			'total max old' => ['18', 3, null, 18],
+			'total max' => ['27', 3, null, 27],
 			'total for pairs' => [' 7 ', 2, null, 7],
 			'names' => ['средний, средний, высокий', 3, [3, 3, 5], 11],
 			'digits' => ['3,3,4', 3, [3, 3, 4], 10],
 			'mixed and synonyms' => ['Танк, слабый плюс', 2, [5, 2], 7],
-			'typos and spaces' => ['выскоий средний +', 2, [5, 4], 9],
+			'typos and spaces' => ['выскоий средний +', 2, [5, 4], 10],
+			'four plus four plus four' => ['4,4,4', 3, [4, 4, 4], 15],
+			'six and six' => ['6,6', 2, [6, 6], 15],
 		];
 	}
 
@@ -126,8 +129,8 @@ class LevelsTest extends TestCase {
 			'single name is not a shorthand' => ['средний', 3, 'уровней указано 1'],
 			'too few' => ['средний, высокий', 3, 'уровней указано 2'],
 			'too many' => ['3,3,3,3', 3, 'уровней указано 4'],
-			'total too small' => ['2', 3, 'от 3 до 18'],
-			'total too big' => ['19', 3, 'от 3 до 18'],
+			'total too small' => ['2', 3, 'от 3 до 27'],
+			'total too big' => ['28', 3, 'от 3 до 27'],
 			'digit out of range in list' => ['3, 7', 2, 'Уровня «7» нет'],
 			'unknown word' => ['средний, крутой', 2, 'Не понимаю уровень «крутой»'],
 		];
@@ -151,5 +154,48 @@ class LevelsTest extends TestCase {
 			'7/2 rounds half up' => [7, 2, 4],
 			'clamped high' => [30, 4, 6],
 		];
+	}
+
+	/**
+		@dataProvider teamPointsProvider
+	*/
+	public function testTeamPoints(array $levels, int $expected): void {
+		self::assertSame($expected, Levels::teamPoints($levels));
+	}
+
+	/**
+		@return array<string, array{list<int>, int}>
+	*/
+	public static function teamPointsProvider(): array {
+		return [
+			'5+4+2' => [[5, 4, 2], 12],
+			'5+3+3' => [[5, 3, 3], 11],
+			'4+4+4' => [[4, 4, 4], 15],
+			'6+5+1' => [[6, 5, 1], 14],
+			'5+5+5' => [[5, 5, 5], 21],
+			'6+6' => [[6, 6], 15],
+			'4+4+3' => [[4, 4, 3], 12],
+			'6+1+1' => [[6, 1, 1], 8],
+			'single' => [[5], 5],
+			'empty' => [[], 0],
+		];
+	}
+
+	public function testMaxTeamPoints(): void {
+		self::assertSame(6, Levels::maxTeamPoints(1));
+		self::assertSame(15, Levels::maxTeamPoints(2));
+		self::assertSame(27, Levels::maxTeamPoints(3));
+		self::assertSame(270, Levels::maxTeamPoints(12));
+	}
+
+	public function testConfigureChangesPairBonus(): void {
+		try {
+			Levels::configure(['pair_bonus_min_level' => 5, 'pair_bonus_offset' => 3]);
+			self::assertSame(11, Levels::teamPoints([5, 4, 2]), '4+2 is below the raised min, no bonus');
+			self::assertSame(14, Levels::teamPoints([5, 5, 2]), 'only the 5+5 pair: 12 + 2');
+		} finally {
+			Levels::configure();
+		}
+		self::assertSame(12, Levels::teamPoints([5, 4, 2]));
 	}
 }

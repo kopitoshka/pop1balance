@@ -18,6 +18,17 @@ class Levels {
 		Level of a player that has no rating in the scale.
 	*/
 	public const DEFAULT = 3;
+	/**
+		Default min level at which a pair gets a bonus (both players).
+	*/
+	public const PAIR_BONUS_MIN_LEVEL = 4;
+	/**
+		Default bonus for a strong pair: min(level_i, level_j) minus this offset.
+	*/
+	public const PAIR_BONUS_OFFSET = 3;
+
+	protected static int $pair_bonus_min_level = self::PAIR_BONUS_MIN_LEVEL;
+	protected static int $pair_bonus_offset = self::PAIR_BONUS_OFFSET;
 
 	protected const NAMES = [
 		1 => 'начальный',
@@ -91,8 +102,8 @@ class Levels {
 
 	/**
 		Tournament level (= the maximum team level), as typed by a user:
-		 - one number: the total points per team (max_points), from teamSize×1 to teamSize×6, e.g. "10";
-		 - levels of all players, exactly teamSize of them: "средний, средний, высокий", "3,3,5".
+		 - one number: the total points per team (max_points), from teamSize×1 to maxTeamPoints(teamSize), e.g. "10";
+		 - levels of all players, exactly teamSize of them: "средний, средний, высокий", "3,3,5" (max_points uses teamPoints).
 		A single level name is a list of one, so it only fits a team of one.
 
 		@return array{0: list<int>|null, 1: int} [levels or null for a plain total, max_points]
@@ -106,7 +117,7 @@ class Levels {
 		if (count($parts) === 1 && ctype_digit($parts[0]) && $team_size > 1) {
 			$total = (int) $parts[0];
 			$min = $team_size * self::MIN;
-			$max = $team_size * self::MAX;
+			$max = self::maxTeamPoints($team_size);
 			if ($total < $min || $total > $max) {
 				throw new InvalidLevel(sprintf(
 					'Уровень %d не подходит: для команды из %d %s сумма баллов должна быть от %d до %d.',
@@ -138,7 +149,7 @@ class Levels {
 				count($levels),
 			));
 		}
-		return [$levels, array_sum($levels)];
+		return [$levels, self::teamPoints($levels)];
 	}
 
 	/**
@@ -258,6 +269,58 @@ class Levels {
 	*/
 	public static function formatReferenceTeam(array $levels): string {
 		return implode(',', $levels);
+	}
+
+	/**
+		Apply pair-bonus thresholds from config (or restore the defaults).
+
+		@param array<string, mixed> $tournament the 'tournament' section of config.php
+	*/
+	public static function configure(array $tournament = []): void {
+		self::$pair_bonus_min_level = (int) ($tournament['pair_bonus_min_level'] ?? self::PAIR_BONUS_MIN_LEVEL);
+		self::$pair_bonus_offset = (int) ($tournament['pair_bonus_offset'] ?? self::PAIR_BONUS_OFFSET);
+	}
+
+	public static function pairBonusMinLevel(): int {
+		return self::$pair_bonus_min_level;
+	}
+
+	public static function pairBonusOffset(): int {
+		return self::$pair_bonus_offset;
+	}
+
+	/**
+		Team strength: the sum of player levels plus a bonus for every unordered
+		pair where both levels are at least the configured min (default 4).
+		The bonus of a pair is min(level_i, level_j) minus the offset (default 3).
+		Self-pairs are not counted.
+
+		@param list<int> $levels
+	*/
+	public static function teamPoints(array $levels): int {
+		$sum = 0;
+		$n = count($levels);
+		$min_level = self::$pair_bonus_min_level;
+		$offset = self::$pair_bonus_offset;
+		for ($i = 0; $i < $n; $i++) {
+			$sum += $levels[$i];
+			for ($j = $i + 1; $j < $n; $j++) {
+				if ($levels[$i] >= $min_level && $levels[$j] >= $min_level) {
+					$sum += min($levels[$i], $levels[$j]) - $offset;
+				}
+			}
+		}
+		return $sum;
+	}
+
+	/**
+		Strongest possible team of this size (every player at MAX, with pair bonuses).
+	*/
+	public static function maxTeamPoints(int $team_size): int {
+		if ($team_size <= 0) {
+			return 0;
+		}
+		return self::teamPoints(array_fill(0, $team_size, self::MAX));
 	}
 
 	/**
