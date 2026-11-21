@@ -234,26 +234,27 @@ class EditTournamentFormTest extends IntegrationTestCase {
 		self::assertNull($t->reminded_at, 'a new start time resets reminders');
 	}
 
-	public function testRegistrationsLockTeamSizeAndLevel(): void {
+	public function testRegistrationsLockTeamSizeButAllowLevelChange(): void {
 		$this->newDraft($this->owner, '23.11 20:00 | Кубок | 3 | 10 | 24');
 		$this->publish();
 		$this->app->teams->joinSolo(1, $this->player('vasya')->id);
 		$token = $this->token();
 		$boot = $this->app->create_form->editBootstrap($this->initDataFor($this->owner), $token);
-		self::assertTrue($boot['level_locked']);
-		self::assertSame(CreateTournamentForm::LEVEL_LOCKED_HINT, $boot['level_locked_text']);
+		self::assertTrue($boot['size_locked']);
+		self::assertSame(CreateTournamentForm::SIZE_LOCKED_HINT, $boot['size_locked_text']);
+		self::assertFalse($boot['level_locked']);
 		$e = $this->errorFrom(fn() => $this->app->create_form->editSubmit($this->initDataFor($this->owner), $token, [
 			'title' => 'Кубок', 'date' => '2026-11-23', 'time' => '20:00', 'team_size' => 2,
 			'level_mode' => 'sum', 'points' => 7, 'max_players' => 40,
 		]), WebAppFormError::INVALID);
-		self::assertStringContainsString('Уровень турнира и размер команды уже не поменять', $e->getMessage());
+		self::assertStringContainsString('Размер команды уже не поменять', $e->getMessage());
 		self::assertSame(24, $this->app->tournament_repo->find(1)->max_players, 'a tampered form rolls back the whole save');
 		$this->app->create_form->editSubmit($this->initDataFor($this->owner), $token, [
 			'title' => 'Кубок', 'date' => '2026-11-23', 'time' => '20:00', 'team_size' => 3,
-			'level_mode' => 'sum', 'points' => 10, 'max_players' => 40,
+			'level_mode' => 'sum', 'points' => 8, 'max_players' => 40,
 		]);
 		$t = $this->app->tournament_repo->find(1);
-		self::assertSame([3, 10, 40], [$t->team_size, $t->max_points, $t->max_players], 'size and level are kept, the limit changes');
+		self::assertSame([3, 8, 40], [$t->team_size, $t->max_points, $t->max_players], 'the level and the participant limit change; size stays');
 	}
 
 	public function testDraftEditShowsNewCardAndOldCardIsOutdated(): void {
@@ -324,5 +325,36 @@ class EditTournamentFormTest extends IntegrationTestCase {
 			'level_mode' => 'sum', 'points' => 10, 'max_players' => 24,
 		]), WebAppFormError::INVALID);
 		self::assertSame('start', $e->field, 'a new time must be in the future');
+	}
+
+	public function testLoweringTheLevelKeepsOverLimitTeamsAndMarksThem(): void {
+		$this->newDraft($this->owner, '23.11 20:00 | Кубок | 3 | 15 | 24');
+		$this->publish();
+		$cap = $this->player('cap');
+		$a = $this->player('ace');
+		$b = $this->player('bear');
+		$this->rate($cap, 5);
+		$this->rate($a, 5);
+		$this->rate($b, 3);
+		$entry = $this->app->teams->createTeam(1, $cap->id, 'Драконы', [$a->id, $b->id]);
+		self::assertSame(13, $this->app->teams->pointsOf($entry));
+		$this->http->reset();
+		$this->app->create_form->editSubmit($this->initDataFor($this->owner), $this->token(), [
+			'title' => 'Кубок', 'date' => '2026-11-23', 'time' => '20:00', 'team_size' => 3,
+			'level_mode' => 'sum', 'points' => 10, 'max_players' => 24,
+		]);
+		$t = $this->app->tournament_repo->find(1);
+		self::assertSame(10, $t->max_points);
+		self::assertNotNull($this->app->teams->findByName(1, 'Драконы'), 'the team stays in the tournament');
+		$lineup = $this->app->announcer->lineupText($t);
+		self::assertStringContainsString('13 из 10 ⚠️ выше уровня', $lineup);
+		self::assertStringContainsString("A. <b>Драконы</b> · записана · 13 из 10 ⚠️ выше уровня\n👑", $lineup);
+		$card = $this->app->team_cards->text($t, $this->app->teams->get($entry->team->id));
+		self::assertStringContainsString('13 из 10 ⚠️ выше уровня', $card);
+		$dms = array_filter(
+			$this->http->sent('sendMessage'),
+			fn (array $m): bool => (int) $m['chat_id'] > 0 && (int) $m['chat_id'] !== self::OWNER_TG_ID,
+		);
+		self::assertSame([], $dms, 'nobody is notified when the level is lowered');
 	}
 }

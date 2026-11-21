@@ -75,12 +75,12 @@ class AnnouncementViewTest extends TestCase {
 		self::assertStringContainsString('🟢 Идёт регистрация', $text);
 		self::assertStringContainsString('🎟 Занято 4/4 · запас 3', $text);
 		self::assertStringContainsString(
-			"🛡 <b>Команды:</b>\nC. <b>Wolves</b> — 👑 <a href=\"https://t.me/p2\">@p2</a>, <a href=\"https://t.me/p3\">@p3</a>\nA. <b>Bears</b> — 👑 <a href=\"https://t.me/p4\">@p4</a>, <a href=\"https://t.me/p5\">@p5</a>",
+			"🛡 <b>Команды:</b>\nC. <b>Wolves</b> · записана · 6 из 7\n👑 <a href=\"https://t.me/p2\">@p2</a>, <a href=\"https://t.me/p3\">@p3</a>\nA. <b>Bears</b> · записана · 6 из 7\n👑 <a href=\"https://t.me/p4\">@p4</a>, <a href=\"https://t.me/p5\">@p5</a>",
 			$text,
 		);
-		self::assertStringContainsString("⏳ <b>Запас:</b>\nB. <b>Late</b> — 👑 <a href=\"https://t.me/p6\">@p6</a>, <a href=\"https://t.me/p7\">@p7</a>\n🙋 Соло: <a href=\"https://t.me/p8\">@p8</a>", $text);
-		self::assertStringContainsString("🧩 <b>Собираются:</b>\n?. Forming — 👑 <a href=\"https://t.me/p9\">@p9</a> (1/2)", $text);
-		self::assertDoesNotMatchRegularExpression('/средний \(3\)|\(3\)/u', $text, 'player levels are not shown');
+		self::assertStringContainsString("⏳ <b>Запас:</b>\nB. <b>Late</b> · запас · 6 из 7\n👑 <a href=\"https://t.me/p6\">@p6</a>, <a href=\"https://t.me/p7\">@p7</a>\n🙋 Соло: <a href=\"https://t.me/p8\">@p8</a>", $text);
+		self::assertStringContainsString("🧩 <b>Собираются:</b>\n?. Forming · собирается 1/2 · 3 из 7\n👑 <a href=\"https://t.me/p9\">@p9</a>", $text);
+		self::assertDoesNotMatchRegularExpression('/средний \(3\)/u', $text, 'individual player levels are not shown');
 		self::assertStringContainsString('в личке у @pop1_bot', $text);
 	}
 
@@ -154,5 +154,19 @@ class AnnouncementViewTest extends TestCase {
 			self::assertLessThanOrEqual(4000, mb_strlen($m));
 		}
 		self::assertStringContainsString('?. <b>Команда номер 100</b>', end($messages));
+	}
+
+	public function testOverLimitMarkOnATeam(): void {
+		$starts = new \DateTimeImmutable('2026-11-14 16:00:00', new \DateTimeZone('UTC'));
+		$t = new Tournament(1, -100, 1, 'Кубок', $starts, 2, 1, '3,3', 6, 24, TournamentStatus::REGISTRATION, null, null);
+		$team = new Team(1, 1, 1, 'Драконы', TeamStatus::REGISTERED, $starts, $starts, 'A');
+		$entry = new TeamEntry($team, [new TeamMember(1, 1, 1), new TeamMember(1, 1, 2)]);
+		$players = [
+			1 => new Player(1, 11, 'a', 'A'),
+			2 => new Player(2, 12, 'b', 'B'),
+		];
+		$view = new AnnouncementView('pop1_bot', $players, [1 => 5, 2 => 5]);
+		$text = $view->lineupText(\P1Bot\Domain\Lineup::compute(24, [$entry], []), $t);
+		self::assertStringContainsString("A. <b>Драконы</b> · записана · 10 из 6 ⚠️ выше уровня\n👑 <a href=\"https://t.me/a\">@a</a>, <a href=\"https://t.me/b\">@b</a>", $text);
 	}
 }

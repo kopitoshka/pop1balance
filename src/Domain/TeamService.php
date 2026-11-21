@@ -273,7 +273,8 @@ class TeamService {
 				$sum += $level;
 				$breakdown[] = $row;
 			}
-			$this->assertWithinLimit($t, $sum, $breakdown);
+			$allow_upto = $this->pointsOfMembers($members);
+			$this->assertWithinLimit($t, $sum, $breakdown, $allow_upto);
 			$name = $this->validName($tournament_id, $name, $team_id);
 			if ($letter_touched && $letter !== $team->letter) {
 				$this->applyLetter($t, $actor_id, $team_id, $letter);
@@ -372,7 +373,9 @@ class TeamService {
 			[$level, $row] = $this->playerLevelRow($in_player_id);
 			$breakdown = $this->membersBreakdown(array_values($members));
 			$breakdown[] = $row;
-			$this->assertWithinLimit($tournament, $this->pointsOfMembers(array_values($members)) + $level, $breakdown);
+			$old_sum = $this->pointsOf($this->get($team->id));
+			$new_sum = $this->pointsOfMembers(array_values($members)) + $level;
+			$this->assertWithinLimit($tournament, $new_sum, $breakdown, $old_sum);
 
 			$this->teams->removeMember($team->id, $out_player_id);
 			$this->solos->remove($tournament->id, $in_player_id);
@@ -628,10 +631,15 @@ class TeamService {
 	}
 
 	/**
+		An already over-limit team may keep its current (or lower) sum after the tournament
+		level was lowered; making it worse is still refused.
 		@param list<array{label: string, level: int, explicit: bool}> $breakdown
 	*/
-	protected function assertWithinLimit(Tournament $tournament, int $points, array $breakdown = []): void {
+	protected function assertWithinLimit(Tournament $tournament, int $points, array $breakdown = [], ?int $allow_upto = null): void {
 		if ($tournament->hasLevelLimit() && $points > (int) $tournament->max_points) {
+			if ($allow_upto !== null && $points <= $allow_upto) {
+				return;
+			}
 			throw new LevelLimitExceeded($points, (int) $tournament->max_points, $breakdown);
 		}
 	}

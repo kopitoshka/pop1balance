@@ -270,6 +270,7 @@ class TeamForm {
 				'letter_touched' => !empty($draft['letter_touched']),
 				'captain_id' => $captain_id,
 				'members' => $members,
+				'saved_points' => $entry !== null ? $this->teams->pointsOf($entry) : null,
 			],
 			'name_hint' => $name_hint ? self::NAME_HINT : null,
 			'name_max' => TeamService::MAX_NAME_LENGTH,

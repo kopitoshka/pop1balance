@@ -41,7 +41,6 @@ try {
 	$common = [
 		['command' => 'start', 'description' => 'Турниры с кнопками записи'],
 		['command' => 'tournaments', 'description' => 'Активные турниры'],
-		['command' => 'create_tournament', 'description' => 'Создать турнир (форма в личке)'],
 		['command' => 'level', 'description' => 'Свой или чужой уровень'],
 		['command' => 'players', 'description' => 'Все игроки: уровень и ник'],
 		['command' => 'help', 'description' => 'Команды и как устроены уровни'],

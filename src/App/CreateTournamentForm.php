@@ -75,8 +75,8 @@ class CreateTournamentForm {
 		. '«✏️ Поправить» у черновика или «✏️ Изменить турнир» у турнира в /tournaments.';
 	public const EDIT_OFFER_TEXT = 'Открой форму и поправь черновик. Потом пришлю обновлённую карточку.';
 	public const NOT_DRAFT_TEXT = 'Турнир «%s» уже %s, менять его в форме нельзя.';
-	public const LEVEL_LOCKED_HINT = 'Размер команды и уровень уже не поменять: на турнир есть заявки, '
-		. 'их проверяли по этим правилам.';
+	public const LEVEL_LOCKED_HINT = 'Размер команды уже не поменять: на турнир есть заявки.';
+	public const SIZE_LOCKED_HINT = self::LEVEL_LOCKED_HINT;
 	public const UPDATED_TEXT = 'Обновила турнир «%s», анонсы поправила.';
 
 	public function __construct(
@@ -261,9 +261,12 @@ class CreateTournamentForm {
 		$out['mode'] = self::MODE_EDIT;
 		$out['tournament'] = $this->values($t);
 		$out['published'] = $t->status !== TournamentStatus::DRAFT;
-		// Teams or solo players are in: team size and level stay as they were checked.
-		$out['level_locked'] = $out['published'] && $this->tournaments->hasEntries($t->id);
-		$out['level_locked_text'] = $out['level_locked'] ? self::LEVEL_LOCKED_HINT : null;
+		// Teams or solo players are in: team size stays as it was; the level may still change.
+		$size_locked = $out['published'] && $this->tournaments->hasEntries($t->id);
+		$out['size_locked'] = $size_locked;
+		$out['size_locked_text'] = $size_locked ? self::SIZE_LOCKED_HINT : null;
+		$out['level_locked'] = false;
+		$out['level_locked_text'] = null;
 		return $out;
 	}
 

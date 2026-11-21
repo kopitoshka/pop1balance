@@ -232,6 +232,7 @@ class Bootstrap {
 			$this->tournament_resolver,
 			$this->chats,
 			$this->announcements,
+			$this->balances,
 		);
 		$this->listing = new TournamentListing($this->tournaments, $this->announcer);
 		$this->drafts = new DraftCards(
@@ -301,6 +302,7 @@ class Bootstrap {
 			$this->teams,
 			$this->team_repo,
 			$this->access,
+			$this->players,
 		);
 		$this->pending_guard = new PendingTextGuard($pending_actions, $clock, $this->telegram);
 		$this->webapp_contexts = new WebAppContextRepository($db);

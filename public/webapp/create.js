@@ -559,10 +559,10 @@
 			el.heading.textContent = 'Изменить турнир';
 			document.title = 'Изменить турнир';
 		}
-		// Registrations exist: team size and level stay as they are (TournamentService::edit rule).
-		el.level_lock.disabled = !!data.level_locked;
-		el.lock_hint.hidden = !data.level_locked;
-		el.lock_hint.textContent = data.level_locked_text || '';
+		// Registrations exist: team size stays as it is; the level may still be changed.
+		el.team_size.disabled = !!data.size_locked;
+		el.lock_hint.hidden = !data.size_locked;
+		el.lock_hint.textContent = data.size_locked_text || '';
 		el.loading.hidden = true;
 		el.fields.disabled = false;
 		render();

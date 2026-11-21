@@ -13,6 +13,7 @@ use P1Bot\Domain\TournamentService;
 use P1Bot\Domain\TournamentStatus;
 use P1Bot\Repository\PlayerRepository;
 use P1Bot\Telegram\TelegramApi;
+use P1Bot\View\AnnouncementView;
 use P1Bot\View\Html;
 
 /**
@@ -53,7 +54,10 @@ class TeamCards {
 			$entry->team->isRegistered() ? 'записана' : 'собирается',
 		);
 		if ($t->hasLevelLimit()) {
-			$lines[] = sprintf('⚖️ Баллы: %d / %d', $this->teams->pointsOf($entry), (int) $t->max_points);
+			$points = $this->teams->pointsOf($entry);
+			$limit = (int) $t->max_points;
+			$over = $points > $limit;
+			$lines[] = '⚖️ Баллы: ' . Html::e(AnnouncementView::pointsLabel($points, $limit, $over));
 		}
 		$lines[] = '';
 		foreach ($entry->members as $member) {

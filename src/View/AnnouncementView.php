@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace P1Bot\View;
 
+use P1Bot\Domain\Levels;
 use P1Bot\Domain\Lineup;
 use P1Bot\Domain\Model\Player;
 use P1Bot\Domain\Model\SoloPlayer;
@@ -16,7 +17,10 @@ use P1Bot\Support\TeamLetters;
 
 /**
 	Tournament block (HTML): header with icons + teams, solo players, reserve and forming teams.
-	One rendering for the announcement, /tournaments, /info and the AI list. Player levels are never shown.
+	One rendering for the announcement, /tournaments, /info and the AI list. Each team is two lines:
+	letter, name, status, total points («N из LIMIT» when the tournament has a sum limit) and
+	«⚠️ выше уровня» when over the limit; then the players, captain first with a crown.
+	Individual player levels are never shown.
 */
 class AnnouncementView {
 	/**
@@ -38,12 +42,16 @@ class AnnouncementView {
 	*/
 	protected const SOLO_PER_LINE = 8;
 
+	public const OVER_LIMIT = '⚠️ выше уровня';
+
 	/**
 		@param array<int, Player> $players player_id => player, for everyone in the lineup and the organizer
+		@param array<int, int> $levels player_id => effective level (missing = Levels::DEFAULT)
 	*/
 	public function __construct(
 		protected string $bot_username,
 		protected array $players,
+		protected array $levels = [],
 	) {
 	}
 
@@ -79,7 +87,7 @@ class AnnouncementView {
 		@return list<string>
 	*/
 	public function fullMessages(Tournament $t, Lineup $lineup, int $limit = self::MESSAGE_LIMIT): array {
-		$sections = $this->sections($lineup, $t->team_size);
+		$sections = $this->sections($lineup, $t);
 		if ($sections === []) {
 			$sections = [['<i>Пока никто не записался.</i>']];
 		}
@@ -131,8 +139,8 @@ class AnnouncementView {
 	/**
 		Main, solo, reserve and forming lists.
 	*/
-	public function lineupText(Lineup $lineup, int $team_size): string {
-		return $this->join($this->sections($lineup, $team_size));
+	public function lineupText(Lineup $lineup, Tournament $t): string {
+		return $this->join($this->sections($lineup, $t));
 	}
 
 	protected function compose(
@@ -144,7 +152,7 @@ class AnnouncementView {
 		?bool $registration_open = null,
 	): string {
 		$head = $this->header($t, $lineup, $registration_open);
-		$sections = $this->sections($lineup, $t->team_size);
+		$sections = $this->sections($lineup, $t);
 		if ($sections === [] && $empty_hint) {
 			$sections = [['<i>Пока никто не записался.</i>']];
 		}
@@ -155,19 +163,27 @@ class AnnouncementView {
 			return $full;
 		}
 
-		// Too long: keep whole lines while they fit, then say how many lines were left out.
-		$total = array_sum(array_map('count', $sections));
+		// Too long: keep whole cut-units (a team is two lines) while they fit, then say
+		// how many visual lines were left out.
+		$units = static fn (string $line): int => substr_count($line, "\n") + 1;
+		$total = 0;
+		foreach ($sections as $section) {
+			foreach ($section as $line) {
+				$total += $units($line);
+			}
+		}
 		$body = '';
 		$shown = 0;
 		foreach ($sections as $i => $section) {
 			foreach ($section as $j => $line) {
 				$next = $body . ($body === '' ? '' : ($j === 0 ? "\n\n" : "\n")) . $line;
-				$hint = self::cutHint($total - $shown - 1, $t->number);
+				$unit = $units($line);
+				$hint = self::cutHint($total - $shown - $unit, $t->number);
 				if (mb_strlen($head . "\n\n" . $next . "\n" . $hint . $tail) > $limit) {
 					break 2;
 				}
 				$body = $next;
-				$shown++;
+				$shown += $unit;
 			}
 		}
 		return $head . "\n\n" . ($body !== '' ? $body . "\n" : '') . self::cutHint($total - $shown, $t->number) . $tail;
@@ -192,19 +208,19 @@ class AnnouncementView {
 	/**
 		@return list<list<string>> sections, each a list of lines (cut points)
 	*/
-	protected function sections(Lineup $lineup, int $team_size): array {
+	protected function sections(Lineup $lineup, Tournament $t): array {
 		$sections = [];
 		if ($lineup->main_teams !== []) {
-			$sections[] = array_merge(['🛡 <b>Команды:</b>'], $this->teams($lineup->main_teams));
+			$sections[] = array_merge(['🛡 <b>Команды:</b>'], $this->teams($lineup->main_teams, $t, 'записана'));
 		}
 		if ($lineup->main_solo !== []) {
 			// In a 1-player format nobody looks for a team: solos already play on their own.
-			$title = $team_size === 1 ? '🙋 <b>Соло:</b>' : '🙋 <b>Ищут команду:</b>';
+			$title = $t->team_size === 1 ? '🙋 <b>Соло:</b>' : '🙋 <b>Ищут команду:</b>';
 			$sections[] = array_merge([$title], $this->solos($lineup->main_solo));
 		}
 		if ($lineup->reserve_teams !== [] || $lineup->reserve_solo !== []) {
 			$reserve = ['⏳ <b>Запас:</b>'];
-			$reserve = array_merge($reserve, $this->teams($lineup->reserve_teams));
+			$reserve = array_merge($reserve, $this->teams($lineup->reserve_teams, $t, 'запас'));
 			foreach ($this->solos($lineup->reserve_solo) as $i => $line) {
 				$reserve[] = ($i === 0 ? '🙋 Соло: ' : '') . $line;
 			}
@@ -212,9 +228,8 @@ class AnnouncementView {
 		}
 		if ($lineup->forming_teams !== []) {
 			$forming = ['🧩 <b>Собираются:</b>'];
-			foreach ($lineup->forming_teams as $i => $e) {
-				$forming[] = TeamLetters::stored($e->team->letter) . Html::e($e->team->name) . ' — ' . $this->members($e)
-					. ' (' . count($e->members) . '/' . $team_size . ')';
+			foreach ($lineup->forming_teams as $e) {
+				$forming[] = $this->teamBlock($e, $t, 'собирается ' . count($e->members) . '/' . $t->team_size);
 			}
 			$sections[] = $forming;
 		}
@@ -223,14 +238,46 @@ class AnnouncementView {
 
 	/**
 		@param list<TeamEntry> $teams
-		@return list<string>
+		@return list<string> each item is two lines (kept together when a long message is cut)
 	*/
-	protected function teams(array $teams): array {
+	protected function teams(array $teams, Tournament $t, string $status): array {
 		$rows = [];
-		foreach ($teams as $i => $entry) {
-			$rows[] = TeamLetters::stored($entry->team->letter) . Html::b($entry->team->name) . ' — ' . $this->members($entry);
+		foreach ($teams as $entry) {
+			$rows[] = $this->teamBlock($entry, $t, $status);
 		}
 		return $rows;
+	}
+
+	protected function teamBlock(TeamEntry $entry, Tournament $t, string $status): string {
+		$points = $this->pointsOf($entry);
+		$limit = $t->hasLevelLimit() ? (int) $t->max_points : null;
+		$over = $limit !== null && $points > $limit;
+		$name = $entry->team->isRegistered() ? Html::b($entry->team->name) : Html::e($entry->team->name);
+		$bits = [
+			TeamLetters::stored($entry->team->letter) . $name,
+			Html::e($status),
+			Html::e(self::pointsLabel($points, $limit, $over)),
+		];
+		return implode(' · ', $bits) . "\n" . $this->members($entry);
+	}
+
+	/**
+		«11 из 10 ⚠️ выше уровня», or just «11» when the tournament has no sum limit.
+	*/
+	public static function pointsLabel(int $points, ?int $limit, bool $over): string {
+		$text = $limit !== null ? $points . ' из ' . $limit : (string) $points;
+		if ($over) {
+			$text .= ' ' . self::OVER_LIMIT;
+		}
+		return $text;
+	}
+
+	protected function pointsOf(TeamEntry $entry): int {
+		$sum = 0;
+		foreach ($entry->members as $member) {
+			$sum += $this->levels[$member->player_id] ?? Levels::DEFAULT;
+		}
+		return $sum;
 	}
 
 	protected function members(TeamEntry $entry): string {

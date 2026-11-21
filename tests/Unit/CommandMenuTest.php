@@ -7,13 +7,20 @@ namespace P1Bot\Tests\Unit;
 use PHPUnit\Framework\TestCase;
 
 /**
-	bin/set_webhook.php menus: /create_tournament is there (common, groups, private), /new is gone.
+	bin/set_webhook.php menus: /create_tournament is in private (and owner) only, not in the
+	default/group menu; /new is gone.
 */
 class CommandMenuTest extends TestCase {
 
 	public function testMenusOfferTheFormAndNotNew(): void {
 		$src = (string) file_get_contents(dirname(__DIR__, 2) . '/bin/set_webhook.php');
-		self::assertSame(2, substr_count($src, "'command' => 'create_tournament'"));
+		[$before_private, $rest] = explode('$private = [', $src, 2);
+		self::assertStringNotContainsString(
+			"'command' => 'create_tournament'",
+			$before_private,
+			'/create_tournament is not in the default or group menu',
+		);
+		self::assertStringContainsString("'command' => 'create_tournament'", $rest);
 		self::assertStringNotContainsString("'command' => 'new'", $src);
 	}
 

@@ -26,9 +26,12 @@ diag.php
 set_webhook.php
   Ставит webhook по TELEGRAM_* из .env.
   Также обновляет меню команд (личка: /tournaments,
-  /create_tournament, /team, /level, /nick, /players, /help; без /history,
-  /info и без дубля /start; /levels, /edit, /cancel убраны). В личке
-  владельца (BOT_OWNER_TG_ID) меню ещё показывает
+  /create_tournament, /team, /level, /nick, /players,
+  /help; без /history, /info и без дубля /start;
+  /levels, /edit, /cancel убраны). В группах и в
+  общем меню /create_tournament нет (там только
+  редирект в личку). В личке владельца
+  (BOT_OWNER_TG_ID) меню ещё показывает
   /addplayer и /players_import.
   Запустить заново после git pull, если меню команд менялось.
 

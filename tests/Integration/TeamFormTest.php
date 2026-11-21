@@ -490,7 +490,8 @@ class TeamFormTest extends IntegrationTestCase {
 		// Organizer list: stored letters, each team opens its form.
 		$this->http->reset();
 		$this->dispatch($this->press($this->owner, 'oteams:' . $t->id));
-		self::assertStringContainsString('A. Секта — 2/3', $this->http->lastText());
+		self::assertStringContainsString('A. Секта · собирается 2/3 · 6 из 10', $this->http->lastText());
+		self::assertStringContainsString('👑', $this->http->lastText());
 		$list = $this->buttons();
 		self::assertStringStartsWith('A. 🛡 Секта', $list[0]['text']);
 		self::assertSame($entry->team->id, $this->boot($this->owner, $this->tokenOf($list[0]))['team']['id']);
@@ -783,5 +784,47 @@ class TeamFormTest extends IntegrationTestCase {
 		$e = $this->submit($real, $edit, ['name' => 'Смешанные', 'player_ids' => [$shadow->id, $real->id, $owl->id], 'captain_id' => $owl->id]);
 		self::assertStringContainsString('капитаном быть не может', (string) $e?->getMessage());
 		self::assertSame($real->id, $this->app->teams->findByName($t->id, 'Смешанные')->team->captain_id);
+	}
+
+	public function testOverLimitTeamCanSaveEditsThatDoNotMakeItWorse(): void {
+		$t = $this->openTournament(3, '5,5,5'); // max 15, then we lower it
+		$cap = $this->player('cap');
+		$ace = $this->player('ace');
+		$low = $this->player('low');
+		$this->rate($cap, 5);
+		$this->rate($ace, 5);
+		$this->rate($low, 3);
+		$entry = $this->app->teams->createTeam($t->id, $cap->id, 'Драконы', [$ace->id, $low->id]);
+		$this->app->tournament_repo->update($t->id, ['max_points' => 10, 'reference_team' => '10']);
+		$t = $this->app->tournament_repo->find($t->id);
+		self::assertSame(13, $this->app->teams->pointsOf($entry));
+
+		$token = $this->formToken($cap, $t, $entry->team->id);
+		$boot = $this->boot($cap, $token);
+		self::assertSame(13, $boot['team']['saved_points']);
+		self::assertNull($this->submit($cap, $token, [
+			'name' => 'Драконы 2',
+			'player_ids' => [$cap->id, $ace->id, $low->id],
+			'captain_id' => $cap->id,
+		]), 'a rename of an over-limit team is saved');
+		self::assertNotNull($this->app->teams->findByName($t->id, 'Драконы 2'));
+
+		$high = $this->player('high');
+		$this->rate($high, 5);
+		$e = $this->submit($cap, $this->formToken($cap, $t, $entry->team->id), [
+			'name' => 'Драконы 2',
+			'player_ids' => [$cap->id, $ace->id, $high->id],
+			'captain_id' => $cap->id,
+		]);
+		self::assertNotNull($e);
+		self::assertStringContainsString('лимит турнира 10', $e->getMessage());
+
+		self::assertNull($this->submit($cap, $this->formToken($cap, $t, $entry->team->id), [
+			'name' => 'Драконы 2',
+			'player_ids' => [$cap->id, $low->id],
+			'captain_id' => $cap->id,
+		]), 'removing a player so the sum drops (still over or not) is allowed');
+		$fresh = $this->app->teams->findByName($t->id, 'Драконы 2');
+		self::assertSame(8, $this->app->teams->pointsOf($fresh));
 	}
 }

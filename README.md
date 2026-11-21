@@ -313,7 +313,7 @@ group (legacy), but creating a tournament no longer asks which group it is for.
   the bot **owner** (`BOT_OWNER_TG_ID`). Group admins have no special rights to manage someone else's tournament.
 
 Creating:
-- `/create_tournament` (private, also in the command menus and as «➕ Создать турнир» under the
+- `/create_tournament` (private only: in the private and owner command menus, not in groups, and as «➕ Создать турнир» under the
   tournament list for those who may create) opens the **Mini App form** (`public/webapp/create.*`,
   API `webapp_api.php` ops `create_bootstrap` / `create_submit`, initData HMAC + `webapp_contexts`
   token, TTL 6 h). Fields: title (1–255), date and time **MSK** in the future (hint «Регистрация
@@ -333,8 +333,9 @@ Creating:
   Without an https `WEBHOOK_URL` the form is unavailable («попробуй чуть позже»).
 - «✏️ Изменить турнир» on the private tournament card (author and owner, until finished or cancelled)
   opens the same form for a **published** tournament (heading «Изменить турнир»). Once a team or solo
-  player is registered, team size and level are disabled with an explanation (TournamentService::edit
-  rule). An unchanged start time is not re-sent (reminders stay). After saving the announcements are
+  player is registered, team size is disabled with an explanation (TournamentService::edit rule);
+  the tournament level may still be changed. Teams that then go over the limit stay in and are marked
+  «⚠️ выше уровня» in lists, cards and the team form; nobody is messaged. An unchanged start time is not re-sent (reminders stay). After saving the announcements are
   updated in place, then «Обновила турнир «…», анонсы поправила.» and a fresh tournament card.
   Finished/cancelled tournaments: «Турнир «…» уже завершён, менять его в форме нельзя.»
 - Plain text in private («создай турнир на субботу в 20:00, тройки, уровень 10») still works via AI.
@@ -443,8 +444,9 @@ A single level name («средний») is accepted only for one-player teams (
 of levels, digit outside 1–6, total out of range, unknown word) is rejected with the reason plus the usage
 help. The label («средний (10 баллов на троих)») is
 round(max_points / team_size). Changing the team size needs a new level.
-After the first sign-up (team or solo) the level and team size are locked (disabled in the form); the
-bot says so and suggests «❌ Отменить турнир» and a new tournament. DB columns are unchanged (`reference_team`, `max_points`).
+After the first sign-up (team or solo) team size is locked (disabled in the form); the tournament
+level may still be changed. Teams that then go over the limit stay registered and are marked
+«⚠️ выше уровня». The bot still refuses a size change. DB columns are unchanged (`reference_team`, `max_points`).
 
 ## Development
 

@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace P1Bot\App;
 
+use P1Bot\Domain\BalanceService;
 use P1Bot\Domain\Lineup;
 use P1Bot\Domain\Model\Player;
 use P1Bot\Domain\Model\Tournament;
@@ -35,6 +36,7 @@ class Announcer {
 		protected ?TournamentResolver $resolver = null,
 		protected ?ChatRepository $chats = null,
 		protected ?TournamentAnnouncementRepository $announcements = null,
+		protected ?BalanceService $balances = null,
 	) {
 	}
 
@@ -133,7 +135,7 @@ class Announcer {
 	*/
 	public function lineupText(Tournament $t): string {
 		$lineup = $this->tournaments->lineup($t->id);
-		return $this->view($t, $lineup)->lineupText($lineup, $t->team_size);
+		return $this->view($t, $lineup)->lineupText($lineup, $t);
 	}
 
 	/**
@@ -194,12 +196,17 @@ class Announcer {
 			$ids[] = $solo->player_id;
 		}
 		$players = [];
+		$levels = [];
+		$scale_id = $this->balances?->viewScaleId();
 		foreach (array_unique($ids) as $id) {
 			$player = $this->players->find($id);
 			if ($player instanceof Player) {
 				$players[$id] = $player;
 			}
+			if ($this->balances !== null) {
+				$levels[$id] = $this->balances->levelOf($scale_id, $id);
+			}
 		}
-		return new AnnouncementView($this->bot->username, $players);
+		return new AnnouncementView($this->bot->username, $players, $levels);
 	}
 }

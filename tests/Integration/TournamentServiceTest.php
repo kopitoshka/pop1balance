@@ -306,22 +306,25 @@ class TournamentServiceTest extends IntegrationTestCase {
 		self::assertSame(7, $t->max_points);
 	}
 
-	public function testLevelIsLockedAfterSignUps(): void {
+	public function testTeamSizeIsLockedAfterSignUpsButLevelMayChange(): void {
 		$t = $this->openTournament();
 		$this->app->teams->joinSolo($t->id, $this->player('vasya')->id);
 		try {
-			$this->app->tournaments->edit($this->owner->id, $t->id, new EditTournament(null, null, null, '12'));
-			self::fail('locked');
+			$this->app->tournaments->edit($this->owner->id, $t->id, new EditTournament(null, null, 2, '8'));
+			self::fail('team size is locked');
 		} catch (ValidationError $e) {
-			self::assertStringContainsString('Уровень турнира и размер команды уже не поменять', $e->getMessage());
-			self::assertStringContainsString('отмени этот турнир', $e->getMessage());
+			self::assertStringContainsString('Размер команды уже не поменять', $e->getMessage());
+			self::assertStringNotContainsString('/cancel', $e->getMessage());
 		}
+		self::assertSame(3, $this->app->tournaments->get($t->id)->team_size);
+		$t = $this->app->tournaments->edit($this->owner->id, $t->id, new EditTournament(null, null, null, '12'));
+		self::assertSame(12, $t->max_points);
 		// Title/limit are still editable.
 		$t = $this->app->tournaments->edit(
 			$this->owner->id,
 			$t->id,
 			new EditTournament('Новое имя', null, null, null, null, 30),
 		);
-		self::assertSame(30, $t->max_players);
+		self::assertSame(['Новое имя', 30], [$t->title, $t->max_players]);
 	}
 }

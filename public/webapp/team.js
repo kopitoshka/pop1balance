@@ -109,6 +109,16 @@
 		return max !== null && points() > max;
 	}
 
+	// An existing over-limit team (after the tournament level was lowered) may be saved
+	// if the sum does not go above what is already saved.
+	function worseThanSaved() {
+		if (!overLimit()) {
+			return false;
+		}
+		var saved = boot.team && boot.team.saved_points;
+		return !(boot.mode === 'edit' && saved != null && points() <= saved);
+	}
+
 	function hasMember(id) {
 		return members.some(function (m) {
 			return m.id === id;
@@ -342,18 +352,23 @@
 			return;
 		}
 		var over = sum > max;
-		el.sum.appendChild(node('span', over ? 'bad' : 'okc', sum + ' из ' + max + (over ? '' : ' ✓')));
+		el.sum.appendChild(node('span', over ? 'bad' : 'okc', sum + ' из ' + max + (over ? ' ⚠️ выше уровня' : ' ✓')));
 		el.bar.hidden = false;
 		el.bar.classList.toggle('over', over);
 		el.bar_fill.style.width = Math.min(100, Math.round(sum * 100 / max)) + '%';
-		if (over) {
+		if (over && worseThanSaved()) {
 			var excess = sum - max;
 			setError(el.roster_error, 'Перебор на ' + excess + ' ' + plural(excess, ['балл', 'балла', 'баллов'])
 				+ ': лимит турнира ' + max + '. Убери игрока или замени на игрока пониже уровнем.');
+			el.roster_error.dataset.live = '1';
+		} else if (over) {
+			setError(el.roster_error, '⚠️ выше уровня: ' + sum + ' из ' + max
+				+ '. Сохранить можно, если не набирать ещё больше баллов.');
+			el.roster_error.dataset.live = '1';
 		} else if (el.roster_error.dataset.live === '1') {
 			setError(el.roster_error, '');
+			el.roster_error.dataset.live = '';
 		}
-		el.roster_error.dataset.live = over ? '1' : '';
 	}
 
 	function render() {
@@ -381,7 +396,7 @@
 			el.roster_hint.textContent = (members.length < teamSize() ? el.roster_hint.textContent + ' ' : '')
 				+ '«⋯» у игрока: сделать капитаном. «✕»: убрать из команды.';
 		}
-		el.submit.disabled = busy || readonly() || overLimit() || el.name.value.trim() === ''
+		el.submit.disabled = busy || readonly() || worseThanSaved() || el.name.value.trim() === ''
 			|| members.length === 0 || members.length > teamSize();
 	}
 

@@ -26,9 +26,8 @@ class TournamentService {
 	public const REFERENCE_REQUIRED = 'Нужно указать уровень турнира: одним числом — сумму баллов на команду, '
 		. 'или уровнями всех игроков команды, например «средний, средний, средний+».';
 
-	public const LEVEL_LOCKED = 'Уровень турнира и размер команды уже не поменять: на турнир есть заявки, '
-		. 'и их проверяли по текущим правилам. Название, время и лимит участников менять можно. '
-		. 'Если нужен другой уровень — отмени этот турнир кнопкой «❌ Отменить турнир» на его карточке и создай новый (/create_tournament).';
+	public const LEVEL_LOCKED = 'Размер команды уже не поменять: на турнир есть заявки. '
+		. 'Уровень турнира, название, время и лимит участников менять можно.';
 
 	public function __construct(
 		protected TournamentRepository $tournaments,
@@ -94,10 +93,10 @@ class TournamentService {
 			$limit_touched = $edit->team_size !== null || $edit->reference_team !== null
 				|| $edit->remove_level_limit;
 			if ($limit_touched) {
-				if ($this->hasEntries($t->id)) {
+				$team_size = $this->validTeamSize($edit->team_size ?? $t->team_size);
+				if ($team_size !== $t->team_size && $this->hasEntries($t->id)) {
 					throw new ValidationError(self::LEVEL_LOCKED);
 				}
-				$team_size = $this->validTeamSize($edit->team_size ?? $t->team_size);
 				if ($edit->remove_level_limit) {
 					throw new ValidationError('Турнир без уровня сделать нельзя. ' . self::REFERENCE_REQUIRED);
 				}
@@ -445,7 +444,7 @@ class TournamentService {
 	}
 
 	/**
-		Teams or solo players registered: team size and level are locked (LEVEL_LOCKED).
+		Teams or solo players registered: team size is locked (LEVEL_LOCKED). The level may still change.
 	*/
 	public function hasEntries(int $tournament_id): bool {
 		return $this->teams->listByTournament($tournament_id) !== [] || $this->solos->listByTournament($tournament_id) !== [];

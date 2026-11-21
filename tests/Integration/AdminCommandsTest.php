@@ -425,19 +425,21 @@ class AdminCommandsTest extends IntegrationTestCase {
 		self::assertStringContainsString('Отменён', $this->http->lastText());
 	}
 
-	public function testLevelLockedMessageIsClear(): void {
+	public function testTeamSizeLockedMessageIsClear(): void {
 		$this->newDraft($this->owner, '23.11 20:00 | Кубок | 3 | 10');
 		$this->confirmCard($this->owner);
 		$this->app->teams->joinSolo(1, $this->player('vasya')->id);
 		try {
-			$this->app->tournaments->edit($this->owner->id, 1, new \P1Bot\Domain\EditTournament(reference_team: '12'));
-			self::fail('level is locked');
+			$this->app->tournaments->edit($this->owner->id, 1, new \P1Bot\Domain\EditTournament(team_size: 2, reference_team: '8'));
+			self::fail('team size is locked');
 		} catch (\P1Bot\Domain\Exception\ValidationError $e) {
-			self::assertStringContainsString('Уровень турнира и размер команды уже не поменять: на турнир есть заявки', $e->getMessage());
-			self::assertStringContainsString('«❌ Отменить турнир»', $e->getMessage());
+			self::assertStringContainsString('Размер команды уже не поменять: на турнир есть заявки', $e->getMessage());
+			self::assertStringContainsString('Уровень турнира, название, время и лимит участников менять можно', $e->getMessage());
 			self::assertStringNotContainsString('/cancel', $e->getMessage());
 		}
-		self::assertSame(10, $this->app->tournament_repo->find(1)->max_points);
+		self::assertSame(3, $this->app->tournament_repo->find(1)->team_size);
+		$this->app->tournaments->edit($this->owner->id, 1, new \P1Bot\Domain\EditTournament(reference_team: '12'));
+		self::assertSame(12, $this->app->tournament_repo->find(1)->max_points, 'the level may still change');
 		$error = (string) $this->newDraft($this->owner, '23.11 20:00 | Кубок | 3 | средний');
 		self::assertStringContainsString('Укажи уровень каждого игрока: 3 игрока', $error);
 	}
