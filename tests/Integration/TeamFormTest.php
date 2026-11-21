@@ -547,7 +547,7 @@ class TeamFormTest extends IntegrationTestCase {
 		// Organizer list: stored letters, each team opens its form.
 		$this->http->reset();
 		$this->dispatch($this->press($this->owner, 'oteams:' . $t->id));
-		self::assertStringContainsString('A. Секта · собирается 2/3 · 6 из 10', $this->http->lastText());
+		self::assertStringContainsString('A. Секта · собирается 2/3 · lvl.6', $this->http->lastText());
 		self::assertStringContainsString('👑', $this->http->lastText());
 		$list = $this->buttons();
 		self::assertStringStartsWith('A. 🛡 Секта', $list[0]['text']);

@@ -18,8 +18,9 @@ use P1Bot\Support\TeamLetters;
 /**
 	Tournament block (HTML): header with icons + teams, solo players, reserve and forming teams.
 	One rendering for the announcement, /tournaments, /tournaments N and the AI list. Each team is two lines:
-	letter, name, status, total points («N из LIMIT» when the tournament has a sum limit) and
-	«⚠️ выше уровня» when over the limit; then the players, captain first with a crown.
+	letter, name, strength as «lvl.N», and «⚠️ выше уровня» when over the limit; then the players,
+	captain first with a crown. Status words («записана», «запас») are not repeated: teams already sit
+	under the «Команды» / «Запас» section headers. Forming teams still show «собирается N/SIZE».
 	Individual player levels are never shown.
 */
 class AnnouncementView {
@@ -211,7 +212,7 @@ class AnnouncementView {
 	protected function sections(Lineup $lineup, Tournament $t): array {
 		$sections = [];
 		if ($lineup->main_teams !== []) {
-			$sections[] = array_merge(['🛡 <b>Команды:</b>'], $this->teams(Lineup::sortByLetter($lineup->main_teams), $t, 'записана'));
+			$sections[] = array_merge(['🛡 <b>Команды:</b>'], $this->teams(Lineup::sortByLetter($lineup->main_teams), $t));
 		}
 		if ($lineup->main_solo !== []) {
 			// In a 1-player format nobody looks for a team: solos already play on their own.
@@ -220,7 +221,7 @@ class AnnouncementView {
 		}
 		if ($lineup->reserve_teams !== [] || $lineup->reserve_solo !== []) {
 			$reserve = ['⏳ <b>Запас:</b>'];
-			$reserve = array_merge($reserve, $this->teams(Lineup::sortByLetter($lineup->reserve_teams), $t, 'запас'));
+			$reserve = array_merge($reserve, $this->teams(Lineup::sortByLetter($lineup->reserve_teams), $t));
 			foreach ($this->solos($lineup->reserve_solo) as $i => $line) {
 				$reserve[] = ($i === 0 ? '🙋 Соло: ' : '') . $line;
 			}
@@ -240,7 +241,7 @@ class AnnouncementView {
 		@param list<TeamEntry> $teams
 		@return list<string> each item is two lines (kept together when a long message is cut)
 	*/
-	protected function teams(array $teams, Tournament $t, string $status): array {
+	protected function teams(array $teams, Tournament $t, string $status = ''): array {
 		$rows = [];
 		foreach ($teams as $entry) {
 			$rows[] = $this->teamBlock($entry, $t, $status);
@@ -248,24 +249,25 @@ class AnnouncementView {
 		return $rows;
 	}
 
-	protected function teamBlock(TeamEntry $entry, Tournament $t, string $status): string {
+	protected function teamBlock(TeamEntry $entry, Tournament $t, string $status = ''): string {
 		$points = $this->pointsOf($entry);
 		$limit = $t->hasLevelLimit() ? (int) $t->max_points : null;
 		$over = $limit !== null && $points > $limit;
 		$name = $entry->team->isRegistered() ? Html::b($entry->team->name) : Html::e($entry->team->name);
-		$bits = [
-			TeamLetters::stored($entry->team->letter) . $name,
-			Html::e($status),
-			Html::e(self::pointsLabel($points, $limit, $over)),
-		];
+		$bits = [TeamLetters::stored($entry->team->letter) . $name];
+		if ($status !== '') {
+			$bits[] = Html::e($status);
+		}
+		$bits[] = Html::e(self::pointsLabel($points, $limit, $over));
 		return implode(' · ', $bits) . "\n" . $this->members($entry);
 	}
 
 	/**
-		«11 из 10 ⚠️ выше уровня», or just «11» when the tournament has no sum limit.
+		«lvl.11 ⚠️ выше уровня». $limit is kept for callers; the number itself is no longer shown.
 	*/
 	public static function pointsLabel(int $points, ?int $limit, bool $over): string {
-		$text = $limit !== null ? $points . ' из ' . $limit : (string) $points;
+		unset($limit);
+		$text = 'lvl.' . $points;
 		if ($over) {
 			$text .= ' ' . self::OVER_LIMIT;
 		}

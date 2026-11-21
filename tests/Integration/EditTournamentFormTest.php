@@ -347,10 +347,10 @@ class EditTournamentFormTest extends IntegrationTestCase {
 		self::assertSame(10, $t->max_points);
 		self::assertNotNull($this->app->teams->findByName(1, 'Драконы'), 'the team stays in the tournament');
 		$lineup = $this->app->announcer->lineupText($t);
-		self::assertStringContainsString('15 из 10 ⚠️ выше уровня', $lineup);
-		self::assertStringContainsString("A. <b>Драконы</b> · записана · 15 из 10 ⚠️ выше уровня\n👑", $lineup);
+		self::assertStringContainsString('lvl.15 ⚠️ выше уровня', $lineup);
+		self::assertStringContainsString("A. <b>Драконы</b> · lvl.15 ⚠️ выше уровня\n👑", $lineup);
 		$card = $this->app->team_cards->text($t, $this->app->teams->get($entry->team->id));
-		self::assertStringContainsString('15 из 10 ⚠️ выше уровня', $card);
+		self::assertStringContainsString('lvl.15 ⚠️ выше уровня', $card);
 		$dms = array_filter(
 			$this->http->sent('sendMessage'),
 			fn (array $m): bool => (int) $m['chat_id'] > 0 && (int) $m['chat_id'] !== self::OWNER_TG_ID,

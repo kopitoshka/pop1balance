@@ -75,11 +75,11 @@ class AnnouncementViewTest extends TestCase {
 		self::assertStringContainsString('🟢 Идёт регистрация', $text);
 		self::assertStringContainsString('🎟 Занято 4/4 · запас 3', $text);
 		self::assertStringContainsString(
-			"🛡 <b>Команды:</b>\nA. <b>Bears</b> · записана · 6 из 7\n👑 <a href=\"https://t.me/p4\">@p4</a>, <a href=\"https://t.me/p5\">@p5</a>\nC. <b>Wolves</b> · записана · 6 из 7\n👑 <a href=\"https://t.me/p2\">@p2</a>, <a href=\"https://t.me/p3\">@p3</a>",
+			"🛡 <b>Команды:</b>\nA. <b>Bears</b> · lvl.6\n👑 <a href=\"https://t.me/p4\">@p4</a>, <a href=\"https://t.me/p5\">@p5</a>\nC. <b>Wolves</b> · lvl.6\n👑 <a href=\"https://t.me/p2\">@p2</a>, <a href=\"https://t.me/p3\">@p3</a>",
 			$text,
 		);
-		self::assertStringContainsString("⏳ <b>Запас:</b>\nB. <b>Late</b> · запас · 6 из 7\n👑 <a href=\"https://t.me/p6\">@p6</a>, <a href=\"https://t.me/p7\">@p7</a>\n🙋 Соло: <a href=\"https://t.me/p8\">@p8</a>", $text);
-		self::assertStringContainsString("🧩 <b>Собираются:</b>\n?. Forming · собирается 1/2 · 3 из 7\n👑 <a href=\"https://t.me/p9\">@p9</a>", $text);
+		self::assertStringContainsString("⏳ <b>Запас:</b>\nB. <b>Late</b> · lvl.6\n👑 <a href=\"https://t.me/p6\">@p6</a>, <a href=\"https://t.me/p7\">@p7</a>\n🙋 Соло: <a href=\"https://t.me/p8\">@p8</a>", $text);
+		self::assertStringContainsString("🧩 <b>Собираются:</b>\n?. Forming · собирается 1/2 · lvl.3\n👑 <a href=\"https://t.me/p9\">@p9</a>", $text);
 		self::assertDoesNotMatchRegularExpression('/средний \(3\)/u', $text, 'individual player levels are not shown');
 		self::assertStringContainsString('в личке у @pop1_bot', $text);
 	}
@@ -167,7 +167,7 @@ class AnnouncementViewTest extends TestCase {
 		];
 		$view = new AnnouncementView('pop1_bot', $players, [1 => 5, 2 => 5]);
 		$text = $view->lineupText(\P1Bot\Domain\Lineup::compute(24, [$entry], []), $t);
-		self::assertStringContainsString("A. <b>Драконы</b> · записана · 12 из 6 ⚠️ выше уровня\n👑 <a href=\"https://t.me/a\">@a</a>, <a href=\"https://t.me/b\">@b</a>", $text);
+		self::assertStringContainsString("A. <b>Драконы</b> · lvl.12 ⚠️ выше уровня\n👑 <a href=\"https://t.me/a\">@a</a>, <a href=\"https://t.me/b\">@b</a>", $text);
 	}
 
 	public function testTeamsAreListedByLetter(): void {
