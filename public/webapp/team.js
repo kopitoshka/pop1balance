@@ -4,6 +4,9 @@
 	// Team form: team.html?ctx=… (API ops team_*). The server decides the mode and the role.
 	var tg = window.Telegram && window.Telegram.WebApp;
 	var ctx = new URLSearchParams(window.location.search).get('ctx') || '';
+	var opening_id = (window.crypto && crypto.randomUUID)
+		? crypto.randomUUID().replace(/-/g, '')
+		: String(Date.now()) + '-' + Math.random().toString(36).slice(2);
 	var API_URL = '../webapp_api.php';
 	var COLORS = ['#e67e22', '#8e44ad', '#16a085', '#2980b9', '#c0392b', '#27ae60', '#d35400', '#7f8c8d'];
 
@@ -473,7 +476,8 @@
 			letter_touched: letter_touched,
 			pending: pending.map(function (p) {
 				return p.label;
-			})
+			}),
+			opening_id: opening_id
 		};
 	}
 

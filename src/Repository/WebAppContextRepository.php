@@ -44,10 +44,42 @@ class WebAppContextRepository {
 		@return array{token: string, actor_player_id: int, chat_id: int, action: string, payload: array<string, mixed>}|null
 	*/
 	public function find(string $token, DateTimeImmutable $now): ?array {
-		$row = $this->db->fetchOne(
-			'SELECT * FROM webapp_contexts WHERE token = :t AND expires_at >= :n',
-			['t' => $token, 'n' => DateFormat::toDb($now)],
-		);
+		return $this->load($token, $now, false);
+	}
+
+	/**
+		Same as find(), but locks the row (SELECT FOR UPDATE). Call inside transactional().
+	*/
+	public function lock(string $token, DateTimeImmutable $now): ?array {
+		return $this->load($token, $now, true);
+	}
+
+	/**
+		@template T
+		@param callable(): T $fn
+		@return T
+	*/
+	public function transactional(callable $fn): mixed {
+		return $this->db->transactional($fn);
+	}
+
+	/**
+		Client-generated id of one form opening, for duplicate-submit protection.
+	*/
+	public static function openingId(mixed $value): ?string {
+		if (!is_string($value)) {
+			return null;
+		}
+		$value = trim($value);
+		return preg_match('/^[A-Za-z0-9_-]{8,64}$/D', $value) === 1 ? $value : null;
+	}
+
+	protected function load(string $token, DateTimeImmutable $now, bool $for_update): ?array {
+		$sql = 'SELECT * FROM webapp_contexts WHERE token = :t AND expires_at >= :n';
+		if ($for_update && $this->db->pdo()->getAttribute(\PDO::ATTR_DRIVER_NAME) === 'mysql') {
+			$sql .= ' FOR UPDATE';
+		}
+		$row = $this->db->fetchOne($sql, ['t' => $token, 'n' => DateFormat::toDb($now)]);
 		if ($row === null) {
 			return null;
 		}

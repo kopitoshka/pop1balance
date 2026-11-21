@@ -392,7 +392,31 @@ class CreateTournamentFormTest extends IntegrationTestCase {
 		self::assertSame(['level', 'max_players'], array_keys($e->fields));
 	}
 
+	public function testCreateButtonTokenStaysReusableAndDedupsAnOpening(): void {
+		$this->app->chats->ensure((int) $this->owner->tg_user_id, $this->owner->display_name);
+		$token = (string) $this->app->create_form->issueToken($this->owner);
+		$first = $this->app->create_form->submit($this->initDataFor($this->owner), $token, $this->form([
+			'opening_id' => 'create_open_1',
+		]));
+		self::assertSame(1, $first['tournament_id']);
+		$again = $this->app->create_form->submit($this->initDataFor($this->owner), $token, $this->form([
+			'title' => 'Другой',
+			'opening_id' => 'create_open_1',
+		]));
+		self::assertSame(1, $again['tournament_id']);
+		self::assertSame('Кубок выходного дня', $this->app->tournament_repo->find(1)->title);
+		self::assertSame(1, count($this->app->tournament_repo->listByStatuses([TournamentStatus::DRAFT])));
+
+		$second = $this->app->create_form->submit($this->initDataFor($this->owner), $token, $this->form([
+			'title' => 'Ещё кубок',
+			'opening_id' => 'create_open_2',
+		]));
+		self::assertSame(2, $second['tournament_id']);
+		self::assertSame(2, count($this->app->tournament_repo->listByStatuses([TournamentStatus::DRAFT])));
+	}
+
 	public function testExpiredOrForeignFormIsRejectedClearly(): void {
+
 		$token = (string) $this->app->create_form->issueToken($this->owner);
 		$this->clock->advance('+' . (CreateTournamentForm::TTL_SECONDS + 60) . ' seconds');
 		try {

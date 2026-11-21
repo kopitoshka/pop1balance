@@ -4,6 +4,9 @@
 	var tg = window.Telegram && window.Telegram.WebApp;
 	var params = new URLSearchParams(window.location.search);
 	var ctx = params.get('ctx') || '';
+	var opening_id = (window.crypto && crypto.randomUUID)
+		? crypto.randomUUID().replace(/-/g, '')
+		: String(Date.now()) + '-' + Math.random().toString(36).slice(2);
 	// The same page edits a draft: create.html?ctx=…&mode=edit (API ops edit_*).
 	var form_mode = params.get('mode') === 'edit' ? 'edit' : 'create';
 	var SUBMIT_TEXT = form_mode === 'edit' ? 'Сохранить' : 'Создать черновик';
@@ -466,6 +469,7 @@
 		} else {
 			data.levels = levels.slice();
 		}
+		data.opening_id = opening_id;
 		return data;
 	}
 

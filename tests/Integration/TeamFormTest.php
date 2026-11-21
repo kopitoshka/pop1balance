@@ -161,11 +161,68 @@ class TeamFormTest extends IntegrationTestCase {
 		$card_buttons = $this->buttons();
 		self::assertCount(1, $card_buttons);
 		self::assertSame(TeamForm::EDIT_BUTTON, $card_buttons[0]['text']);
+	}
 
-		// One team per opening: the same token cannot register again.
-		$e = $this->submit($cap, $token, ['name' => 'Секта 2', 'player_ids' => [$cap->id], 'captain_id' => $cap->id]);
+	public function testNewTeamTokenStaysReusableAndDedupsAnOpening(): void {
+		$t = $this->openTournament(3, null);
+		$token = $this->formToken($this->owner, $t, null);
+		$a = $this->player('p_a');
+		$b = $this->player('p_b');
+		$c = $this->player('p_c');
+		$d = $this->player('p_d');
+
+		self::assertNull($this->submit($this->owner, $token, [
+			'name' => 'Первые', 'player_ids' => [$a->id], 'captain_id' => $a->id, 'opening_id' => 'opening_a1aaaa',
+		]));
+		$first = $this->app->teams->findByName($t->id, 'Первые');
+		self::assertNotNull($first);
+
+		$again = $this->app->team_form->submit($this->initDataFor($this->owner), $token, [
+			'name' => 'Другие', 'player_ids' => [$b->id], 'captain_id' => $b->id, 'opening_id' => 'opening_a1aaaa',
+		]);
+		self::assertSame($first->team->id, $again['team_id']);
+		self::assertNull($this->app->teams->findByName($t->id, 'Другие'));
+		self::assertCount(1, $this->app->team_repo->listByTournament($t->id));
+
+		self::assertNull($this->submit($this->owner, $token, [
+			'name' => 'Вторые', 'player_ids' => [$c->id], 'captain_id' => $c->id, 'opening_id' => 'opening_b2bbbb',
+		]));
+		self::assertNotNull($this->app->teams->findByName($t->id, 'Вторые'));
+		self::assertCount(2, $this->app->team_repo->listByTournament($t->id));
+
+		$this->clock->advance('+' . (TeamForm::TTL_SECONDS + 60) . ' seconds');
+		$e = $this->submit($this->owner, $token, [
+			'name' => 'Поздние', 'player_ids' => [$d->id], 'captain_id' => $d->id, 'opening_id' => 'opening_late___',
+		]);
 		self::assertNotNull($e);
 		self::assertSame(WebAppFormError::EXPIRED, $e->reason);
+		self::assertNull($this->app->teams->findByName($t->id, 'Поздние'));
+		try {
+			$this->boot($this->owner, $token);
+			self::fail('expired token');
+		} catch (WebAppFormError $err) {
+			self::assertSame(WebAppFormError::EXPIRED, $err->reason);
+		}
+	}
+
+	public function testRegularPlayerReopeningANewTeamButtonGetsTheirTeam(): void {
+		$t = $this->openTournament(3, null);
+		$cap = $this->player('cap');
+		$token = $this->formToken($cap, $t, null);
+		self::assertNull($this->submit($cap, $token, [
+			'name' => 'Секта', 'player_ids' => [$cap->id], 'captain_id' => $cap->id, 'opening_id' => 'opening_cap_1',
+		]));
+		$boot = $this->boot($cap, $token);
+		self::assertSame('edit', $boot['mode']);
+		self::assertSame('Секта', $boot['team']['name']);
+		self::assertCount(1, $this->app->team_repo->listByTournament($t->id));
+
+		self::assertNull($this->submit($cap, $token, [
+			'name' => 'Секта 2', 'player_ids' => [$cap->id], 'captain_id' => $cap->id, 'opening_id' => 'opening_cap_2',
+		]));
+		self::assertNotNull($this->app->teams->findByName($t->id, 'Секта 2'));
+		self::assertNull($this->app->teams->findByName($t->id, 'Секта'));
+		self::assertCount(1, $this->app->team_repo->listByTournament($t->id), 'no second team is created');
 	}
 
 	public function testSoloSizeTeamIsCaptainAlone(): void {

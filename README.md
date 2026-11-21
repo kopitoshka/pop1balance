@@ -269,7 +269,7 @@ for the webhook too, e.g. `sudo -u apache php bin/diag.php`.
   (member/captain). Drafts open as the draft card for their organizer.
 - `/start`, `/start g_<chat>`: greeting + active tournaments of all groups, each with an «open» button.
 - **Team Mini App** (`public/webapp/team.*`, ops `team_bootstrap` / `team_search` / `team_submit` /
-  `team_contacts` / `team_leave` / `team_disband`, `webapp_contexts` action `team_form`, TTL 6 h). New team:
+  `team_contacts` / `team_leave` / `team_disband`, `webapp_contexts` action `team_form`, TTL 6 h). A new-team button («➕ Добавить команду» and «🛡 Собрать команду») keeps that token for the whole lifetime: each form opening sends a random `opening_id`, a repeated submit returns the first team, and the organizer can add another team from the same button. A regular player who already has a team gets that team (edit), not a second one. The «➕ Создать турнир» / `/create_tournament` button uses the same opening_id rule. New team:
   the opener is captain, the name is prefilled from `players.preferred_team_name` (migration 018: the
   last team they captained, set at once on creation, rename and captain transfer, never cleared;
   skipped if taken in this tournament).

@@ -9,6 +9,7 @@ use P1Bot\Domain\AccessPolicy;
 use P1Bot\Domain\BalanceService;
 use P1Bot\Domain\Exception\DomainError;
 use P1Bot\Domain\Exception\LevelLimitExceeded;
+use P1Bot\Domain\Exception\NotFound;
 use P1Bot\Domain\Exception\PermissionDenied;
 use P1Bot\Domain\Levels;
 use P1Bot\Domain\Model\Player;
@@ -151,6 +152,9 @@ class TeamForm {
 	*/
 	public function bootstrap(string $init_data, string $token): array {
 		[$actor, $ctx, , $t, $entry] = $this->authorize($init_data, $token);
+		if ($entry === null) {
+			$entry = $this->ownedTeamIfRegular($actor, $t);
+		}
 		$role = $this->role($actor, $t, $entry);
 		if ($entry !== null && $role === 'stranger') {
 			throw new WebAppFormError(self::STRANGER_TEXT, '', WebAppFormError::FORBIDDEN);
@@ -289,6 +293,7 @@ class TeamForm {
 	*/
 	public function search(string $init_data, string $token, string $query): array {
 		[$actor, , , $t, $entry] = $this->authorize($init_data, $token);
+		$entry ??= $this->ownedTeamIfRegular($actor, $t);
 		$taken_names = $this->team_repo->memberTeamNames($t->id);
 		$query = trim($query);
 		if ($query === '') {
@@ -329,39 +334,78 @@ class TeamForm {
 		if ($name === '') {
 			throw new WebAppFormError('Напиши название команды.', 'name');
 		}
+		$new_team_token = ($ctx['payload']['team_id'] ?? null) === null;
+		$opening = WebAppContextRepository::openingId($input['opening_id'] ?? null);
+		if ($new_team_token) {
+			$replay_id = $this->createdOpening($ctx, $opening);
+			if ($replay_id !== null) {
+				return ['ok' => true, 'close' => true, 'team_id' => $replay_id];
+			}
+			if ($entry === null) {
+				$entry = $this->ownedTeamIfRegular($actor, $t);
+			}
+		}
+		$creating = $entry === null;
 		if ($this->dialogs !== null) {
 			$this->dialogs->begin($user, $ctx['chat_id'], 'private', '');
 			$this->dialogs->user(sprintf(
 				'[форма] %s «%s»: %s',
-				$entry === null ? 'Новая команда' : 'Сохранить команду',
+				$creating ? 'Новая команда' : 'Сохранить команду',
 				$name,
 				implode(', ', array_map(fn (int $id): string => $this->players->find($id)?->plainLabel() ?? ('#' . $id), $ids)),
 			));
 		}
 		try {
 			try {
-				$saved = $this->teams->saveForm(
-					$actor->id,
-					$t->id,
-					$entry?->team->id,
-					$name,
-					$ids,
-					$captain_id,
-					$letter_touched,
-					$letter,
-				);
+				$saved = $this->contexts->transactional(function () use (
+					$token, $actor, $t, $entry, $creating, $new_team_token, $name, $ids,
+					$captain_id, $letter_touched, $letter, $opening,
+				): TeamEntry {
+					$locked = $this->contexts->lock($token, $this->clock->now());
+					if ($locked === null) {
+						throw new WebAppFormError(self::EXPIRED_TEXT, '', WebAppFormError::EXPIRED);
+					}
+					if ($creating) {
+						$replay_id = $this->createdOpening($locked, $opening);
+						if ($replay_id !== null) {
+							return $this->teams->get($replay_id);
+						}
+					}
+					$saved = $this->teams->saveForm(
+						$actor->id,
+						$t->id,
+						$entry?->team->id,
+						$name,
+						$ids,
+						$captain_id,
+						$letter_touched,
+						$letter,
+					);
+					$payload = $locked['payload'];
+					if ($new_team_token) {
+						// Keep team_id null so the same «➕ Добавить команду» button stays reusable.
+						if ($creating && $opening !== null) {
+							$payload['openings'] = is_array($payload['openings'] ?? null) ? $payload['openings'] : [];
+							$payload['openings'][$opening] = $saved->team->id;
+						}
+						unset($payload['draft']);
+						$this->contexts->updatePayload($token, $payload);
+					} else {
+						$this->contexts->updatePayload($token, [
+							'tournament_id' => $t->id,
+							'team_id' => $saved->team->id,
+						]);
+					}
+					return $saved;
+				});
 			} catch (LevelLimitExceeded $e) {
 				throw new WebAppFormError($e->getMessage(), 'roster');
 			} catch (PermissionDenied $e) {
 				throw new WebAppFormError($e->getMessage(), '', WebAppFormError::FORBIDDEN);
+			} catch (WebAppFormError $e) {
+				throw $e;
 			} catch (DomainError $e) {
 				throw new WebAppFormError($e->getMessage(), self::fieldFor($e->getMessage()));
-			}
-			if ($entry === null) {
-				// One team per opening: a second tap on «Зарегистрировать» must not try again.
-				$this->contexts->delete($token);
-			} else {
-				$this->contexts->updatePayload($token, ['tournament_id' => $t->id, 'team_id' => $saved->team->id]);
 			}
 			$this->announcer->refresh($t->id);
 			$t = $this->tournaments->get($t->id);
@@ -382,6 +426,7 @@ class TeamForm {
 	*/
 	public function contacts(string $init_data, string $token, array $input): array {
 		[$actor, $ctx, , $t, $entry] = $this->authorize($init_data, $token);
+		$entry ??= $this->ownedTeamIfRegular($actor, $t);
 		if ($entry !== null && $this->role($actor, $t, $entry) === 'member') {
 			throw new WebAppFormError(self::STRANGER_TEXT, '', WebAppFormError::FORBIDDEN);
 		}
@@ -484,6 +529,7 @@ class TeamForm {
 	*/
 	public function leave(string $init_data, string $token): array {
 		[$actor, $ctx, , $t, $entry] = $this->authorize($init_data, $token);
+		$entry ??= $this->ownedTeamIfRegular($actor, $t);
 		if ($entry === null) {
 			throw new WebAppFormError(self::EXPIRED_TEXT, '', WebAppFormError::EXPIRED);
 		}
@@ -505,6 +551,7 @@ class TeamForm {
 	*/
 	public function disband(string $init_data, string $token): array {
 		[$actor, $ctx, , $t, $entry] = $this->authorize($init_data, $token);
+		$entry ??= $this->ownedTeamIfRegular($actor, $t);
 		if ($entry === null) {
 			throw new WebAppFormError(self::EXPIRED_TEXT, '', WebAppFormError::EXPIRED);
 		}
@@ -605,6 +652,41 @@ class TeamForm {
 		}
 		$parts[] = $t->hasLevelLimit() ? 'уровень ' . (int) $t->max_points : 'без лимита уровня';
 		return implode(' · ', $parts);
+	}
+
+	/**
+		A regular player who already has a team, tapping a leftover new-team button, gets that team
+		(edit / leave), not a second create. Organizers keep a blank new-team form.
+	*/
+	protected function ownedTeamIfRegular(Player $actor, Tournament $t): ?TeamEntry {
+		if ($this->access->canManageTournament($t, $actor->id)) {
+			return null;
+		}
+		return $this->teams->teamOf($t->id, $actor->id);
+	}
+
+	/**
+		Team already created by this form opening, if it is still there.
+		@param array<string, mixed> $ctx
+	*/
+	protected function createdOpening(array $ctx, ?string $opening): ?int {
+		if ($opening === null) {
+			return null;
+		}
+		$openings = $ctx['payload']['openings'] ?? null;
+		if (!is_array($openings) || !isset($openings[$opening])) {
+			return null;
+		}
+		$id = (int) $openings[$opening];
+		if ($id <= 0) {
+			return null;
+		}
+		try {
+			$this->teams->get($id);
+			return $id;
+		} catch (NotFound $e) {
+			return null;
+		}
 	}
 
 	/**

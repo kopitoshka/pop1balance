@@ -10,6 +10,7 @@ use P1Bot\Domain\CreateTournament;
 use P1Bot\Domain\EditTournament;
 use P1Bot\Domain\Exception\DomainError;
 use P1Bot\Domain\Exception\InvalidLevel;
+use P1Bot\Domain\Exception\NotFound;
 use P1Bot\Domain\Exception\PermissionDenied;
 use P1Bot\Domain\Levels;
 use P1Bot\Domain\Model\Player;
@@ -313,6 +314,11 @@ class CreateTournamentForm {
 	*/
 	public function submit(string $init_data, string $token, array $input): array {
 		[$actor, $ctx, $user] = $this->authorize($init_data, $token);
+		$opening = WebAppContextRepository::openingId($input['opening_id'] ?? null);
+		$replay_id = $this->createdOpening($ctx, $opening);
+		if ($replay_id !== null) {
+			return ['ok' => true, 'close' => true, 'tournament_id' => $replay_id];
+		}
 		$create = $this->parse($input, $actor);
 		$summary = $this->summary($create);
 		if ($this->dialogs !== null) {
@@ -322,12 +328,31 @@ class CreateTournamentForm {
 		}
 		try {
 			try {
-				$create->chat_id = $this->groups->originForCreate($actor->id);
-				$t = $this->tournaments->create($create);
+				$t = $this->contexts->transactional(function () use ($token, $create, $actor, $opening): Tournament {
+					$locked = $this->contexts->lock($token, $this->clock->now());
+					if ($locked === null) {
+						throw new WebAppFormError(self::EXPIRED_TEXT, '', WebAppFormError::EXPIRED);
+					}
+					$replay_id = $this->createdOpening($locked, $opening);
+					if ($replay_id !== null) {
+						return $this->tournaments->get($replay_id);
+					}
+					$create->chat_id = $this->groups->originForCreate($actor->id);
+					$t = $this->tournaments->create($create);
+					if ($opening !== null) {
+						$payload = $locked['payload'];
+						$payload['openings'] = is_array($payload['openings'] ?? null) ? $payload['openings'] : [];
+						$payload['openings'][$opening] = $t->id;
+						$this->contexts->updatePayload($token, $payload);
+					}
+					return $t;
+				});
 			} catch (PermissionDenied $e) {
 				throw new WebAppFormError($e->getMessage(), '', WebAppFormError::FORBIDDEN);
 			} catch (InvalidLevel $e) {
 				throw new WebAppFormError($e->getMessage(), 'level');
+			} catch (WebAppFormError $e) {
+				throw $e;
 			} catch (DomainError $e) {
 				throw new WebAppFormError($e->getMessage());
 			}
@@ -568,6 +593,30 @@ class CreateTournamentForm {
 	/**
 		@return array{0: Player, 1: array{token: string, actor_player_id: int, chat_id: int, action: string, payload: array<string, mixed>}, 2: TgUser}
 	*/
+	/**
+		Draft already created by this form opening, if it is still there.
+		@param array<string, mixed> $ctx
+	*/
+	protected function createdOpening(array $ctx, ?string $opening): ?int {
+		if ($opening === null) {
+			return null;
+		}
+		$openings = $ctx['payload']['openings'] ?? null;
+		if (!is_array($openings) || !isset($openings[$opening])) {
+			return null;
+		}
+		$id = (int) $openings[$opening];
+		if ($id <= 0) {
+			return null;
+		}
+		try {
+			$this->tournaments->get($id);
+			return $id;
+		} catch (NotFound $e) {
+			return null;
+		}
+	}
+
 	protected function authorize(string $init_data, string $token): array {
 		[$actor, $ctx, $user] = $this->authorizeContext($init_data, $token, self::ACTION, self::EXPIRED_TEXT);
 		if (!$this->create_access->canCreate($actor->id)) {
