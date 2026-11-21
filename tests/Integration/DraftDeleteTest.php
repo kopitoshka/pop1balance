@@ -85,7 +85,7 @@ class DraftDeleteTest extends IntegrationTestCase {
 		self::assertSame(TournamentStatus::CANCELLED, $this->app->tournament_repo->find($published->id)->status);
 	}
 
-	public function testAiCancelDeletesDraft(): void {
+	public function testAiCannotCancelADraft(): void {
 		$t = $this->makeDraft();
 		$raw = $this->privateMessage($this->owner, 'удали черновик');
 		$ctx = new Context(
@@ -98,10 +98,10 @@ class DraftDeleteTest extends IntegrationTestCase {
 		$result = $this->app->dispatcher->dispatch('cancel_tournament', [
 			'tournament_id' => $t->id,
 		], $ctx);
-		self::assertTrue($result['ok']);
-		self::assertTrue($result['deleted'] ?? false);
-		self::assertStringContainsString('удалён', $result['message']);
-		self::assertNull($this->app->tournament_repo->find($t->id));
+		self::assertFalse($result['ok']);
+		self::assertSame('Это действие больше недоступно.', $result['error']);
+		self::assertStringContainsString('/create_tournament', $result['what_to_do']);
+		self::assertNotNull($this->app->tournament_repo->find($t->id));
 	}
 
 	public function testCronPurgesExpiredDrafts(): void {

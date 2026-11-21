@@ -30,8 +30,9 @@ use P1Bot\View\Texts;
 
 /**
 	Private chat with the bot: everything happens here. Deep links from the group (/start t_<id>,
-	/start g_<chat id>), all commands, buttons and the AI with all tools. Tournament numbers are
-	global (the tournament id). Tournaments are global; create rights come from CreateAccess.
+	/start g_<chat id>), all commands, buttons and the AI for help, tournaments, levels and the
+	players list. Tournament numbers are global (the tournament id). Tournaments are global;
+	create rights come from CreateAccess.
 */
 class PrivateChatHandler {
 	public const START = 'start';
@@ -151,8 +152,7 @@ class PrivateChatHandler {
 		if (!$this->messages->hasAi()) {
 			return ['kind' => self::FALLBACK] + $decision;
 		}
-		// Tournament numbers are global: free-text AI does not need a chosen group.
-		// Tournaments are global: free-text AI does not need a chosen group to create.
+		// Tournament numbers are global: the info-only AI does not need a chosen group.
 		return $decision;
 	}
 

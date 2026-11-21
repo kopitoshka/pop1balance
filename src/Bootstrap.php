@@ -8,6 +8,7 @@ use P1Bot\Ai\AiClient;
 use P1Bot\Ai\Assistant;
 use P1Bot\Ai\Dispatcher;
 use P1Bot\Ai\OpenAiClient;
+use P1Bot\View\PlayersList;
 use P1Bot\App\Announcer;
 use P1Bot\App\CreateAccess;
 use P1Bot\App\CreateTournamentForm;
@@ -119,6 +120,7 @@ class Bootstrap {
 	public TeamForm $team_form;
 	public PlayerAdmin $player_admin;
 	public PlayerForm $player_form;
+	public PlayersList $players_list;
 	public PrivateViews $private_views;
 
 	/**
@@ -382,6 +384,12 @@ class Bootstrap {
 			$this->bot->username,
 			trim((string) ($config['telegram']['miniapp_short_name'] ?? '')),
 		);
+		$this->players_list = new PlayersList(
+			$this->players,
+			$this->balances,
+			$this->player_form,
+		);
+
 		$commands = new AdminCommands(
 			$this->telegram,
 			$this->bot,
@@ -403,6 +411,7 @@ class Bootstrap {
 			$this->webapp_picker,
 			$pending_actions,
 			$this->players_import,
+			$this->players_list,
 		);
 		$commands->setCreateForm($this->create_form);
 		$commands->setPlayerForm($this->player_form);
@@ -412,20 +421,11 @@ class Bootstrap {
 			$this->tournaments,
 			$this->teams,
 			$this->balances,
-			$this->balance_repo,
 			$this->players,
 			$this->tournament_resolver,
 			$this->player_resolver,
 			$this->announcer,
-			$clock,
 			$this->logger,
-			$this->drafts,
-			$this->bot->username,
-			$this->private_groups,
-			$this->create_access,
-			$this->disband_notifier,
-			$this->nicks,
-			$this->team_form,
 		);
 		$ai = $this->makeAiClient();
 		if ($ai !== null) {
@@ -450,6 +450,7 @@ class Bootstrap {
 			$this->drafts,
 			$this->listing,
 			$this->private_groups,
+			$this->players_list,
 		);
 		$views = new PrivateViews(
 			$this->telegram,

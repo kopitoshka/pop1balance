@@ -149,9 +149,10 @@ class ScaleHiddenTest extends IntegrationTestCase {
 		}
 		$owner_tools = Tools::names(true, true);
 		foreach (['set_level', 'assign_nick', 'create_tournament', 'set_nick'] as $name) {
-			self::assertContains($name, $owner_tools);
+			self::assertNotContains($name, $owner_tools);
 		}
-		self::assertContains('set_nick', Tools::names(false, false));
+		self::assertContains('list_players', Tools::names(false, false));
+		self::assertSame(Tools::names(false, false), Tools::names(true, true), 'the same info tools for everyone');
 
 		$prompt = (string) file_get_contents(dirname(__DIR__, 2) . '/config/prompts/system.md');
 		self::assertStringNotContainsStringIgnoringCase('шкал', $prompt);

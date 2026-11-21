@@ -5,46 +5,27 @@ declare(strict_types=1);
 namespace P1Bot\Ai;
 
 use P1Bot\App\Announcer;
-use P1Bot\App\CreateAccess;
-use P1Bot\App\TeamDisbandNotifier;
-use P1Bot\App\TeamForm;
-use P1Bot\App\Confirmation;
-use P1Bot\App\DraftCards;
-use P1Bot\App\NeedGroupChoice;
-use P1Bot\App\PrivateGroups;
 use P1Bot\App\PlayerResolver;
 use P1Bot\App\TournamentResolver;
-use P1Bot\Domain\AccessPolicy;
 use P1Bot\Domain\BalanceService;
-use P1Bot\Domain\CreateTournament;
-use P1Bot\Domain\EditTournament;
 use P1Bot\Domain\Exception\DomainError;
-use P1Bot\Domain\Exception\InvalidLevel;
-use P1Bot\Domain\Exception\NotFound;
-use P1Bot\Domain\Exception\PermissionDenied;
 use P1Bot\Domain\Exception\PlayerSuggestError;
-use P1Bot\Domain\Exception\ValidationError;
 use P1Bot\Domain\Levels;
-use P1Bot\Domain\NickService;
 use P1Bot\Domain\Model\Player;
-use P1Bot\Domain\Model\TeamEntry;
 use P1Bot\Domain\Model\Tournament;
 use P1Bot\Domain\MoscowTime;
 use P1Bot\Domain\TeamService;
 use P1Bot\Domain\TournamentService;
 use P1Bot\Domain\TournamentStatus;
 use P1Bot\Handlers\Context;
-use P1Bot\Repository\BalanceRepository;
 use P1Bot\Repository\PlayerRepository;
-use P1Bot\Support\Clock;
 use P1Bot\Support\Logger;
-use P1Bot\Support\RuPlural;
 use P1Bot\View\Messages;
 use Throwable;
 
 /**
 	Executes model function calls through the domain services.
-	The model never decides permissions: services and the admin check below do.
+	The model only shows information; it never decides permissions or changes data.
 	Results are plain arrays sent back to the model as JSON.
 */
 class Dispatcher {
@@ -53,20 +34,11 @@ class Dispatcher {
 		protected TournamentService $tournaments,
 		protected TeamService $teams,
 		protected BalanceService $balances,
-		protected BalanceRepository $balance_repo,
 		protected PlayerRepository $players,
 		protected TournamentResolver $resolver,
 		protected PlayerResolver $player_resolver,
 		protected Announcer $announcer,
-		protected Clock $clock,
 		protected Logger $logger,
-		protected ?DraftCards $drafts = null,
-		protected string $bot_username = '',
-		protected ?PrivateGroups $groups = null,
-		protected ?CreateAccess $create_access = null,
-		protected ?TeamDisbandNotifier $disband_notifier = null,
-		protected ?NickService $nicks = null,
-		protected ?TeamForm $team_form = null,
 	) {
 	}
 
@@ -76,37 +48,15 @@ class Dispatcher {
 	*/
 	public function dispatch(string $tool, array $args, Context $ctx): array {
 		try {
-			if (in_array($tool, Tools::OWNER_TOOLS, true) && !$ctx->is_owner) {
-				throw new PermissionDenied($tool === 'set_level' ? AccessPolicy::LEVELS_OWNER_ONLY : AccessPolicy::OWNER_ONLY);
+			if (!in_array($tool, Tools::names(), true)) {
+				return [
+					'ok' => false,
+					'error' => 'Это действие больше недоступно.',
+					'what_to_do' => 'Объясни, что записаться, собрать команду, поставить ник или создать турнир '
+						. 'можно командами и кнопками: /tournaments, /create_tournament, /nick, /level, /players, /help.',
+				];
 			}
-			if (in_array($tool, Tools::ADMIN_TOOLS, true) && !$this->canOrganize($ctx)) {
-				throw new PermissionDenied(CreateAccess::REFUSAL);
-			}
-			$result = $this->run($tool, $args, $ctx);
-			if (
-				in_array($tool, Tools::MUTATING, true)
-				&& isset($result['tournament_id'])
-				&& empty($result['deleted'])
-			) {
-				// tournament_id in results is the global number (= database id).
-				$this->announcer->refresh((int) $result['tournament_id']);
-			}
-			return ['ok' => true] + $result;
-		} catch (InvalidLevel $e) {
-			return [
-				'ok' => false,
-				'error' => $e->getMessage(),
-				'what_to_do' => 'Переспроси уровень турнира и покажи примеры: одно число — сумма баллов на команду (например «10» для троек), '
-					. 'или уровни всех игроков через запятую по числу игроков («средний, средний, высокий»). Как устроены уровни — /help_level.',
-			];
-		} catch (NeedGroupChoice $e) {
-			return [
-				'ok' => false,
-				'error' => $e->getMessage(),
-				'groups' => array_values($e->groups),
-				'choose_group_ids' => $e->groups,
-				'note' => 'Кнопки выбора группы покажутся автоматически. Попроси выбрать группу и повторить запрос.',
-			];
+			return ['ok' => true] + $this->run($tool, $args, $ctx);
 		} catch (PlayerSuggestError $e) {
 			return [
 				'ok' => false,
@@ -129,8 +79,14 @@ class Dispatcher {
 	protected function run(string $tool, array $a, Context $ctx): array {
 		$actor = $ctx->actor;
 		switch ($tool) {
+			case 'help':
+				return [
+					'show_help' => true,
+					'note' => 'Справка по командам отправится в чат автоматически. Не пересказывай её, добавь максимум одну короткую фразу.',
+				];
+
 			case 'list_tournaments':
-				$active = $this->listVisible($ctx);
+				$active = $this->listVisible();
 				if ($active === []) {
 					return ['tournaments' => []];
 				}
@@ -138,7 +94,6 @@ class Dispatcher {
 					'tournaments' => array_map(function (Tournament $t): string {
 						return $this->line($t);
 					}, $active),
-					// The pretty list with lineups is sent to the chat by the bot itself.
 					'show_list' => true,
 					'note' => 'Красивый список турниров с составами отправится в чат автоматически. Не пересказывай его: ответь одной короткой фразой (или ничего не добавляй, если нечего).',
 				];
@@ -201,12 +156,6 @@ class Dispatcher {
 				];
 
 			case 'list_player_levels':
-				if (!$ctx->isPrivate()) {
-					return [
-						'ok' => false,
-						'error' => 'Список уровней смотри в личке: /level all',
-					];
-				}
 				$scale = $this->balances->findDefault();
 				if ($scale === null) {
 					return ['players' => [], 'message' => 'Пока никому уровень не ставили 🙂'];
@@ -238,18 +187,10 @@ class Dispatcher {
 					'note' => 'Перескажи список коротко или почти дословно. Шкалы не упоминай.',
 				];
 
-
-			case 'set_nick':
-				if ($this->nicks === null) {
-					return ['ok' => false, 'error' => 'Ники недоступны.'];
-				}
-				if (!$ctx->isPrivate()) {
-					return ['ok' => false, 'error' => 'Ник ставится только в личке со мной.'];
-				}
-				$player = $this->nicks->setOwn($actor->id, (string) ($a['nick'] ?? ''));
+			case 'list_players':
 				return [
-					'nick' => $player->ign,
-					'message' => sprintf('Поставила тебе ник «%s».', $player->ign),
+					'show_players' => true,
+					'note' => 'Список игроков отправится в чат автоматически, как /players. Не пересказывай его: максимум одна короткая фраза.',
 				];
 
 			case 'show_nick':
@@ -257,26 +198,14 @@ class Dispatcher {
 				$player = $ref === '' ? $actor : $this->resolvePlayer($ref, $actor, $ctx, 'show_nick', $a, 'player');
 				if (!$player->hasIgn()) {
 					$msg = $player->id === $actor->id
-						? 'Ник пока не привязан. Поставить: <code>/nick игровой_ник</code> или скажи мне свой ник.'
+						? 'Ник пока не привязан. Поставить: /nick игровой_ник'
 						: sprintf('У %s ник пока не привязан.', $player->mention());
 				} else {
 					$msg = $player->id === $actor->id
-						? sprintf('Твой ник: %s', $player->ign)
+						? sprintf('Твой ник: %s. Сменить: /nick игровой_ник', $player->ign)
 						: sprintf('%s — ник %s', $player->mention(), $player->ign);
 				}
 				return ['player' => $player->mention(), 'nick' => $player->ign, 'message' => $msg];
-
-			case 'assign_nick':
-				if ($this->nicks === null) {
-					return ['ok' => false, 'error' => 'Ники недоступны.'];
-				}
-				$target = $this->resolvePlayer((string) ($a['player'] ?? ''), $actor, $ctx, 'assign_nick', $a, 'player', true);
-				$result = $this->nicks->assignByOwner($actor->id, $target->id, (string) ($a['nick'] ?? ''));
-				$msg = sprintf('Поставила ник «%s» игроку %s.', $result['player']->ign, $result['player']->mention());
-				if ($result['previous_holder'] !== null) {
-					$msg .= sprintf(' Раньше он был у %s — забрала.', $result['previous_holder']->mention());
-				}
-				return ['message' => $msg, 'nick' => $result['player']->ign];
 
 			case 'tournament_info':
 				$t = $this->tournament($ctx, $a, TournamentStatus::infoable());
@@ -286,108 +215,6 @@ class Dispatcher {
 					'lineup' => self::plain($this->announcer->lineupText($t)),
 				];
 
-			case 'register_team':
-				// Never registers from chat: prepares the team form with what could be resolved.
-				$t = $this->tournament($ctx, $a);
-				$current = $this->teams->teamOf($t->id, $actor->id);
-				if ($current !== null) {
-					return $this->teamForm($ctx, $t, $current, $this->draftOf($current), [], (array) ($a['players'] ?? []));
-				}
-				$draft = ['name' => trim((string) ($a['team_name'] ?? '')), 'player_ids' => [$actor->id], 'captain_id' => $actor->id];
-				$captain_ref = trim((string) ($a['captain'] ?? ''));
-				$pending = [];
-				if ($captain_ref !== '' && $this->canManageTeams($t, $actor)) {
-					$probe = $this->player_resolver->tryResolve($captain_ref, $actor);
-					if ($probe['player'] !== null && $probe['player']->id !== $actor->id) {
-						$draft['player_ids'] = [$probe['player']->id];
-						$draft['captain_id'] = $probe['player']->id;
-					} elseif ($probe['player'] === null) {
-						$pending[] = self::pendingItem($captain_ref, $probe['suggestions']);
-					}
-				}
-				return $this->teamForm($ctx, $t, null, $draft, $pending, (array) ($a['players'] ?? []));
-
-			case 'add_player':
-				[$t, $entry] = $this->team($ctx, $a);
-				return $this->teamForm($ctx, $t, $entry, $this->draftOf($entry), [], [(string) ($a['player'] ?? '')]);
-
-			case 'remove_player':
-				[$t, $entry] = $this->team($ctx, $a);
-				$draft = $this->draftOf($entry);
-				$out = $this->memberOf($entry, (string) ($a['player'] ?? ''), $actor);
-				if ($out !== null && $out !== $draft['captain_id']) {
-					$draft['player_ids'] = array_values(array_diff($draft['player_ids'], [$out]));
-				}
-				return $this->teamForm($ctx, $t, $entry, $draft, [], []);
-
-			case 'replace_player':
-				[$t, $entry] = $this->team($ctx, $a);
-				$draft = $this->draftOf($entry);
-				$out = $this->memberOf($entry, (string) ($a['out_player'] ?? ''), $actor);
-				if ($out !== null && $out !== $draft['captain_id']) {
-					$draft['player_ids'] = array_values(array_diff($draft['player_ids'], [$out]));
-				}
-				return $this->teamForm($ctx, $t, $entry, $draft, [], [(string) ($a['in_player'] ?? '')]);
-
-			case 'rename_team':
-				[$t, $entry] = $this->team($ctx, $a);
-				$draft = $this->draftOf($entry);
-				$new = trim((string) ($a['new_name'] ?? ''));
-				if ($new !== '') {
-					$draft['name'] = $new;
-				}
-				return $this->teamForm($ctx, $t, $entry, $draft, [], []);
-
-			case 'transfer_captain':
-				[$t, $entry] = $this->team($ctx, $a);
-				$draft = $this->draftOf($entry);
-				$new = $this->memberOf($entry, (string) ($a['player'] ?? ''), $actor);
-				if ($new !== null) {
-					$draft['captain_id'] = $new;
-				}
-				return $this->teamForm($ctx, $t, $entry, $draft, [], []);
-
-			case 'withdraw_team':
-				[$t, $entry] = $this->team($ctx, $a);
-				$disband = $this->teams->withdrawTeam($actor->id, $entry->team->id);
-				if ($this->disband_notifier !== null) {
-					$this->disband_notifier->notify($actor->id, $disband);
-				}
-				return [
-					'tournament_id' => $this->no($t),
-					'message' => sprintf('Команда «%s» снята с турнира.', $entry->team->name),
-					'summary' => $this->tournaments->lineup($t->id)->summary(),
-				];
-
-			case 'leave_team':
-				$t = $this->tournament($ctx, $a);
-				$entry = $this->teams->teamOf($t->id, $actor->id) ?? throw new NotFound('Ты не состоишь в команде на этом турнире.');
-				$captain_id = $entry->team->captain_id;
-				$team_name = $entry->team->name;
-				$result = $this->teamResult(
-					$t,
-					$this->teams->leaveTeam($actor->id, $entry->team->id),
-					'Ты вышел из команды.',
-				);
-				if ($this->disband_notifier !== null) {
-					$this->disband_notifier->notifyMemberLeft($actor, $captain_id, $team_name, (int) $t->id);
-				}
-				return $result;
-
-			case 'join_solo':
-				$t = $this->tournament($ctx, $a);
-				$this->teams->joinSolo($t->id, $actor->id);
-				return [
-					'tournament_id' => $this->no($t),
-					'placement' => $this->placementLabel($t, $actor->id),
-					'summary' => $this->tournaments->lineup($t->id)->summary(),
-				];
-
-			case 'leave_solo':
-				$t = $this->tournament($ctx, $a);
-				$this->teams->leaveSolo($t->id, $actor->id);
-				return ['tournament_id' => $this->no($t), 'message' => 'Соло-заявка снята.'];
-
 			case 'my_status':
 				return ['status' => $this->statusLines($ctx)];
 
@@ -396,273 +223,39 @@ class Dispatcher {
 					'note' => 'Задай пользователю этот вопрос своими словами.',
 					'question' => (string) ($a['question'] ?? ''),
 				];
-
-			case 'create_tournament':
-				$starts_at = MoscowTime::parseHuman((string) ($a['starts_at_msk'] ?? ''), $this->clock->now());
-				$reference = self::levelArg($a);
-				// Always a draft: publishing needs the organizer's explicit confirmation of the card.
-				$t = $this->tournaments->create(new CreateTournament(
-					$this->groups !== null ? $this->groups->originForCreate($actor->id) : ($ctx->isPrivate() ? null : $ctx->groupId()),
-					$actor->id,
-					(string) ($a['title'] ?? ''),
-					MoscowTime::toInput($starts_at),
-					(int) ($a['team_size'] ?? 0),
-					$reference,
-					// Only the owner picks a scale (the parameter is offered to him only).
-					null, // single global scale
-					isset($a['max_players']) ? (int) $a['max_players'] : null,
-				));
-				$this->announcer->renumber($t->id);
-				return $this->cardResult($t, 'Черновик создан.');
-
-			case 'edit_tournament':
-				$t = $this->tournament(
-					$ctx,
-					$a,
-					[TournamentStatus::DRAFT, TournamentStatus::REGISTRATION, TournamentStatus::CLOSED],
-				);
-				$time = isset($a['starts_at_msk']) ? MoscowTime::toInput(MoscowTime::parseHuman(
-					(string) $a['starts_at_msk'],
-					$this->clock->now(),
-				)) : null;
-				$t = $this->tournaments->edit($actor->id, $t->id, new EditTournament(
-					isset($a['title']) ? (string) $a['title'] : null,
-					$time,
-					isset($a['team_size']) ? (int) $a['team_size'] : null,
-					self::levelArg($a),
-					null,
-					isset($a['max_players']) ? (int) $a['max_players'] : null,
-					false,
-				));
-				$this->announcer->renumber($t->id); // a new start time may change the order
-				if ($t->status === TournamentStatus::DRAFT) {
-					return $this->cardResult($t, 'Черновик обновлён.');
-				}
-				return ['tournament_id' => $this->no($t), 'info' => $this->line($t)];
-
-			case 'publish_tournament':
-				if ($this->drafts === null) {
-					throw new ValidationError('Публикация недоступна.');
-				}
-				$t = $this->tournament($ctx, $a, [TournamentStatus::DRAFT]);
-				if ($t->status === TournamentStatus::DRAFT && ($t->card_msg_id === null || !$this->drafts->canConfirm($t, $actor->id))) {
-					// The card was not shown to this person yet: show it and wait for their answer.
-					$this->tournaments->assertCanManage($actor->id, $t->id);
-					return $this->cardResult(
-						$t,
-						'Сначала покажу карточку, турнир НЕ опубликован.',
-					) + ['published' => false];
-				}
-				if (!Confirmation::isClearYes($ctx->message->textWithoutMention($this->botUsername()))) {
-					// Not a clear "yes": show the card again and ask again.
-					return $this->cardResult(
-						$t,
-						'Пользователь не подтвердил публикацию однозначно, турнир НЕ опубликован.',
-					) + ['published' => false];
-				}
-				$t = $this->drafts->publish($actor->id, $t->id);
-				return [
-					'tournament_id' => $this->no($t),
-					'published' => true,
-					'message' => 'Опубликовано: регистрация открыта, анонс отправлен во все активные группы.',
-				];
-
-			case 'cancel_tournament':
-				$target = $this->tournament(
-					$ctx,
-					$a,
-					[TournamentStatus::DRAFT, TournamentStatus::REGISTRATION, TournamentStatus::CLOSED],
-				);
-				$number = $this->no($target);
-				if ($target->status === TournamentStatus::DRAFT) {
-					$snap = $this->tournaments->deleteDraft($actor->id, $target->id);
-					return [
-						'tournament_id' => $number,
-						'deleted' => true,
-						'message' => sprintf('Черновик #%d удалён', $snap['id']),
-					];
-				}
-				$t = $this->tournaments->cancel($actor->id, $target->id);
-				$this->announcer->refresh($t->id);
-				$this->announcer->renumber($t->id);
-				return [
-					'tournament_id' => $number,
-					'message' => sprintf('Турнир «%s» отменён. Номера остальных турниров могли сдвинуться.', $t->title),
-				];
-
-			case 'open_registration':
-				// Drafts are published only through publish_tournament after confirmation.
-				$t = $this->tournament($ctx, $a, [TournamentStatus::CLOSED]);
-				if ($t->status === TournamentStatus::DRAFT) {
-					// Same as /open for a draft: show the card, publish only after a clear yes.
-					$this->tournaments->assertCanManage($actor->id, $t->id);
-					return $this->cardResult(
-						$t,
-						'Это черновик: показываю карточку, публикация только после явного «да».',
-					) + ['published' => false];
-				}
-				$t = $this->tournaments->openRegistration($actor->id, $t->id);
-				$this->announcer->publish($t->id);
-				return [
-					'tournament_id' => $this->no($t),
-					'message' => 'Регистрация снова открыта, анонс опубликован во всех активных группах.',
-				];
-
-
-			case 'set_max_players':
-				$t = $this->tournaments->setMaxPlayers(
-					$actor->id,
-					$this->tournament($ctx, $a)->id,
-					(int) ($a['max_players'] ?? 0),
-				);
-				return ['tournament_id' => $this->no($t), 'summary' => $this->tournaments->lineup($t->id)->summary()];
-
-			case 'set_level':
-				$player = $this->resolvePlayer((string) ($a['player'] ?? ''), $actor, $ctx, 'set_level', $a, 'player', true);
-				$level = Levels::parse((string) ($a['level'] ?? '')) ?? throw new ValidationError('Уровень должен быть от 1 до 6 или названием уровня.');
-				$this->balances->setLevel(
-					$ctx->groupId(),
-					$actor->id,
-					$player->id,
-					$level,
-					isset($a['balance_id']) ? (int) $a['balance_id'] : null,
-				);
-				return ['message' => sprintf(
-					'%s: %s (%d).',
-					$player->mention(),
-					Levels::name($level),
-					$level,
-				)];
-
-
 		}
-		throw new ValidationError('Такого действия нет.');
+		return [
+			'ok' => false,
+			'error' => 'Это действие больше недоступно.',
+		];
+	}
+
+	/**
+		@param array<string, mixed> $a
+		@param array<string, mixed> $tool_args
+	*/
+	protected function resolvePlayer(string $ref, Player $actor, Context $ctx, string $tool, array $tool_args, string $player_arg): Player {
+		$resume = [
+			'kind' => 'tool',
+			'tool' => $tool,
+			'args' => $tool_args,
+			'player_arg' => $player_arg,
+			'owner_only' => false,
+		];
+		return $this->player_resolver->fromReference($ref, $actor, $resume, $ctx->chatId());
 	}
 
 	/**
 		@param array<string, mixed> $a
 		@param list<string>|null $statuses
 	*/
-
-	/**
-		@param array<string, mixed> $tool_args full tool args for resume
-	*/
-	protected function resolvePlayer(string $ref, Player $actor, Context $ctx, string $tool, array $tool_args, string $player_arg, bool $owner_only = false): Player {
-		$resume = [
-			'kind' => 'tool',
-			'tool' => $tool,
-			'args' => $tool_args,
-			'player_arg' => $player_arg,
-			'owner_only' => $owner_only,
-		];
-		return $this->player_resolver->fromReference($ref, $actor, $resume, $ctx->chatId());
-	}
-
 	protected function tournament(Context $ctx, array $a, ?array $statuses = null): Tournament {
 		$id = isset($a['tournament_id']) && $a['tournament_id'] !== '' ? (int) $a['tournament_id'] : null;
 		return $this->resolver->resolve(
 			$ctx->isPrivate() ? null : $ctx->groupId(),
 			$id,
-			$statuses ?? [TournamentStatus::REGISTRATION, TournamentStatus::CLOSED],
+			$statuses ?? TournamentStatus::infoable(),
 		);
-	}
-
-	/**
-		Team by name, or the team of the author.
-
-		@param array<string, mixed> $a
-		@return array{0: Tournament, 1: TeamEntry}
-	*/
-	protected function team(Context $ctx, array $a): array {
-		$t = $this->tournament($ctx, $a);
-		$name = trim((string) ($a['team_name'] ?? ''));
-		if ($name !== '') {
-			$entry = $this->teams->findByName($t->id, $name);
-			if ($entry === null) {
-				throw new NotFound(sprintf('Команды «%s» на этом турнире нет.', $name));
-			}
-			return [$t, $entry];
-		}
-		$entry = $this->teams->teamOf($t->id, $ctx->actor->id);
-		if ($entry === null) {
-			throw new NotFound('Ты не состоишь в команде на этом турнире.');
-		}
-		return [$t, $entry];
-	}
-
-	/**
-		@return array<string, mixed>
-	*/
-	protected function teamResult(Tournament $t, TeamEntry $entry, string $message): array {
-		$members = [];
-		foreach ($entry->members as $member) {
-			$p = $this->players->find($member->player_id);
-			$members[] = ($p !== null ? $p->mention() : '#' . $member->player_id) . ($member->player_id === $entry->team->captain_id ? ' (капитан)' : '');
-		}
-		$t = $this->tournaments->get($t->id);
-		$placement = null;
-		if ($entry->team->isRegistered()) {
-			$placement = $this->tournaments->lineup($t->id)->placementOf($entry->team->captain_id) === 'reserve' ? 'запас' : 'основной состав';
-		}
-		return [
-			'tournament_id' => $this->no($t),
-			'message' => $message,
-			'team' => $entry->team->name,
-			'members' => $members,
-			'size' => sprintf('%d из %d', $entry->size(), $t->team_size),
-			'registered' => $entry->team->isRegistered(),
-			'placement' => $placement ?? 'команда ещё собирается: не хватает игроков',
-			'points' => $t->hasLevelLimit() ? sprintf(
-				'%d из %d',
-				$this->teams->pointsOf($entry),
-				(int) $t->max_points,
-			) : 'без лимита',
-		];
-	}
-
-	/**
-		Result for a created/edited draft: the card with «Публикуем или что-то поправить?» is
-		shown by PHP right after this turn (show_card), the model must not write it itself.
-
-		@return array<string, mixed>
-	*/
-	protected function cardResult(Tournament $t, string $message): array {
-		return [
-			'tournament_id' => $this->no($t),
-			'show_card' => $t->id,
-			'message' => $message,
-			'card' => $this->drafts !== null ? self::plain($this->drafts->cardText($t)) : $this->line($t),
-			'note' => 'Карточка с вопросом «Публикуем или что-то поправить?» и кнопками будет показана автоматически. Публикуй только после явного «да».',
-		];
-	}
-
-	/**
-		Tournament level from the model: "level" (old name "reference_team" still accepted).
-	*/
-	protected static function levelArg(array $a): ?string {
-		$value = $a['level'] ?? $a['reference_team'] ?? null;
-		if ($value === null || (is_string($value) && trim($value) === '')) {
-			return null;
-		}
-		return is_array($value) ? implode(',', array_map('strval', $value)) : (string) $value;
-	}
-
-	/**
-		In private anyone can open the bot: joining checks that the user is in the tournament's group.
-	*/
-
-	protected function groupTitle(Tournament $t): string {
-		if ($this->groups === null || $t->chat_id === null) {
-			return 'всех групп';
-		}
-		return $this->groups->title($t->chat_id);
-	}
-
-	protected function canOrganize(Context $ctx): bool {
-		if ($this->create_access !== null) {
-			return $this->create_access->canCreate($ctx->actor->id);
-		}
-		return $ctx->is_admin || $ctx->is_owner;
 	}
 
 	/**
@@ -672,18 +265,10 @@ class Dispatcher {
 		return $this->resolver->number($t)->number;
 	}
 
-	protected function botUsername(): string {
-		return $this->bot_username;
-	}
-
-
 	/**
-		Active tournaments visible in this context: one group in a group chat, every group in private.
-
 		@return list<Tournament>
 	*/
-	protected function listVisible(Context $ctx): array {
-		unset($ctx);
+	protected function listVisible(): array {
 		return $this->tournaments->listAllActive();
 	}
 
@@ -701,7 +286,7 @@ class Dispatcher {
 	}
 
 	/**
-		Unpublished drafts of the author (for the model's context).
+		Unpublished drafts of the author (for the model's context), so it can point to the card buttons.
 
 		@return list<string>
 	*/
@@ -712,7 +297,9 @@ class Dispatcher {
 				continue;
 			}
 			$lines[] = '№' . $this->no($t) . ' ' . Messages::tournamentLine($t, $this->tournaments->lineup($t->id))
-				. ($t->card_msg_id !== null ? ' — карточка показана, ждём ответа «Публикуем или что-то поправить?»' : ' — карточка ещё не показана');
+				. ($t->card_msg_id !== null
+					? ' — карточка уже есть: править и публиковать можно только кнопками «✏️ Поправить» и «✅ Публикуем»'
+					: ' — черновик есть, карточка ещё не показана; открыть: /create_tournament или список турниров');
 		}
 		return $lines;
 	}
@@ -722,7 +309,7 @@ class Dispatcher {
 	*/
 	public function statusLines(Context $ctx): array {
 		$lines = [];
-		foreach ($this->listVisible($ctx) as $t) {
+		foreach ($this->listVisible() as $t) {
 			$entry = $this->teams->teamOf($t->id, $ctx->actor->id);
 			$placement = $this->tournaments->lineup($t->id)->placementOf($ctx->actor->id);
 			if ($placement === null) {
@@ -752,134 +339,5 @@ class Dispatcher {
 
 	protected static function plain(string $html): string {
 		return html_entity_decode(strip_tags($html), ENT_QUOTES | ENT_HTML5, 'UTF-8');
-	}
-
-	/**
-		Current roster of a team as an unsaved form draft.
-
-		@return array{name: string, player_ids: list<int>, captain_id: int}
-	*/
-	protected function draftOf(TeamEntry $entry): array {
-		return [
-			'name' => $entry->team->name,
-			'player_ids' => array_map(static fn ($m): int => $m->player_id, $entry->members),
-			'captain_id' => $entry->team->captain_id,
-		];
-	}
-
-	/**
-		Team member matching a reference, without any chat prompt.
-	*/
-	protected function memberOf(TeamEntry $entry, string $ref, Player $actor): ?int {
-		$ids = array_map(static fn ($m): int => $m->player_id, $entry->members);
-		$probe = $this->player_resolver->tryResolve($ref, $actor);
-		if ($probe['player'] !== null && in_array($probe['player']->id, $ids, true)) {
-			return $probe['player']->id;
-		}
-		$hits = array_values(array_filter($probe['suggestions'], static fn (Player $p): bool => in_array($p->id, $ids, true)));
-		return count($hits) === 1 ? $hits[0]->id : null;
-	}
-
-	/**
-		@param list<Player> $suggestions
-		@return array{label: string, suggestion_ids: list<int>}
-	*/
-	protected static function pendingItem(string $label, array $suggestions): array {
-		return [
-			'label' => $label,
-			'suggestion_ids' => array_slice(array_map(static fn (Player $p): int => $p->id, $suggestions), 0, 5),
-		];
-	}
-
-	/**
-		@param list<string> $names
-	*/
-	protected static function joinNames(array $names): string {
-		if (count($names) <= 1) {
-			return implode('', $names);
-		}
-		$last = array_pop($names);
-		return implode(', ', $names) . ' и ' . $last;
-	}
-
-	protected function canManageTeams(Tournament $t, Player $actor): bool {
-		try {
-			$this->tournaments->assertCanManage($actor->id, $t->id);
-			return true;
-		} catch (DomainError $e) {
-			return false;
-		}
-	}
-
-	/**
-		Resolve the named players into the draft (no chat buttons, no «Может, ты про…»), keep the
-		rest as names to look up in the form, and answer with a short fixed text plus the button.
-
-		@param array{name: string, player_ids: list<int>, captain_id: int} $draft
-		@param list<array{label: string, suggestion_ids: list<int>}> $pending
-		@param array<int, mixed> $refs
-		@return array<string, mixed>
-	*/
-	protected function teamForm(Context $ctx, Tournament $t, ?TeamEntry $entry, array $draft, array $pending, array $refs): array {
-		$actor = $ctx->actor;
-		$taken = array_fill_keys($this->players->playersOnTeamsOfTournament($t->id), true);
-		$own = $entry !== null ? array_fill_keys(array_map(static fn ($m): int => $m->player_id, $entry->members), true) : [];
-		$added = [];
-		foreach ($refs as $ref) {
-			$ref = trim((string) $ref);
-			if ($ref === '') {
-				continue;
-			}
-			if (preg_match('/^(я|меня|мне|себя|сам|сама)$/u', mb_strtolower($ref))) {
-				continue; // the opener is already in the new team
-			}
-			$probe = $this->player_resolver->tryResolve($ref, $actor);
-			$player = $probe['player'];
-			if ($player !== null && in_array($player->id, $draft['player_ids'], true)) {
-				continue;
-			}
-			if ($player !== null && (!isset($taken[$player->id]) || isset($own[$player->id]))) {
-				$draft['player_ids'][] = $player->id;
-				$added[] = $player->plainLabel();
-				continue;
-			}
-			$pending[] = self::pendingItem($ref, $player !== null ? [$player] : $probe['suggestions']);
-		}
-		if ($pending !== []) {
-			$draft['pending'] = array_slice($pending, 0, TeamForm::MAX_PENDING);
-		}
-		$button = $this->team_form?->button($actor, $ctx->chatId(), $t->id, $entry?->team->id, $draft);
-		if ($button === null) {
-			throw new ValidationError(TeamForm::UNAVAILABLE_TEXT);
-		}
-		$names = [];
-		foreach ($draft['player_ids'] as $id) {
-			$p = $this->players->find($id);
-			$names[] = $id === $actor->id ? 'тебя' : ($p === null ? '#' . $id : ($p->hasIgn() ? (string) $p->ign : $p->mention()));
-		}
-		$lines = [];
-		if ($entry === null) {
-			$lines[] = 'Открой форму команды: уже добавила ' . self::joinNames($names) . '.';
-		} else {
-			$lines[] = 'Открой форму команды «' . $entry->team->name . '»: подготовила изменения, сохрани их там.';
-		}
-		foreach ($pending as $item) {
-			$n = count($item['suggestion_ids']);
-			$lines[] = match (true) {
-				$n > 1 => sprintf('«%s»: нашла %d %s, выбери нужного там.', $item['label'], $n, RuPlural::choose($n, ['вариант', 'варианта', 'вариантов'])),
-				$n === 1 => sprintf('«%s»: проверь вариант там.', $item['label']),
-				default => sprintf('«%s» поищи там же, поиском или в контактах.', $item['label']),
-			};
-		}
-		if ($ctx->chatId() < 0) {
-			$lines[] = 'Форма откроется у меня в личке.';
-		}
-		return [
-			'form' => true,
-			'say' => implode(' ', $lines),
-			'suggest_markup' => ['reply_markup' => ['inline_keyboard' => [[$button]]]],
-			'note' => 'Кнопка формы уже в чате. Команда ещё не сохранена.',
-			'added' => $added,
-		];
 	}
 }

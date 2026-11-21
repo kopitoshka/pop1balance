@@ -16,13 +16,15 @@ use P1Bot\Support\Logger;
 use P1Bot\Telegram\BotIdentity;
 use P1Bot\Telegram\TelegramApi;
 use P1Bot\View\Html;
+use P1Bot\View\PlayersList;
 use P1Bot\View\Texts;
 use Throwable;
 
 /**
-	Free-text messages addressed to the bot: AI when configured, otherwise a short help.
+	Free-text messages addressed to the bot: AI when configured (info only), otherwise a short help.
 */
 class MessageHandler {
+	public const CARD_HINT = 'Не публикую, пока ты явно не подтвердишь. Поправить — кнопкой «✏️ Поправить» на карточке черновика. Если всё верно — нажми «Публикуем».';
 
 	public function __construct(
 		protected TelegramApi $api,
@@ -33,6 +35,7 @@ class MessageHandler {
 		protected ?DraftCards $drafts = null,
 		protected ?TournamentListing $listing = null,
 		protected ?PrivateGroups $groups = null,
+		protected ?PlayersList $players_list = null,
 	) {
 	}
 
@@ -57,18 +60,15 @@ class MessageHandler {
 			return;
 		}
 
-		if ($reply['card'] !== null && $this->drafts !== null) {
-			try {
-				// The card itself ends the turn: «Публикуем или что-то поправить?» with buttons.
-				$this->drafts->show($reply['card'], $chat_id, $reply_to, $ctx->actor->id, $reply['history']);
-				return;
-			} catch (DomainError $e) {
-				// The draft was published or cancelled meanwhile: fall back to the model's text.
-			}
-		}
 		$message_id = null;
+		if (!empty($reply['help'])) {
+			$message_id = $this->api->sendMessage(
+				$chat_id,
+				Texts::help($this->bot->username, $ctx->is_admin, $ctx->is_owner),
+				$reply_to,
+			);
+		}
 		if (!empty($reply['list']) && $this->listing !== null) {
-			// The pretty list goes as is; the model only adds a short phrase.
 			$message_id = $this->sendList($ctx);
 		}
 		if (!empty($reply['past_list']) && $this->listing !== null) {
@@ -77,32 +77,18 @@ class MessageHandler {
 		if (!empty($reply['levels'])) {
 			$message_id = $this->api->sendMessage($chat_id, Texts::levels(), $reply_to);
 		}
-		$groups = $reply['groups'] ?? [];
-		$suggest = $reply['suggest_markup'] ?? [];
-		$extra = [];
-		if ($groups !== []) {
-			$extra = PrivateGroups::buttons($groups);
-		} elseif ($suggest !== []) {
-			$extra = $suggest;
+		if (!empty($reply['players']) && $this->players_list !== null) {
+			$message_id = $this->sendPlayers($ctx);
 		}
+		$suggest = $reply['suggest_markup'] ?? [];
+		$extra = $suggest !== [] ? $suggest : [];
 		if ($reply['text'] !== '' || $message_id === null || $extra !== []) {
-			$fallback = $groups !== []
-				? 'В какой группе? Выбери кнопкой ниже.'
-				: ($suggest !== [] ? 'Может, ты про кого-то из этих?' : 'Готово!');
+			$fallback = $suggest !== [] ? 'Может, ты про кого-то из этих?' : 'Готово!';
 			$message_id = $this->api->sendMessage(
 				$chat_id,
 				Html::e($reply['text'] !== '' ? $reply['text'] : $fallback),
 				$reply_to,
 				$extra,
-			);
-		}
-		$followup = $reply['followup'] ?? null;
-		if (is_array($followup) && trim((string) ($followup['text'] ?? '')) !== '') {
-			$this->api->sendMessage(
-				$chat_id,
-				Html::e((string) $followup['text']),
-				null,
-				is_array($followup['extra'] ?? null) ? $followup['extra'] : [],
 			);
 		}
 		($reply['remember'])($message_id);
@@ -167,8 +153,21 @@ class MessageHandler {
 	}
 
 	/**
+		@return int|null id of the last message sent
+	*/
+	protected function sendPlayers(Context $ctx): ?int {
+		$message_id = null;
+		$link = $this->players_list->editLinkCallback($ctx->is_owner, $ctx->isPrivate());
+		foreach ($this->players_list->messages($ctx->is_owner, $ctx->isPrivate(), $link) as $chunk) {
+			$message_id = $this->api->sendMessage($ctx->chatId(), $chunk, $ctx->message->message_id);
+		}
+		return $message_id;
+	}
+
+	/**
 		A clear "да / публикуем" in reply to the current draft card publishes it right away,
-		without the AI. Anything else goes on to the AI (or a hint when AI is off).
+		without the AI. Any other reply to that card gets a short hint (buttons on the card),
+		and is not sent to the model.
 	*/
 	protected function handleCardReply(Context $ctx): bool {
 		$reply_to = $ctx->message->reply_to_message_id;
@@ -194,15 +193,8 @@ class MessageHandler {
 			}
 			return true;
 		}
-		if ($this->assistant === null) {
-			$this->api->sendMessage(
-				$ctx->chatId(),
-				'Не публикую, пока ты явно не подтвердишь. Поправить — кнопкой «✏️ Поправить» на карточке черновика. Если всё верно — нажми «Публикуем».',
-				$ctx->message->message_id,
-			);
-			return true;
-		}
-		return false;
+		$this->api->sendMessage($ctx->chatId(), self::CARD_HINT, $ctx->message->message_id);
+		return true;
 	}
 
 	public function publishedText(?int $group_id = null): string {

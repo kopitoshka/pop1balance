@@ -3,7 +3,8 @@
 Telegram bot for Population: One tournaments: tournament registration, teams (1–12 players)
 with a captain, solo players, level balance (6 levels, per-admin rating scales), player limit
 with computed reserve, announcements in the group, reminders before start. Players talk to the
-bot in plain Russian (OpenAI, model `gpt-6-luna`); admins also have slash commands.
+bot in plain Russian (OpenAI, model `gpt-6-luna`) for help, tournaments, levels and the players list;
+actions go through slash commands, buttons and Mini Apps.
 
 PHP 8.0+ (tested on 8.0 and 8.3), MySQL 8 / MariaDB 10.5+, no framework.
 
@@ -15,9 +16,11 @@ PHP 8.0+ (tested on 8.0 and 8.3), MySQL 8 / MariaDB 10.5+, no framework.
   Any other command, @mention or reply to the bot in the group (joining, creating, editing, questions — admins
   included) gets one reply «Давай в личке 👉» with a URL button `https://t.me/<bot>?start=…` (see «Group»).
   No AI in the group.
-- In private any text is answered (no mention needed): deep links, buttons, all commands and the AI with all
-  tools (`src/Ai`): the model calls functions, PHP executes them through the domain services (`src/Domain`)
-  and checks all permissions itself. Any next message within `CONVERSATION_TTL_MINUTES` continues the dialog.
+- In private any text is answered (no mention needed): deep links, buttons, all commands and an **info-only AI**
+  (`src/Ai`): help, tournament list/info/history, levels, the players list, nicks (view) and where you are signed up.
+  The model cannot create or edit tournaments, sign people up, change teams, or set nicks or levels — it points
+  to `/create_tournament`, card buttons, `/nick`, `/level` and `/players`. PHP runs the tools and checks permissions.
+  Any next message within `CONVERSATION_TTL_MINUTES` continues the dialog.
 - Without `OPENAI_API_KEY` free text in private gets a short hint; slash commands and buttons always work.
 - Cron (`bin/cron.php`, every minute): reminders, auto-close registration `REGISTRATION_CLOSE_MINUTES` before start, `registration/closed → running → finished`, cleanup.
 
@@ -289,11 +292,9 @@ for the webhook too, e.g. `sudo -u apache php bin/diag.php`.
 - **Team letters** (migration 017): `teams.letter` A–Z, unique per tournament, first free on creation,
   freed on disband, 27th team and later get none («?.»). Organizer/owner change it in the form grid.
   All lists use the stored letter, never the list position.
-- AI team tools (`register_team`, `add_player`, `remove_player`, `replace_player`, `rename_team`,
-  `transfer_captain`) never change teams: they prefill the form, answer one short line and send the button;
-  unresolved names wait inside the form with suggestions.
-- Plain text: «какие турниры скоро?», «запиши нас: я, tired angel и стас», «хочу участвовать соло»,
-  «замени @vasya на @kolya», «где я записан?». Commands: `/tournaments`, `/tournaments N`, `/players`, `/help`, `/help_level`.
+- The private-chat AI answers questions like «какие турниры скоро?», «какой у меня уровень?», «где я записан?»,
+  «покажи игроков» (it can send the same `/players` list). To sign up or build a team, use `/tournaments` and the
+  buttons on the tournament card. Commands: `/tournaments`, `/tournaments N`, `/players`, `/help`, `/help_level`.
 - Anyone may join (solo/team); no group-membership check for registration. Create still requires a shared active
   group with the owner (or `ANYONE_CAN_CREATE_TOURNAMENT=1`).
 - Every private message marks the player as having started the bot (`players.dm_ok`, `dm_started_at`, migration 006).
@@ -305,7 +306,7 @@ per-group headers). `players.dm_group_id` / deep link `g_<chat id>` / `grp:` but
 group (legacy), but creating a tournament no longer asks which group it is for.
 
 **Who may create / manage:**
-- **Create** (`/create_tournament` form, AI create): the bot **owner** always; otherwise a user who shares at least one **active** group
+- **Create** (`/create_tournament` form): the bot **owner** always; otherwise a user who shares at least one **active** group
   with both the bot and the owner (`getChatMember`: member/administrator/creator/restricted-but-member), with a short
   cache. Or anyone if `ANYONE_CAN_CREATE_TOURNAMENT=1` (override, key kept). Refusal (feminine):
   «Создавать турниры могут только участники групп, где есть организатор P1. Записаться на турнир при этом можно 🙂».
@@ -338,8 +339,7 @@ Creating:
   «⚠️ выше уровня» in lists, cards and the team form; nobody is messaged. An unchanged start time is not re-sent (reminders stay). After saving the announcements are
   updated in place, then «Обновила турнир «…», анонсы поправила.» and a fresh tournament card.
   Finished/cancelled tournaments: «Турнир «…» уже завершён, менять его в форме нельзя.»
-- Plain text in private («создай турнир на субботу в 20:00, тройки, уровень 10») still works via AI.
-  `/new` was removed.
+- Creating in free text via the AI is gone: use `/create_tournament`. `/new` was removed.
 - `/edit` and `/cancel` are gone (unknown command): drafts are edited/deleted with «✏️ Поправить» /
   «🗑 Удалить», published tournaments with «✏️ Изменить турнир» / «❌ Отменить турнир».
 - `/players` (replaces `/levels`, no alias) — every known player grouped by level, highest first, then
@@ -386,12 +386,12 @@ Creating:
   - No command deletes a player; duplicates are removed by hand in the DB.
 - `/open [id]` — for a draft: shows the same card and publishes only after a clear confirmation (see below);
   for a closed tournament: reopens registration right away.
-- All of this in plain text too («создай турнир на субботу в 20:00, тройки, уровень 10»).
+- The AI does not perform these actions; it only shows information and points to the commands and buttons above.
 
 Owner only (`BOT_OWNER_TG_ID`, shown in `/help` to the owner only):
 - `/players_import` — bulk add or update players (private only). Each line is an in-game nick or `@username`; the last space-separated token, if it is a number 1–6, is the level (digits outside 1–6 are an error). A new player without a level gets 3; an existing player without a level on the line is skipped; a given level is set (the same level is skipped). Last duplicate line wins, cap 300 lines, one transaction (error lines are reported, they do not abort the rest). Bare command waits for the next message with «✖️ Отмена». Reply lists added and updated players separately, then skip/error counts, and is split if longer than a Telegram message.
-- `/level @user 4 [balance]`, `/balance [id]`; in plain text: set a player's level, create/show scales,
-  pick a scale for a new tournament.
+- `/level @user 4 [balance]`, `/balance [id]`. Scales stay hidden from users; only the owner sets levels,
+  via `/level` (or the player card), not via the AI.
 
 **Scales are hidden for now** (temporary product decision): cards, announcements, lists, `/help`, `/players`,
 the AI prompt and tool descriptions never mention rating scales. Only the owner changes player levels and a
@@ -432,12 +432,12 @@ When the AI calls `list_tournaments`, the bot sends this block itself and the mo
 Every tournament has a level (see below). There is no "no level" option any more
 (old tournaments without a limit keep working).
 
-1. In plain text in private («создай турнир на субботу в 20:00, тройки, уровень 10») the bot
-   collects title, MSK date/time, team size and the tournament level and asks for whatever is missing or invalid.
-   Player limit defaults to 24, the level scale to the default one.
-2. It creates a draft and shows the card with «Публикуем или что-то поправить?» in private.
+1. `/create_tournament` (or «➕ Создать турнир» on the list) opens the Mini App form: title, MSK date/time,
+   team size, tournament level; player limit defaults to 24.
+2. The form creates a draft and shows the card with «Публикуем или что-то поправить?» in private.
 3. Publishing (registration opens, the announcement is posted to the group) happens only on a clear confirmation from the
    organizer, the admin the current card was shown to (who created it, edited it or ran `/open`) or the bot owner: the «Публикуем» button, or a reply to the card like «да», «публикуем», «ок», «всё верно».
+   Any other reply to the card gets a short hint to use the buttons; it is not sent to the AI.
    The check is done in PHP (`App\Confirmation`), not by the model: anything with a correction, a question,
    a negation or numbers («да, но время 21:00») is not a confirmation — the edits are applied and the card is shown again.
    The model can publish only via the `publish_tournament` tool, which re-checks the user's message.

@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace P1Bot\App;
 
+use P1Bot\Ai\Tools;
 use P1Bot\Ai\Dispatcher;
 use P1Bot\Domain\AccessPolicy;
 use P1Bot\Domain\BalanceService;
@@ -154,8 +155,11 @@ class PendingPlayerRunner {
 					throw new ValidationError('Действие больше недоступно.');
 				}
 				$tool = (string) ($action['tool'] ?? '');
-				if (in_array($tool, ['register_team', 'add_player', 'remove_player', 'replace_player', 'rename_team', 'transfer_captain'], true)) {
-					throw new ValidationError('Теперь состав меняется в форме команды. Открой её с карточки турнира.');
+				if (!in_array($tool, Tools::names(), true)) {
+					throw new ValidationError(
+						'Это я теперь не делаю из чата. Записаться и собрать команду — кнопками на карточке турнира '
+						. '(/tournaments), ник — /nick, уровень ставит админ командой /level, турнир — /create_tournament.',
+					);
 				}
 				$args = is_array($action['args'] ?? null) ? $action['args'] : [];
 				$slot = (string) ($action['player_arg'] ?? 'player');
@@ -196,10 +200,7 @@ class PendingPlayerRunner {
 				if (empty($result['ok'])) {
 					throw new ValidationError((string) ($result['error'] ?? 'Не получилось.'));
 				}
-				if ($this->announcer !== null && isset($result['tournament_id'])) {
-					$this->announcer->refresh((int) $result['tournament_id']);
-				}
-				return (string) ($result['message'] ?? 'Готово!');
+				return (string) ($result['message'] ?? $result['info'] ?? 'Готово!');
 		}
 		throw new ValidationError('Неизвестное отложенное действие.');
 	}

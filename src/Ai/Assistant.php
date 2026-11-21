@@ -5,7 +5,6 @@ declare(strict_types=1);
 namespace P1Bot\Ai;
 
 use P1Bot\Domain\MoscowTime;
-use P1Bot\App\TeamRegistrationGuard;
 use P1Bot\Handlers\Context;
 use P1Bot\Repository\ConversationRepository;
 use P1Bot\Support\Clock;
@@ -14,8 +13,9 @@ use P1Bot\Telegram\BotIdentity;
 
 /**
 	Turns a free-text message into a human reply: model + function calls executed in PHP.
-	Dialog memory: a reply to the bot's answer continues the same conversation (TTL); in private
-	any message within the TTL does.
+	The AI only shows information (help, tournaments, levels, players). Dialog memory: a reply
+	to the bot's answer continues the same conversation (TTL); in private any message within
+	the TTL does.
 */
 class Assistant {
 	protected const MAX_ROUNDS = 5;
@@ -36,20 +36,19 @@ class Assistant {
 	/**
 		Produces the reply text and a callback to remember the dialog once the reply is sent.
 
-		'card' is a draft id when the turn ended with a created/edited draft: the caller shows
-		the card «Публикуем или что-то поправить?» instead of the model's text.
-
 		'list' = the model asked for the tournament list: the caller sends the pretty list before the text.
 
 		'past_list' = the model asked for /history: the caller sends the past-tournaments list.
 
-		'groups' = the action needs a group choice (chat_id => title): the caller adds group buttons.
+		'levels' = the model asked for levels help: the caller sends Texts::levels().
+
+		'help' = the model asked for /help: the caller sends Texts::help().
+
+		'players' = the model asked for /players: the caller sends the players list.
 
 		'suggest_markup' = fuzzy player pick keyboard from a failed @username resolve.
 
-		'followup' = optional second message (e.g. Telegram request_users keyboard).
-
-		@return array{text: string, remember: callable(int): void, card: ?int, history: list<array<string, mixed>>, list: bool, past_list: bool, levels: bool, groups: array<int, string>, suggest_markup: array<string, mixed>}
+		@return array{text: string, remember: callable(int): void, history: list<array<string, mixed>>, list: bool, past_list: bool, levels: bool, help: bool, players: bool, suggest_markup: array<string, mixed>}
 	*/
 	public function reply(Context $ctx): array {
 		$message = $ctx->message;
@@ -64,7 +63,7 @@ class Assistant {
 				$conversation = $found;
 			}
 		}
-		if ($conversation === null && $ctx->isPrivate()) {
+		if ($conversation === null) {
 			$conversation = $this->conversations->findLatest($ctx->chatId(), $ctx->actor->id, $this->clock->now());
 		}
 		$history = $conversation['history'] ?? [];
@@ -78,25 +77,28 @@ class Assistant {
 			$history,
 			[['role' => 'user', 'content' => $user_text]],
 		);
-		$tools = Tools::definitions($ctx->is_admin, $ctx->is_owner);
-		$allowed = Tools::names($ctx->is_admin, $ctx->is_owner);
+		$tools = Tools::definitions();
+		$allowed = Tools::names();
 
-		$card = null;
 		$list = false;
 		$past_list = false;
 		$levels = false;
-		$groups = [];
+		$help = false;
+		$players = false;
 		$suggest_markup = [];
 		$say = null;
-		$followup = null;
 		$response = $this->ai->createResponse($this->system_prompt, $input, $tools);
 		for ($round = 0; $response->tool_calls !== [] && $round < self::MAX_ROUNDS; $round++) {
 			$outputs = [];
-			$card = null;
 			foreach ($response->tool_calls as $call) {
 				$result = in_array($call['name'], $allowed, true)
 					? $this->dispatcher->dispatch($call['name'], $call['arguments'], $ctx)
-					: ['ok' => false, 'error' => 'Это действие недоступно.'];
+					: [
+						'ok' => false,
+						'error' => 'Это действие больше недоступно.',
+						'what_to_do' => 'Объясни, что записаться, собрать команду, поставить ник или создать турнир '
+							. 'можно командами и кнопками: /tournaments, /create_tournament, /nick, /level, /players, /help.',
+					];
 				$this->logger->info(
 					'tool ' . $call['name'],
 					['args' => $call['arguments'], 'ok' => $result['ok'] ?? false],
@@ -110,9 +112,11 @@ class Assistant {
 				if (!empty($result['show_levels'])) {
 					$levels = true;
 				}
-				if (!empty($result['choose_group_ids'])) {
-					$groups = (array) $result['choose_group_ids'];
-					unset($result['choose_group_ids']);
+				if (!empty($result['show_help'])) {
+					$help = true;
+				}
+				if (!empty($result['show_players'])) {
+					$players = true;
 				}
 				if (!empty($result['suggest_markup']) && is_array($result['suggest_markup'])) {
 					$suggest_markup = $result['suggest_markup'];
@@ -122,44 +126,24 @@ class Assistant {
 					$say = $result['say'];
 					unset($result['say']);
 				}
-				if (!empty($result['followup']) && is_array($result['followup'])) {
-					$followup = $result['followup'];
-					unset($result['followup']);
-				}
-				if (isset($result['show_card'])) {
-					$card = (int) $result['show_card'];
-				} elseif (!empty($result['published'])) {
-					$card = null;
-				}
 				$outputs[] = [
 					'type' => 'function_call_output',
 					'call_id' => $call['call_id'],
 					'output' => (string) json_encode($result, JSON_UNESCAPED_UNICODE),
 				];
 			}
-			if ($card !== null || $say !== null) {
-				break; // the card or a fixed prompt is the answer; no extra model round
+			if ($say !== null) {
+				break;
 			}
 			$response = $this->ai->createResponse($this->system_prompt, $outputs, $tools, $response->id);
 		}
 
 		if ($say !== null) {
 			$text = $say;
-		} elseif ($card === null && $response->text !== '') {
+		} elseif ($response->text !== '') {
 			$text = $response->text;
 		} else {
-			$text = ($list || $past_list || $levels) && $card === null ? '' : 'Готово!'; // the list / help speaks for itself
-		}
-		$recovered = $say === null && $card === null
-			? $this->recoverUsernameAsk($ctx, $user_text, $text)
-			: null;
-		if ($recovered !== null) {
-			$text = $recovered['text'];
-			$suggest_markup = $recovered['suggest_markup'];
-			$followup = $recovered['followup'];
-			if ($recovered['groups'] !== []) {
-				$groups = $recovered['groups'];
-			}
+			$text = ($list || $past_list || $levels || $help || $players) ? '' : 'Готово!';
 		}
 		$new_history = array_slice(array_merge($history, [
 			['role' => 'user', 'content' => $user_text],
@@ -181,13 +165,12 @@ class Assistant {
 		return [
 			'text' => $text,
 			'remember' => $remember,
-			'card' => $card,
 			'list' => $list,
 			'past_list' => $past_list,
 			'levels' => $levels,
-			'groups' => $groups,
+			'help' => $help,
+			'players' => $players,
 			'suggest_markup' => $suggest_markup,
-			'followup' => $followup,
 			'history' => array_slice(
 				array_merge($history, [['role' => 'user', 'content' => $user_text]]),
 				-self::MAX_HISTORY,
@@ -196,42 +179,8 @@ class Assistant {
 	}
 
 	/**
-		If the model asked for @usernames instead of calling register_team, prepare the team
-		form from the user's original text (never a chat picker, never a registration).
-		@return array{text: string, suggest_markup: array<string, mixed>, followup: ?array, groups: array<int, string>}|null
-	*/
-	protected function recoverUsernameAsk(Context $ctx, string $user_text, string $model_text): ?array {
-		if (!TeamRegistrationGuard::isUsernameAsk($model_text) || !TeamRegistrationGuard::isTeamRegistrationIntent($user_text)) {
-			return null;
-		}
-		$parsed = TeamRegistrationGuard::parse($user_text);
-		if ($parsed === null) {
-			return null;
-		}
-		$this->logger->info('intercepted username-ask, dispatching register_team', [
-			'team_name' => $parsed['team_name'],
-			'players' => $parsed['players'],
-		]);
-		$result = $this->dispatcher->dispatch('register_team', [
-			'team_name' => $parsed['team_name'],
-			'players' => $parsed['players'],
-		], $ctx);
-		if (!empty($result['say']) && is_string($result['say'])) {
-			return [
-				'text' => $result['say'],
-				'suggest_markup' => is_array($result['suggest_markup'] ?? null) ? $result['suggest_markup'] : [],
-				'followup' => is_array($result['followup'] ?? null) ? $result['followup'] : null,
-				'groups' => is_array($result['choose_group_ids'] ?? null) ? $result['choose_group_ids'] : [],
-			];
-		}
-		return null;
-	}
-
-	/**
 		Facts the model needs; it is rebuilt for every message.
 	*/
-
-
 	protected function contextBlock(Context $ctx): string {
 		$author = $ctx->actor;
 		$tournaments = $this->dispatcher->dispatch('list_tournaments', [], $ctx)['tournaments'] ?? [];
@@ -247,10 +196,8 @@ class Assistant {
 				$author->username !== null ? ' (@' . $author->username . ')' : '',
 			),
 			'Автор — ' . self::role($ctx),
-			$ctx->isPrivate()
-				? 'Разговор в личке. Номера турниров общие для всех групп (№N = id турнира).'
-					. ($ctx->group_title !== '' ? ' Текущая группа для создания: ' . $ctx->group_title . '.' : '')
-				: 'Разговор в группе.',
+			'Разговор в личке. Номера турниров общие для всех групп (№N = id турнира).'
+				. ($ctx->group_title !== '' ? ' Текущая группа для создания: ' . $ctx->group_title . '.' : ''),
 			'Активные турниры: ' . ($tournaments === [] ? 'нет.' : "\n- " . implode("\n- ", $tournaments)),
 			'Заявки автора: ' . implode('; ', $status),
 			'Неопубликованные черновики автора: ' . ($drafts === [] ? 'нет.' : "\n- " . implode("\n- ", $drafts)),
@@ -259,12 +206,12 @@ class Assistant {
 
 	protected static function role(Context $ctx): string {
 		if ($ctx->is_owner) {
-			return 'главный админ: ему доступны все действия, только он меняет уровни игроков.';
+			return 'главный админ: создавать турниры и ставить уровни и ники он может командами и формами, не через тебя. Только он меняет уровни игроков.';
 		}
 		if ($ctx->is_admin) {
-			return 'может создавать турниры (есть общая группа с организатором P1); править/открывать/закрывать/отменять — только свои (или главный админ — любые). Уровни игроков меняет только главный админ.';
+			return 'может создавать турниры командой /create_tournament (есть общая группа с организатором P1); править и отменять — только свои (или главный админ — любые). Уровни игроков меняет только главный админ.';
 		}
-		return 'обычный игрок: создавать турниры нельзя, записаться и собирать команду можно.';
+		return 'обычный игрок: создавать турниры нельзя; записаться и собрать команду можно кнопками на карточке турнира.';
 	}
 
 	protected static function weekday(\DateTimeImmutable $utc): string {

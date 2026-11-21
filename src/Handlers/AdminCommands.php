@@ -39,6 +39,7 @@ use P1Bot\Telegram\TelegramApi;
 use P1Bot\View\DeepLink;
 use P1Bot\View\Html;
 use P1Bot\View\Messages;
+use P1Bot\View\PlayersList;
 use P1Bot\View\Texts;
 
 /**
@@ -92,6 +93,7 @@ class AdminCommands {
 		protected ?WebAppPicker $webapp = null,
 		protected ?PendingActionRepository $pending = null,
 		protected ?PlayersImport $players_import = null,
+		protected ?PlayersList $players_list = null,
 	) {
 	}
 
@@ -800,72 +802,21 @@ class AdminCommands {
 		owner in private also gets a ✏️ link per player that opens the player card.
 	*/
 	protected function playersList(Context $ctx): string {
-		$scale = $this->balances->viewScaleId() !== null ? $this->balances->findDefault() : null;
-		$ratings = $scale !== null ? $this->balances->effectiveRatings($scale->id) : [];
-		$by_level = [6 => [], 5 => [], 4 => [], 3 => [], 2 => [], 1 => [], 0 => []];
-		$total = 0;
-		foreach ($this->players->listAllKnown() as $player) {
-			$level = isset($ratings[$player->id]) ? (int) $ratings[$player->id]['level'] : null;
-			$by_level[$level !== null && isset($by_level[$level]) ? $level : 0][] = $player;
-			$total++;
-		}
-		if ($total === 0) {
+		if ($this->players_list === null) {
 			return 'Пока я не знаю ни одного игрока 🙂';
 		}
-		$edit = $ctx->is_owner && $ctx->isPrivate() && $this->player_form !== null && $this->player_form->canLink();
-		$lines = ['📋 <b>Игроки</b> — ' . $total];
-		foreach ($by_level as $level => $list) {
-			if ($list === []) {
-				continue;
-			}
-			usort($list, static fn (Player $a, Player $b): int => strcmp(
-				mb_strtolower(self::playerSortKey($a)),
-				mb_strtolower(self::playerSortKey($b)),
-			));
-			$title = $level === 0
-				? sprintf('Уровень не ставили — считаю %s (%d)', Levels::name(Levels::DEFAULT), Levels::DEFAULT)
-				: sprintf('%s (%d)', Levels::name($level), $level);
-			$lines[] = '';
-			$lines[] = '<blockquote><b>' . Html::e($title) . '</b> — ' . count($list) . '</blockquote>';
-			foreach ($list as $player) {
-				$lines[] = self::playerLine($player, $edit ? $this->player_form->editLink($player->id) : null);
-			}
-		}
-		$footer = "\n\nКак устроены уровни — /help_level";
-		if ($edit) {
-			$footer .= "\n✏️ — карточка игрока: ник, уровень, @username, объединить дубли, удалить";
-		}
-		if ($ctx->is_owner) {
-			$footer .= "\nПоставить уровень: /level @ник 4, ник: /nick @ник НикВИгре";
-		}
-		$chunks = $this->splitTelegramMessages(implode("\n", $lines));
+		$chunks = $this->players_list->messages(
+			$ctx->is_owner,
+			$ctx->isPrivate(),
+			$this->players_list->editLinkCallback($ctx->is_owner, $ctx->isPrivate()),
+		);
 		$last = (string) array_pop($chunks);
 		foreach ($chunks as $chunk) {
 			$this->api->sendMessage($ctx->chatId(), $chunk, $ctx->message->message_id);
 		}
-		return $last . $footer;
+		return $last;
 	}
 
-	protected static function playerSortKey(Player $player): string {
-		return $player->hasIgn() ? (string) $player->ign : ($player->display_name !== '' ? $player->display_name : (string) $player->username);
-	}
-
-	/**
-		One list line: the name (Player::lineupLabel: nick, else @username, else the Telegram name; a link
-		to the Telegram profile when there is one), then the ✏️ link to the player card for the owner.
-	*/
-	protected static function playerLine(Player $player, ?string $edit_url = null): string {
-		$line = $player->lineupLabel();
-		if ($edit_url !== null) {
-			$line .= ' <a href="' . Html::e($edit_url) . '">✏️</a>';
-		}
-		return $line;
-	}
-
-	/**
-		@param list<string> $noop
-		@return list<string>
-	*/
 	protected function splitTelegramMessages(string $text, int $limit = 3900): array {
 		if (mb_strlen($text) <= $limit) {
 			return [$text];

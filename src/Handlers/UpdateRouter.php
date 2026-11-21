@@ -26,9 +26,10 @@ use P1Bot\View\Messages;
 use P1Bot\View\Texts;
 
 /**
-	Entry point for every update. In a group: info answers, solo join/leave, manage redirects and
-	short AI chat when mentioned; announcements/reminders are posted by other components. Full
-	management stays in the private chat (see PrivateChatHandler).
+	Entry point for every update. In a group: info answers, solo join/leave and manage redirects
+	when the bot is mentioned or replied to (no free-form AI in groups); announcements/reminders
+	are posted by other components. Full management and the info-only AI stay in the private chat
+	(see PrivateChatHandler).
 */
 class UpdateRouter {
 

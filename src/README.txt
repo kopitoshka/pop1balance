@@ -21,7 +21,8 @@ Webhook (сообщение / кнопка в Telegram)
 7. Ответ пользователю → каталог View + Telegram\BotApi (через DialogLoggingApi
    для логов диалога).
 8. Свободный текст в личке → Handlers\MessageHandler → Ai\Assistant →
-   Ai\Dispatcher (те же Domain-сервисы).
+   Ai\Dispatcher. ИИ только показывает информацию (справка, турниры,
+   уровни, список игроков); действия — командами, кнопками и Mini App.
 
 Cron
 
@@ -45,7 +46,8 @@ Handlers/ — вход с Telegram
     CallbackHandler.php
         Нажатия inline-кнопок
     MessageHandler.php
-        Свободный текст → AI или fallback
+        Свободный текст → info-only AI или fallback;
+        «да» на карточке черновика публикует без ИИ
     Context.php
         Сообщение + actor + права + группа
 
@@ -186,9 +188,9 @@ Ai/ — OpenAI в личке
     Assistant.php
         Цикл «модель ↔ tools»
     Tools.php
-        Схемы инструментов
+        Схемы инструментов (только просмотр)
     Dispatcher.php
-        Выполнение tool → Domain
+        Выполнение tool → Domain (без изменений данных)
     OpenAiClient.php / AiClient.php
         HTTP к API
     AiResponse.php / AiError.php

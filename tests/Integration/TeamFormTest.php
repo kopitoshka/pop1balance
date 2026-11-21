@@ -458,74 +458,79 @@ class TeamFormTest extends IntegrationTestCase {
 		self::assertSame('стас', $b['pending'][0]['label']);
 	}
 
-	public function testFreeTextRegistrationOpensPrefilledForm(): void {
+	public function testFreeTextRegistrationIsNotDoneByAi(): void {
 		$t = $this->openTournament(3);
 		$cap = $this->player('kopitoshka');
-		$tired = $this->player('just_tired_angel');
-		$this->app->nicks->setOwn($tired->id, 'tired angel');
-		$this->app->players->ensureByTelegram($this->next_tg_id++, 'rustas66', 'Стас Иванов', $this->clock->now());
-		$this->app->players->ensureByTelegram($this->next_tg_id++, 'stasyan_p1', 'Стас Петров', $this->clock->now());
+		$this->player('just_tired_angel');
 		$this->http->queueOpenAi(['id' => 'r1', 'output' => [[
 			'type' => 'function_call', 'id' => 'fc', 'call_id' => 'c1', 'name' => 'register_team',
 			'arguments' => json_encode(['tournament_id' => $t->id, 'players' => ['я', 'tired angel', 'стас']], JSON_UNESCAPED_UNICODE),
 		]]]);
-		$this->http->reset();
-		$this->dispatch($this->privateMessage($cap, 'запиши нас: я, tired angel и стас'));
-		self::assertCount(1, array_filter($this->http->requests, static fn (array $r): bool => str_ends_with($r['url'], '/responses')), 'no second model round');
-		$text = $this->http->lastText();
-		self::assertStringContainsString('Открой форму команды: уже добавила тебя и tired angel.', $text);
-		self::assertStringContainsString('«стас»: нашла 2 варианта, выбери нужного там.', $text);
-		self::assertStringNotContainsString('Может, ты про', $text);
-		self::assertStringNotContainsString('Не нашла', $text);
-		$button = $this->buttons()[0];
-		self::assertSame(TeamForm::NEW_BUTTON, $button['text']);
-		self::assertSame([], $this->app->team_repo->listByTournament($t->id), 'nothing registered from chat');
-		$b = $this->boot($cap, $this->tokenOf($button));
-		self::assertSame([$cap->id, $tired->id], array_column($b['team']['members'], 'id'));
-		self::assertSame('стас', $b['pending'][0]['label']);
-		self::assertCount(2, $b['pending'][0]['suggestions']);
-	}
-
-	public function testEditToolsOpenFormWithProposedChanges(): void {
-		$t = $this->openTournament(3);
-		$cap = $this->player('cap');
-		$mate = $this->player('mate');
-		$newbie = $this->player('newbie');
-		$entry = $this->app->teams->createTeam($t->id, $cap->id, 'Секта', [$mate->id]);
-		$cases = [
-			['add_player', ['player' => '@newbie'], fn (array $b) => self::assertContains($newbie->id, array_column($b['team']['members'], 'id'))],
-			['rename_team', ['new_name' => 'Новая Секта'], fn (array $b) => self::assertSame('Новая Секта', $b['team']['name'])],
-			['remove_player', ['player' => '@mate'], fn (array $b) => self::assertSame([$cap->id], array_column($b['team']['members'], 'id'))],
-			['transfer_captain', ['player' => '@mate'], fn (array $b) => self::assertSame($mate->id, $b['team']['captain_id'])],
-		];
-		foreach ($cases as [$tool, $args, $check]) {
-			$this->http->queueOpenAi(['id' => 'r' . $tool, 'output' => [[
-				'type' => 'function_call', 'id' => 'fc', 'call_id' => 'c' . $tool, 'name' => $tool,
-				'arguments' => json_encode($args + ['tournament_id' => $t->id], JSON_UNESCAPED_UNICODE),
-			]]]);
-			$this->http->reset();
-			$this->dispatch($this->privateMessage($cap, 'поменяй команду'));
-			self::assertStringContainsString('Открой форму команды «Секта»', $this->http->lastText(), $tool);
-			$check($this->boot($cap, $this->tokenOf($this->buttons()[0])));
-			$saved = $this->app->teams->get($entry->team->id);
-			self::assertSame('Секта', $saved->team->name, $tool . ' changes nothing before the form is saved');
-			self::assertSame(2, $saved->size());
-		}
-	}
-
-	public function testUsernameAskSafetyNetOpensForm(): void {
-		$t = $this->openTournament(3);
-		$cap = $this->player('cap');
-		$this->http->queueOpenAi(['id' => 'r1', 'output' => [[
+		$this->http->queueOpenAi(['id' => 'r2', 'output' => [[
 			'type' => 'message', 'role' => 'assistant',
-			'content' => [['type' => 'output_text', 'text' => 'Пришли, пожалуйста, их @username в Telegram.']],
+			'content' => [['type' => 'output_text', 'text' => 'Собрать команду можно формой на карточке турнира: /tournaments.']],
 		]]]);
 		$this->http->reset();
 		$this->dispatch($this->privateMessage($cap, 'запиши нас: я, tired angel и стас'));
-		self::assertStringContainsString('Открой форму команды', $this->http->lastText());
-		self::assertStringNotContainsString('@username', $this->http->lastText());
-		self::assertSame(TeamForm::NEW_BUTTON, $this->buttons()[0]['text']);
-		self::assertSame([], $this->app->team_repo->listByTournament($t->id));
+		self::assertSame([], $this->app->team_repo->listByTournament($t->id), 'nothing registered from chat');
+		$output = json_decode($this->lastAiOutput(), true);
+		self::assertFalse($output['ok']);
+		self::assertStringContainsString('/tournaments', $output['what_to_do']);
+		self::assertStringContainsString('формой на карточке турнира', $this->http->lastText());
+		self::assertSame([], $this->buttons());
+	}
+
+	public function testTeamEditToolsAreRefused(): void {
+		$t = $this->openTournament(3);
+		$cap = $this->player('cap');
+		$mate = $this->player('mate');
+		$entry = $this->app->teams->createTeam($t->id, $cap->id, 'Секта', [$mate->id]);
+		$this->http->queueOpenAi(['id' => 'r1', 'output' => [[
+			'type' => 'function_call', 'id' => 'fc', 'call_id' => 'c1', 'name' => 'add_player',
+			'arguments' => json_encode(['tournament_id' => $t->id, 'player' => '@newbie'], JSON_UNESCAPED_UNICODE),
+		]]]);
+		$this->http->queueOpenAi(['id' => 'r2', 'output' => [[
+			'type' => 'message', 'role' => 'assistant',
+			'content' => [['type' => 'output_text', 'text' => 'Поправить команду можно в форме на карточке турнира.']],
+		]]]);
+		$this->http->reset();
+		$this->dispatch($this->privateMessage($cap, 'добавь newbie в команду'));
+		$saved = $this->app->teams->get($entry->team->id);
+		self::assertSame('Секта', $saved->team->name);
+		self::assertSame(2, $saved->size());
+		$output = json_decode($this->lastAiOutput(), true);
+		self::assertFalse($output['ok']);
+		self::assertSame('Это действие больше недоступно.', $output['error']);
+		self::assertStringContainsString('форме на карточке', $this->http->lastText());
+		self::assertSame([], $this->buttons());
+	}
+
+	public function testUsernameAskIsNotIntercepted(): void {
+		$this->openTournament(3);
+		$cap = $this->player('cap');
+		$this->http->queueOpenAi(['id' => 'r1', 'output' => [[
+			'type' => 'message', 'role' => 'assistant',
+			'content' => [['type' => 'output_text', 'text' => 'Собери команду формой на карточке турнира: /tournaments.']],
+		]]]);
+		$this->http->reset();
+		$this->dispatch($this->privateMessage($cap, 'запиши нас: я, tired angel и стас'));
+		self::assertSame('Собери команду формой на карточке турнира: /tournaments.', $this->http->lastText());
+		self::assertSame([], $this->buttons());
+		self::assertSame([], $this->app->team_repo->listByTournament(1));
+	}
+
+	/**
+		@return string JSON tool result sent back to the model
+	*/
+	protected function lastAiOutput(): string {
+		$requests = array_values(array_filter(
+			$this->http->requests,
+			static fn (array $r): bool => str_ends_with($r['url'], '/responses'),
+		));
+		self::assertNotSame([], $requests);
+		$last = end($requests);
+		self::assertIsArray($last['json']['input'][0] ?? null);
+		return (string) $last['json']['input'][0]['output'];
 	}
 
 	public function testEntryPointsUseTheForm(): void {

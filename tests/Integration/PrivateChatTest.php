@@ -11,7 +11,7 @@ use P1Bot\Tests\Support\IntegrationTestCase;
 use P1Bot\Tests\Support\LogCapture;
 
 /**
-	Private chat: everything happens here (deep links, buttons, commands, AI with all tools).
+	Private chat: everything happens here (deep links, buttons, commands, info-only AI).
 */
 class PrivateChatTest extends IntegrationTestCase {
 	protected const SECOND_CHAT = -1009876543210;
@@ -339,39 +339,28 @@ class PrivateChatTest extends IntegrationTestCase {
 		self::assertNull($this->app->tournament_repo->find(2));
 	}
 
-	public function testAiCreationIsGlobalWithoutGroupPicker(): void {
-		$this->app->chats->ensure(self::SECOND_CHAT, 'Вторая группа');
-		$this->http->queueOpenAi($this->functionCall('create_tournament', [
-			'title' => 'Кубок',
-			'starts_at_msk' => '23.11 20:00',
-			'team_size' => 2,
-			'level' => '7',
-		]));
-		$card = $this->say($this->owner, 'создай кубок 23.11 в 20, двойки, уровень 7');
-		self::assertStringContainsString('Публикуем или что-то поправить?', $card);
-		self::assertNotNull($this->app->tournament_repo->find(1));
-		self::assertSame(['pub:1', 'fix:1', 'ddel:1'], $this->lastButtons());
-	}
-
-	public function testAiCreationRefusesWithoutSharedOwnerGroup(): void {
+	public function testCreationRefusesWithoutSharedOwnerGroup(): void {
 		$vasya = $this->player('vasya');
 		$this->withoutSharedOwnerGroup($vasya);
-		// The AI path is covered in AssistantTest; here the command and the form refuse the same way.
 		self::assertStringContainsString('организатор P1', $this->say($vasya, '/create_tournament'));
 		self::assertStringContainsString('организатор P1', (string) $this->newDraft($vasya, '23.11 20:00 | Кубок | 2 | 3,4'));
 		self::assertNull($this->app->tournament_repo->find(1));
 	}
 
-	public function testFreeTextGoesToAiWithAllToolsAndMemory(): void {
+	public function testFreeTextGoesToInfoAiWithMemory(): void {
 		$vasya = $this->player('vasya');
 		$this->ownerAbsentFromGroups();
-		$t = $this->openTournament(3);
-		$this->http->queueOpenAi($this->text('На какой турнир записать?'));
-		self::assertSame('На какой турнир записать?', $this->say($vasya, 'хочу поиграть соло'));
+		$this->openTournament(3);
+		$this->http->queueOpenAi($this->text('Какой турнир имеешь в виду?'));
+		self::assertSame('Какой турнир имеешь в виду?', $this->say($vasya, 'расскажи про турнир'));
 		$first = $this->aiRequests()[0]['json'];
-		self::assertContains('join_solo', array_column($first['tools'], 'name'));
-		self::assertContains('register_team', array_column($first['tools'], 'name'));
-		self::assertNotContains('create_tournament', array_column($first['tools'], 'name'));
+		$tools = array_column($first['tools'], 'name');
+		self::assertContains('list_tournaments', $tools);
+		self::assertContains('tournament_info', $tools);
+		self::assertContains('list_players', $tools);
+		self::assertNotContains('join_solo', $tools);
+		self::assertNotContains('register_team', $tools);
+		self::assertNotContains('create_tournament', $tools);
 		self::assertStringContainsString(
 			'Номера турниров общие для всех групп',
 			$first['input'][0]['content'],
@@ -379,18 +368,12 @@ class PrivateChatTest extends IntegrationTestCase {
 		self::assertStringContainsString('private: ai', $this->log->text());
 
 		// The next message continues the dialog without a reply.
-		$this->http->queueOpenAi($this->functionCall('join_solo', ['tournament_id' => 1]));
-		$this->http->queueOpenAi($this->text('Записала!'));
+		$this->http->queueOpenAi($this->text('Это субботний кубок.'));
 		$this->say($vasya, 'на субботний');
 		$input = $this->aiRequests()[0]['json']['input'];
-		self::assertSame(['role' => 'user', 'content' => 'хочу поиграть соло'], $input[1]);
-		self::assertSame(['role' => 'assistant', 'content' => 'На какой турнир записать?'], $input[2]);
-		self::assertSame('main', $this->app->tournaments->lineup($t->id)->placementOf($vasya->id));
-		$edits = $this->http->sent('editMessageText');
-		self::assertSame([], array_filter($this->http->sent('sendMessage'), static function (array $m): bool {
-			return $m['chat_id'] === self::CHAT_ID;
-		}), 'nothing is posted to the group about the join');
-		self::assertIsArray($edits);
+		self::assertSame(['role' => 'user', 'content' => 'расскажи про турнир'], $input[1]);
+		self::assertSame(['role' => 'assistant', 'content' => 'Какой турнир имеешь в виду?'], $input[2]);
+		self::assertSame(['role' => 'user', 'content' => 'на субботний'], $input[3]);
 
 		// After the TTL the dialog is forgotten.
 		$this->clock->advance('+31 minutes');
@@ -399,16 +382,15 @@ class PrivateChatTest extends IntegrationTestCase {
 		self::assertCount(2, $this->aiRequests()[0]['json']['input']);
 	}
 
-	public function testAiJoinDoesNotRequireGroupMembership(): void {
+	public function testAiWorksWithoutGroupMembership(): void {
 		$this->openTournament(3);
 		$this->http->onTelegram('getChatMember', static function (): array {
 			return ['ok' => true, 'result' => ['status' => 'kicked']];
 		});
 		$stranger = $this->player('stranger');
-		$this->http->queueOpenAi($this->functionCall('join_solo', ['tournament_id' => 1]));
-		$this->http->queueOpenAi($this->text('Записала!'));
-		$this->say($stranger, 'запиши соло');
-		self::assertSame(1, $this->app->tournaments->lineup(1)->occupied());
+		$this->http->queueOpenAi($this->text('Открыт Субботний кубок. Записаться — кнопками на карточке: /tournaments.'));
+		self::assertStringContainsString('Субботний кубок', $this->say($stranger, 'что сейчас открыто?'));
+		self::assertSame(0, $this->app->tournaments->lineup(1)->occupied());
 	}
 
 	public function testUnknownCommandAndEditedMessage(): void {
