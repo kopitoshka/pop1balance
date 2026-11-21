@@ -273,6 +273,7 @@ class Bootstrap {
 			$this->bot,
 			$this->players,
 			$this->logger,
+			$this->tournament_repo,
 		);
 		$this->group_redirect = new GroupRedirect($this->bot, $this->tournaments, $this->tournament_resolver);
 		$this->nicks = new NickService(

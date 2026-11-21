@@ -749,37 +749,55 @@ class TeamFormTest extends IntegrationTestCase {
 		self::assertNull($this->app->team_repo->preferredTeamName($mate->id), 'only captains');
 	}
 
-	public function testOfflinePlayersAreFoundAndAddedButNeverCaptain(): void {
+	public function testAdminMaySetAnOfflineCaptainInTheFormButARegularCaptainMayNot(): void {
 		$t = $this->openTournament(3);
 		$shadow = $this->app->nicks->addPlayer($this->owner->id, null, 'Тень')['player'];
 		$owl = $this->app->nicks->addPlayer($this->owner->id, 'offline_owl', null)['player'];
 		$real = $this->player('real_one');
 		$token = $this->formToken($this->owner, $t, null);
 		$found = $this->app->team_form->search($this->initDataFor($this->owner), $token, 'тен');
-		self::assertSame([$shadow->id, false], [$found['players'][0]['id'] ?? null, $found['players'][0]['can_captain'] ?? null]);
+		self::assertSame([$shadow->id, true], [$found['players'][0]['id'] ?? null, $found['players'][0]['can_captain'] ?? null], 'admin sees «сделать капитаном»');
 		$found = $this->app->team_form->search($this->initDataFor($this->owner), $token, 'offline_o');
 		self::assertSame($owl->id, $found['players'][0]['id'] ?? null);
 
-		// Only players without Telegram: refused with a clear error, nothing saved.
-		$e = $this->submit($this->owner, $token, ['name' => 'Призраки', 'player_ids' => [$shadow->id, $owl->id], 'captain_id' => 0]);
-		self::assertNotNull($e);
-		self::assertStringContainsString('капитаном быть не может', $e->getMessage());
-		self::assertNull($this->app->teams->findByName($t->id, 'Призраки'));
-		$e = $this->submit($this->owner, $token, ['name' => 'Призраки', 'player_ids' => [$shadow->id, $real->id], 'captain_id' => $shadow->id]);
-		self::assertStringContainsString('капитаном быть не может', (string) $e?->getMessage());
+		// Only offline players: the organizer may save, default captain is the first on the roster.
+		self::assertNull($this->submit($this->owner, $token, ['name' => 'Призраки', 'player_ids' => [$shadow->id, $owl->id], 'captain_id' => 0]));
+		$ghosts = $this->app->teams->findByName($t->id, 'Призраки');
+		self::assertSame($shadow->id, $ghosts->team->captain_id);
+		self::assertNull($this->submit(
+			$this->owner,
+			$this->formToken($this->owner, $t, $ghosts->team->id),
+			['name' => 'Призраки', 'player_ids' => [$shadow->id, $owl->id], 'captain_id' => $owl->id],
+		));
+		self::assertSame($owl->id, $this->app->teams->findByName($t->id, 'Призраки')->team->captain_id);
+		$this->app->teams->withdrawTeam($this->owner->id, $ghosts->team->id);
 
-		// Default captain: the first player with Telegram, in the bootstrap and on save.
+		// Mixed roster: default captain is still the first player with Telegram; admin may pick the offline one.
 		$draft = $this->formToken($this->owner, $t, null, ['player_ids' => [$shadow->id, $real->id], 'name' => 'Смешанные']);
 		$b = $this->boot($this->owner, $draft);
 		self::assertSame($real->id, $b['team']['captain_id']);
-		self::assertSame([false, true], array_column($b['team']['members'], 'can_captain'));
-		self::assertNull($this->submit($this->owner, $token, ['name' => 'Смешанные', 'player_ids' => [$shadow->id, $real->id], 'captain_id' => 0]));
+		self::assertSame([true, true], array_column($b['team']['members'], 'can_captain'));
+		self::assertNull($this->submit($this->owner, $draft, ['name' => 'Смешанные', 'player_ids' => [$shadow->id, $real->id], 'captain_id' => 0]));
 		$entry = $this->app->teams->findByName($t->id, 'Смешанные');
 		self::assertSame($real->id, $entry->team->captain_id);
 		self::assertCount(2, $entry->members);
+		self::assertNull($this->submit(
+			$this->owner,
+			$this->formToken($this->owner, $t, $entry->team->id),
+			['name' => 'Смешанные', 'player_ids' => [$shadow->id, $real->id], 'captain_id' => $shadow->id],
+		));
+		self::assertSame($shadow->id, $this->app->teams->findByName($t->id, 'Смешанные')->team->captain_id);
 
-		// Captain can add them in edit mode too; transfer to them is refused.
+		// Hand captaincy back to the Telegram player so a regular captain can open the form.
+		$this->app->teams->transferCaptain($this->owner->id, $entry->team->id, $real->id);
 		$edit = $this->formToken($real, $t, $entry->team->id);
+		$boot = $this->boot($real, $edit);
+		$can = array_column($boot['team']['members'], 'can_captain', 'id');
+		self::assertSame(
+			[false, true],
+			[$can[$shadow->id], $can[$real->id]],
+			'a regular captain does not see «сделать капитаном» on offline players',
+		);
 		self::assertNull($this->submit($real, $edit, ['name' => 'Смешанные', 'player_ids' => [$shadow->id, $real->id, $owl->id], 'captain_id' => $real->id]));
 		$e = $this->submit($real, $edit, ['name' => 'Смешанные', 'player_ids' => [$shadow->id, $real->id, $owl->id], 'captain_id' => $owl->id]);
 		self::assertStringContainsString('капитаном быть не может', (string) $e?->getMessage());

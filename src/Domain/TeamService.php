@@ -76,7 +76,7 @@ class TeamService {
 		return $this->db->transactional(function () use ($tournament_id, $captain_id, $name, $player_ids): TeamEntry {
 			$tournament = $this->openTournament($tournament_id, $captain_id);
 			$name = $this->validName($tournament_id, $name, null);
-			$this->assertCanCaptain($captain_id);
+			$this->assertCanCaptain($captain_id, $captain_id, $tournament);
 
 			$roster = array_values(array_unique(array_merge([$captain_id], $player_ids)));
 			if (count($roster) > $tournament->team_size) {
@@ -125,7 +125,7 @@ class TeamService {
 			$this->access->assertCanManageTournament($tournament, $actor_id);
 			$tournament = $this->openTournament($tournament_id, $actor_id);
 			$name = $this->validName($tournament_id, $name, null);
-			$this->assertCanCaptain($captain_id);
+			$this->assertCanCaptain($captain_id, $actor_id, $tournament);
 			$roster = array_values(array_unique(array_merge([$captain_id], $player_ids)));
 			if (count($roster) > $tournament->team_size) {
 				throw new ValidationError(sprintf(
@@ -411,12 +411,12 @@ class TeamService {
 
 	public function transferCaptain(int $actor_id, int $team_id, int $new_captain_id): TeamEntry {
 		return $this->db->transactional(function () use ($actor_id, $team_id, $new_captain_id): TeamEntry {
-			[$team] = $this->captainContext($actor_id, $team_id, false);
+			[$team, $tournament] = $this->captainContext($actor_id, $team_id, false);
 			if ($new_captain_id === $team->captain_id) {
 				throw new ValidationError('Этот игрок уже капитан.');
 			}
 			$this->assertMember($team, $new_captain_id);
-			$this->assertCanCaptain($new_captain_id);
+			$this->assertCanCaptain($new_captain_id, $actor_id, $tournament);
 			$this->teams->setCaptain($team->id, $new_captain_id);
 			return $this->get($team->id);
 		});
@@ -600,18 +600,23 @@ class TeamService {
 	}
 
 	/**
-		Captains get messages and open the form, so they need a Telegram id.
+		Captains normally need a Telegram id (they get messages and open the form). The tournament
+		organizer or the bot owner may still make a player without Telegram the captain.
 	*/
-	protected function assertCanCaptain(int $player_id): void {
+	protected function assertCanCaptain(int $player_id, int $actor_id, Tournament $tournament): void {
 		$player = $this->players->find($player_id) ?? throw new NotFound('Такого игрока я не знаю.');
-		if (!$player->hasTelegram()) {
-			throw new ValidationError(sprintf(self::NO_TELEGRAM_CAPTAIN, $player->mention()));
+		if ($player->hasTelegram()) {
+			return;
 		}
+		if ($this->access->canManageTournament($tournament, $actor_id)) {
+			return;
+		}
+		throw new ValidationError(sprintf(self::NO_TELEGRAM_CAPTAIN, $player->mention()));
 	}
 
 	/**
-		First roster player who may be captain; the first player when nobody may (the save then fails
-		with NO_TELEGRAM_CAPTAIN).
+		First roster player with Telegram; the first player when nobody has it (an admin may then
+		save that offline captain; a regular captain still gets NO_TELEGRAM_CAPTAIN).
 		@param list<int> $ids
 	*/
 	protected function defaultCaptain(array $ids): int {

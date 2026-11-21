@@ -199,7 +199,7 @@ class TeamForm {
 			if ($player === null) {
 				continue;
 			}
-			$card = $this->card($player, $taken_names, $own_team);
+			$card = $this->card($player, $taken_names, $own_team, $can_manage);
 			if ($card['in_team'] !== null && $entry === null && $id !== $actor->id) {
 				continue; // took a place elsewhere since the draft was saved
 			}
@@ -208,10 +208,13 @@ class TeamForm {
 		if ($can_manage && !in_array($captain_id, array_column($members, 'id'), true)) {
 			$captain_id = 0;
 			foreach ($members as $card) {
-				if ($card['can_captain']) {
+				if ($this->players->find($card['id'])?->hasTelegram()) {
 					$captain_id = $card['id'];
 					break;
 				}
+			}
+			if ($captain_id === 0 && $members !== []) {
+				$captain_id = $members[0]['id'];
 			}
 		}
 		$pending = [];
@@ -223,7 +226,7 @@ class TeamForm {
 			foreach (self::ids($item['suggestion_ids'] ?? []) as $sid) {
 				$player = $this->players->find($sid);
 				if ($player !== null && !in_array($sid, $ids, true)) {
-					$suggestions[] = $this->card($player, $taken_names, $own_team);
+					$suggestions[] = $this->card($player, $taken_names, $own_team, $can_manage);
 				}
 			}
 			$pending[] = ['label' => trim((string) $item['label']), 'suggestions' => $suggestions];
@@ -302,9 +305,10 @@ class TeamForm {
 				}
 			}
 		}
+		$can_manage = $this->access->canManageTournament($t, $actor->id);
 		$out = [];
 		foreach (array_slice($found, 0, self::SEARCH_LIMIT) as $player) {
-			$out[] = $this->card($player, $taken_names, $entry?->team->name);
+			$out[] = $this->card($player, $taken_names, $entry?->team->name, $can_manage);
 		}
 		return ['ok' => true, 'players' => $out];
 	}
@@ -562,7 +566,7 @@ class TeamForm {
 		@param array<int, string> $taken_names player id => team name in this tournament
 		@return array<string, mixed>
 	*/
-	protected function card(Player $player, array $taken_names, ?string $own_team): array {
+	protected function card(Player $player, array $taken_names, ?string $own_team, bool $can_manage = false): array {
 		$scale_id = $this->balances->viewScaleId();
 		$explicit = $this->balances->explicitLevel($scale_id, $player->id);
 		$level = $explicit ?? Levels::DEFAULT;
@@ -580,8 +584,8 @@ class TeamForm {
 			'level_name' => Levels::name($level),
 			'level_explicit' => $explicit !== null,
 			'in_team' => $team,
-			// Players without Telegram (added by /addplayer) can be on a roster, not captain.
-			'can_captain' => $player->hasTelegram(),
+			// Offline players: «сделать капитаном» only for the organizer/owner.
+			'can_captain' => $player->hasTelegram() || $can_manage,
 		];
 	}
 

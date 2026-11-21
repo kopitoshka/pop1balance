@@ -462,8 +462,9 @@ class PlayerRepository {
 
 	/**
 		Player without Telegram (/addplayer @username [nick] or /addplayer nick): no tg id, so no
-		messages, forms or captaincy. A @username row is claimed by ensureByTelegram on the first
-		visit; a nick-only row stays offline. Display name is the nick ('' without one).
+		messages or forms. The organizer or owner may still make them captain. A @username row is
+		claimed by ensureByTelegram on the first visit; a nick-only row stays offline. Display
+		name is the nick ('' without one).
 	*/
 	public function createOffline(?string $username, ?string $ign, ?string $ign_norm, DateTimeImmutable $now): Player {
 		$id = $this->db->insert(

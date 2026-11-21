@@ -354,11 +354,14 @@ Creating:
     `/nick @user` override (taken nick moves over), reply «Игрок @… уже есть…». The first visit of that
     @username claims the row (`PlayerRepository::ensureByTelegram`): tg id bound, nick/levels/rosters kept.
   - `/addplayer nick` — nick only: no tg id, no username, display name = nick. A taken nick is refused.
-  - Such players get no DMs (skipped silently), open no forms and cannot be captain
-    (`TeamService::NO_TELEGRAM_CAPTAIN` on create / transfer; the form hides «сделать капитаном» and the
-    default captain is the first player with Telegram). They are found by the team form search and the
-    level picker; the owner sets levels with `/level @user 4` or `/level Nick 4`, nicks with
-    `/nick @user Nick` or `/nick "Old nick" New nick`. Duplicates are fine; there is no merge.
+  - Such players get no DMs (skipped silently) and open no forms. A regular captain still cannot
+    hand them captaincy (`TeamService::NO_TELEGRAM_CAPTAIN`). The tournament organizer or the bot
+    owner may make them captain (createTeamAsOrganizer, transfer, team form save); the form shows
+    «сделать капитаном» for them only to those admins. The default captain is still the first
+    player with Telegram, or the first roster player when nobody has one. They are found by the
+    team form search and the level picker; the owner sets levels with `/level @user 4` or
+    `/level Nick 4`, nicks with `/nick @user Nick` or `/nick "Old nick" New nick`. Duplicates are
+    fine; there is no merge.
   - Links everywhere (lineups, announcements, team cards, `/players`, `/level all`): @username →
     `https://t.me/…`, else tg id → `tg://user?id=…`, else plain text.
   - No command deletes a player; duplicates are removed by hand in the DB.

@@ -29,7 +29,8 @@ class OfflinePlayersTest extends IntegrationTestCase {
 		$reply = $this->say($this->owner, '/addplayer @New_Guy Zoloto on heat');
 		self::assertSame(
 			'Добавила игрока @new_guy с ником «Zoloto on heat». Когда он напишет мне, привяжу его Telegram. '
-				. 'До тех пор сообщений от меня он не получает и капитаном быть не может.',
+				. 'До тех пор сообщений от меня он не получает. '
+				. 'Капитаном его может поставить только организатор турнира или главный админ.',
 			$reply,
 		);
 		$p = $this->app->players->findByUsername('new_guy');
@@ -50,7 +51,8 @@ class OfflinePlayersTest extends IntegrationTestCase {
 		$reply = $this->say($this->owner, '/addplayer Тихий Охотник');
 		self::assertSame(
 			'Добавила игрока «Тихий Охотник» без Telegram. Его можно ставить в составы и задавать уровень '
-				. '(<code>/level Тихий Охотник 4</code>), но сообщений от меня он не получит и капитаном быть не может.',
+				. '(<code>/level Тихий Охотник 4</code>). Сообщений от меня он не получит. '
+				. 'Капитаном его может поставить только организатор турнира или главный админ.',
 			$reply,
 		);
 		$p = $this->app->players->findByIgnNorm('тихий охотник');
@@ -136,35 +138,107 @@ class OfflinePlayersTest extends IntegrationTestCase {
 		self::assertSame(1, (int) $this->db->fetchValue("SELECT COUNT(*) FROM players WHERE username = 'late_comer'"));
 	}
 
-	public function testOfflinePlayersCannotBeCaptain(): void {
+	public function testAdminMayMakeAnOfflinePlayerCaptainButARegularCaptainMayNot(): void {
 		$t = $this->openTournament(3, null);
 		$cap = $this->player('cap');
 		$this->say($this->owner, '/addplayer Без Телеги');
 		$this->say($this->owner, '/addplayer @offline_user');
 		$nick = $this->app->players->findByIgnNorm('без телеги');
 		$user = $this->app->players->findByUsername('offline_user');
-
-		foreach ([$nick, $user] as $p) {
-			try {
-				$this->app->teams->createTeamAsOrganizer($this->owner->id, $t->id, $p->id, 'Призраки ' . $p->id);
-				self::fail('offline captain');
-			} catch (ValidationError $e) {
-				self::assertSame(sprintf(TeamService::NO_TELEGRAM_CAPTAIN, $p->mention()), $e->getMessage());
-			}
-		}
 		self::assertSame(
 			'Без Телеги без Telegram — капитаном быть не может: я не смогу ему писать. Выбери капитаном того, кто есть в Telegram.',
 			sprintf(TeamService::NO_TELEGRAM_CAPTAIN, $nick->mention()),
 		);
+
 		$entry = $this->app->teams->createTeam($t->id, $cap->id, 'Живые', [$nick->id, $user->id]);
 		self::assertCount(3, $entry->members, 'offline players can be on a roster');
 		try {
 			$this->app->teams->transferCaptain($cap->id, $entry->team->id, $nick->id);
-			self::fail('offline captain via transfer');
+			self::fail('regular captain must not transfer to an offline player');
+		} catch (ValidationError $e) {
+			self::assertSame(sprintf(TeamService::NO_TELEGRAM_CAPTAIN, $nick->mention()), $e->getMessage());
+		}
+		try {
+			$this->app->teams->saveForm(
+				$cap->id,
+				$t->id,
+				$entry->team->id,
+				'Живые',
+				[$cap->id, $nick->id, $user->id],
+				$user->id,
+			);
+			self::fail('regular captain must not save an offline captain');
 		} catch (ValidationError $e) {
 			self::assertStringContainsString('капитаном быть не может', $e->getMessage());
 		}
 		self::assertSame($cap->id, $this->app->teams->get($entry->team->id)->team->captain_id);
+
+		$this->app->teams->withdrawTeam($this->owner->id, $entry->team->id);
+		$made = $this->app->teams->createTeamAsOrganizer(
+			$this->owner->id,
+			$t->id,
+			$nick->id,
+			'Призраки',
+			[$user->id],
+		);
+		self::assertSame($nick->id, $made->team->captain_id, 'owner may create with a nick-only captain');
+		$this->app->teams->transferCaptain($this->owner->id, $made->team->id, $user->id);
+		self::assertSame($user->id, $this->app->teams->get($made->team->id)->team->captain_id, 'owner may transfer to a username-only captain');
+		$this->app->teams->saveForm(
+			$this->owner->id,
+			$t->id,
+			$made->team->id,
+			'Призраки',
+			[$nick->id, $user->id],
+			$nick->id,
+		);
+		self::assertSame($nick->id, $this->app->teams->get($made->team->id)->team->captain_id, 'owner may save an offline captain');
+	}
+
+	public function testNotifyPathsSkipAnOfflineCaptainAndTellTheOrganizer(): void {
+		$t = $this->openTournament(3, null);
+		$mate = $this->player('mate');
+		$other = $this->player('other');
+		$this->app->players->markDmStarted($mate->id, $this->clock->now());
+		$this->app->players->markDmStarted($other->id, $this->clock->now());
+		$this->app->players->markDmStarted($this->owner->id, $this->clock->now());
+		$this->say($this->owner, '/addplayer Тень');
+		$shadow = $this->app->players->findByIgnNorm('тень');
+		$entry = $this->app->teams->createTeamAsOrganizer(
+			$this->owner->id,
+			$t->id,
+			$shadow->id,
+			'Секта',
+			[$mate->id, $other->id],
+		);
+
+		$this->http->reset();
+		$this->app->teams->leaveTeam($mate->id, $entry->team->id);
+		$this->app->disband_notifier->notifyMemberLeft($mate, $shadow->id, 'Секта', (int) $t->id);
+		$chats = array_column($this->http->sent('sendMessage'), 'chat_id');
+		self::assertSame([self::OWNER_TG_ID], $chats, 'organizer gets the same member-left text; nobody is written at a null chat');
+		self::assertStringContainsString('отписался из команды «Секта»', $this->http->lastText());
+
+		$this->http->reset();
+		$disband = $this->app->teams->withdrawTeam($this->owner->id, $entry->team->id);
+		$this->app->disband_notifier->notify($this->owner->id, $disband);
+		self::assertSame([$this->tgIdOf($other)], array_column($this->http->sent('sendMessage'), 'chat_id'));
+
+		$entry = $this->app->teams->createTeamAsOrganizer(
+			$this->owner->id,
+			$t->id,
+			$shadow->id,
+			'Секта',
+			[$other->id],
+		);
+		$this->http->reset();
+		$this->app->tournaments->closeRegistration($this->owner->id, $t->id);
+		$this->app->announcer->refresh($t->id);
+		$dms = array_filter(
+			$this->http->sent('sendMessage'),
+			static fn (array $m): bool => (int) $m['chat_id'] > 0,
+		);
+		self::assertSame([], array_values($dms), 'closing registration does not DM an offline captain');
 	}
 
 	public function testDisbandWithOfflineMembersSkipsThemSilently(): void {
@@ -228,10 +302,34 @@ class OfflinePlayersTest extends IntegrationTestCase {
 		self::assertSame(1, (int) $this->db->fetchValue("SELECT COUNT(*) FROM players WHERE username = 'offline_owl'"));
 	}
 
+	public function testOfflineCaptainKeepsTheCrownInLists(): void {
+		$this->say($this->owner, '/addplayer Тень');
+		$this->say($this->owner, '/addplayer @offline_user Сова');
+		$shadow = $this->app->players->findByIgnNorm('тень');
+		$owl = $this->app->players->findByUsername('offline_user');
+		$t = $this->openTournament(3, null);
+		$mate = $this->player('mate');
+		$entry = $this->app->teams->createTeamAsOrganizer($this->owner->id, $t->id, $shadow->id, 'Секта', [$owl->id, $mate->id]);
+		$info = implode("\n", $this->app->announcer->infoMessages($this->app->tournament_repo->find($t->id)));
+		self::assertStringContainsString('👑 Тень', $info);
+		self::assertStringNotContainsString('>Тень<', $info, 'nick-only captain stays plain text');
+		self::assertStringContainsString('<a href="https://t.me/offline_user">Сова</a>', $info);
+		$card = $this->app->team_cards->text($this->app->tournament_repo->find($t->id), $entry);
+		self::assertStringContainsString('👑 Тень', $card);
+		self::assertStringContainsString('• <a href="https://t.me/offline_user">Сова</a>', $card);
+		$this->http->reset();
+		$this->dispatch($this->privateMessage($mate, '/team'));
+		self::assertStringContainsString('👑 Тень', $this->http->lastText());
+		$this->http->reset();
+		$this->dispatch($this->press($this->owner, 'oteams:' . $t->id));
+		self::assertStringContainsString('👑 Тень', $this->http->lastText());
+	}
+
 	public function testHelpShowsTheArgumentForms(): void {
 		$help = \P1Bot\View\Texts::help('pop1_bot', true, true);
 		self::assertStringContainsString('<code>/addplayer @username НикВИгре</code>', $help);
 		self::assertStringContainsString('<code>/addplayer НикВИгре</code>', $help);
+		self::assertStringContainsString('Капитаном такого игрока может поставить только организатор турнира или главный админ', $help);
 		self::assertStringContainsString('<code>/level НикВИгре 4</code>', $help);
 		self::assertStringNotContainsString('/addplayer @username', \P1Bot\View\Texts::help('pop1_bot', false, false));
 	}

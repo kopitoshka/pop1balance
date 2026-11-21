@@ -49,8 +49,9 @@ class Player {
 	}
 
 	/**
-		Known to Telegram (has a tg id): can get messages, open forms and be a captain.
+		Known to Telegram (has a tg id): can get messages and open forms.
 		Players added by @username or by nick only (/addplayer) have none until they write to the bot.
+		They can still be made captain by the tournament organizer or the bot owner.
 	*/
 	public function hasTelegram(): bool {
 		return $this->tg_user_id !== null;
