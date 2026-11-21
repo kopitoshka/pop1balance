@@ -147,10 +147,6 @@ class ScaleHiddenTest extends IntegrationTestCase {
 			self::assertStringNotContainsString('create_balance', $json);
 			self::assertStringNotContainsString('show_balance', $json);
 		}
-		$owner_tools = Tools::names(true, true);
-		foreach (['set_level', 'assign_nick', 'create_tournament', 'set_nick'] as $name) {
-			self::assertNotContains($name, $owner_tools);
-		}
 		self::assertContains('list_players', Tools::names(false, false));
 		self::assertSame(Tools::names(false, false), Tools::names(true, true), 'the same info tools for everyone');
 

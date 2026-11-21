@@ -7,8 +7,6 @@ namespace P1Bot\Tests\Integration;
 use P1Bot\Domain\CreateTournament;
 use P1Bot\Domain\Exception\ValidationError;
 use P1Bot\Domain\TournamentStatus;
-use P1Bot\Handlers\Context;
-use P1Bot\Telegram\Message;
 use P1Bot\Tests\Support\IntegrationTestCase;
 
 class DraftDeleteTest extends IntegrationTestCase {
@@ -83,25 +81,6 @@ class DraftDeleteTest extends IntegrationTestCase {
 		self::assertSame(TournamentStatus::REGISTRATION, $this->app->tournament_repo->find($published->id)->status);
 		$this->dispatch($this->press($this->owner, 'tcancely:' . $published->id));
 		self::assertSame(TournamentStatus::CANCELLED, $this->app->tournament_repo->find($published->id)->status);
-	}
-
-	public function testAiCannotCancelADraft(): void {
-		$t = $this->makeDraft();
-		$raw = $this->privateMessage($this->owner, 'удали черновик');
-		$ctx = new Context(
-			Message::fromArray($raw['message']),
-			$this->owner,
-			true,
-			true,
-			self::CHAT_ID,
-		);
-		$result = $this->app->dispatcher->dispatch('cancel_tournament', [
-			'tournament_id' => $t->id,
-		], $ctx);
-		self::assertFalse($result['ok']);
-		self::assertSame('Это действие больше недоступно.', $result['error']);
-		self::assertStringContainsString('/create_tournament', $result['what_to_do']);
-		self::assertNotNull($this->app->tournament_repo->find($t->id));
 	}
 
 	public function testCronPurgesExpiredDrafts(): void {

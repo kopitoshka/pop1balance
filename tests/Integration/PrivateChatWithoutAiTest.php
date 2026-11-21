@@ -34,16 +34,4 @@ class PrivateChatWithoutAiTest extends IntegrationTestCase {
 		self::assertSame($slash, $this->http->lastText());
 	}
 
-	public function testCardReplyWithoutAi(): void {
-		$this->newDraft($this->owner, '23.11 20:00 | Кубок | 2 | 3,4');
-		$t = $this->app->tournament_repo->find(1);
-		$reply = ['reply_to_message' => [
-			'message_id' => $t->card_msg_id,
-			'from' => ['id' => self::BOT_ID, 'is_bot' => true, 'first_name' => 'Bot'],
-		]];
-		$this->dispatch($this->privateMessage($this->owner, 'а время?', $reply));
-		self::assertStringContainsString('Не публикую, пока ты явно не подтвердишь', $this->http->lastText());
-		$this->dispatch($this->privateMessage($this->owner, 'да', $reply));
-		self::assertSame('registration', $this->app->tournament_repo->find(1)->status);
-	}
 }

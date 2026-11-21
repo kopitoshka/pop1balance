@@ -239,16 +239,24 @@ class CreateTournamentFormTest extends IntegrationTestCase {
 		self::assertSame('3,3,5', $t->reference_team);
 		self::assertSame(11, $t->max_points);
 		self::assertSame(30, $t->max_players);
+		self::assertSame($this->owner->id, $t->organizer_id);
 		self::assertSame(TournamentStatus::DRAFT, $t->status, 'the form never publishes');
 		self::assertSame(self::CHAT_ID, $t->chat_id, 'origin chosen like the old /new');
 
 		$sent = $this->http->sent('sendMessage');
 		self::assertCount(1, $sent);
-		self::assertSame($this->tgIdOf($this->owner), $sent[0]['chat_id']);
-		self::assertStringContainsString('Турнир №1 (черновик)', $sent[0]['text']);
-		self::assertStringEndsWith('Публикуем или что-то поправить?', $sent[0]['text']);
-		self::assertSame('pub:1', $sent[0]['reply_markup']['inline_keyboard'][0][0]['callback_data']);
-		self::assertSame([], $this->http->sent('editMessageText'));
+		$card = $sent[0];
+		self::assertSame($this->tgIdOf($this->owner), $card['chat_id']);
+		self::assertStringContainsString('Турнир №1 (черновик)', $card['text']);
+		self::assertStringContainsString('⚖️ Уровень турнира: средний+ (11 баллов на троих)', $card['text']);
+		self::assertStringContainsString('По игрокам: средний, средний, высокий', $card['text']);
+		self::assertStringNotContainsStringIgnoringCase('эталон', $card['text']);
+		self::assertStringEndsWith('Публикуем или что-то поправить?', $card['text']);
+		self::assertSame('pub:1', $card['reply_markup']['inline_keyboard'][0][0]['callback_data']);
+		$fix = $card['reply_markup']['inline_keyboard'][0][1];
+		self::assertStringContainsString('Поправить', $fix['text']);
+		self::assertArrayHasKey('web_app', $fix);
+		self::assertSame([], $this->http->sent('editMessageText'), 'nothing published');
 		self::assertSame(1000, $t->card_msg_id);
 	}
 

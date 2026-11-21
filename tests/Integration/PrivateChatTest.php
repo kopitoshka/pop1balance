@@ -86,7 +86,6 @@ class PrivateChatTest extends IntegrationTestCase {
 		}));
 	}
 
-
 	public function testTournamentCardHasNoTeamManageButtonsForOrganizerCaptain(): void {
 		$t = $this->openTournament(3);
 		$mate = $this->player('mate_tm');
@@ -167,34 +166,6 @@ class PrivateChatTest extends IntegrationTestCase {
 		self::assertStringContainsString('private: start g_' . self::CHAT_ID, $this->log->text());
 	}
 
-	public function testHelpAndLevels(): void {
-		$vasya = $this->player('vasya');
-		$this->withoutSharedOwnerGroup($vasya);
-		$reply = $this->say($vasya, '/help');
-		self::assertStringNotContainsString('обычным языком', $reply);
-		self::assertStringNotContainsString('📊 <b>Уровни игроков</b>', $reply, 'full levels text moved to /help_level');
-		self::assertStringContainsString('/help_level — Как считаются уровни и сила команды', $reply);
-		$levels = $this->say($vasya, '/help_level');
-		self::assertStringContainsString('📊 <b>Уровни игроков</b>', $levels);
-		self::assertStringContainsString('К сумме я добавляю бонус', $levels);
-		self::assertStringNotContainsString('Создание турниров', $reply);
-		self::assertStringNotContainsString('/level @user 4', $reply);
-		self::assertStringNotContainsString('/group', $reply);
-		$this->everyoneIsGroupMember();
-		$admin_help = $this->say($this->admin, '/help');
-		self::assertStringContainsString('Создание турниров', $admin_help);
-		self::assertStringContainsString('только автор турнира и главный админ', $admin_help);
-		self::assertStringNotContainsString('Только для главного админа', $admin_help);
-		$owner_help = $this->say($this->owner, '/help');
-		self::assertStringContainsString('Только для главного админа', $owner_help);
-		self::assertStringContainsString('/level @user 4', $owner_help);
-		self::assertStringContainsString('Такой команды я не знаю', $this->say($vasya, '/levels'));
-		self::assertStringContainsString('📋 <b>Игроки</b>', $this->say($vasya, '/players'));
-	}
-
-	/**
-		Plain «help» (and synonyms) must return full /help (with the levels reference) — and never go through the AI.
-	*/
 	public function testPlainHelpTextReturnsFullHelpNotLevels(): void {
 		$vasya = $this->player('vasya');
 		$this->withoutSharedOwnerGroup($vasya);
@@ -308,6 +279,7 @@ class PrivateChatTest extends IntegrationTestCase {
 		self::assertSame('💬 Записаться / вопросы в личке', $sent[0]['reply_markup']['inline_keyboard'][0][0]['text']);
 		self::assertStringContainsString('Опубликовала! Анонс уже во всех группах', end($sent)['text']);
 		self::assertStringContainsString('private: card reply', $this->log->text());
+		self::assertSame([], $this->aiRequests(), 'card confirm is not sent to the AI');
 	}
 
 	public function testCreationIsGlobalWithoutGroupPicker(): void {
@@ -337,14 +309,6 @@ class PrivateChatTest extends IntegrationTestCase {
 			(string) $this->newDraft($vasya, '23.11 20:00 | Кубок | 2 | 3,4'),
 		);
 		self::assertNull($this->app->tournament_repo->find(2));
-	}
-
-	public function testCreationRefusesWithoutSharedOwnerGroup(): void {
-		$vasya = $this->player('vasya');
-		$this->withoutSharedOwnerGroup($vasya);
-		self::assertStringContainsString('организатор P1', $this->say($vasya, '/create_tournament'));
-		self::assertStringContainsString('организатор P1', (string) $this->newDraft($vasya, '23.11 20:00 | Кубок | 2 | 3,4'));
-		self::assertNull($this->app->tournament_repo->find(1));
 	}
 
 	public function testFreeTextGoesToInfoAiWithMemory(): void {

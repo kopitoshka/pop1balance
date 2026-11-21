@@ -458,51 +458,35 @@ class TeamFormTest extends IntegrationTestCase {
 		self::assertSame('стас', $b['pending'][0]['label']);
 	}
 
-	public function testFreeTextRegistrationIsNotDoneByAi(): void {
-		$t = $this->openTournament(3);
-		$cap = $this->player('kopitoshka');
-		$this->player('just_tired_angel');
-		$this->http->queueOpenAi(['id' => 'r1', 'output' => [[
-			'type' => 'function_call', 'id' => 'fc', 'call_id' => 'c1', 'name' => 'register_team',
-			'arguments' => json_encode(['tournament_id' => $t->id, 'players' => ['я', 'tired angel', 'стас']], JSON_UNESCAPED_UNICODE),
-		]]]);
-		$this->http->queueOpenAi(['id' => 'r2', 'output' => [[
-			'type' => 'message', 'role' => 'assistant',
-			'content' => [['type' => 'output_text', 'text' => 'Собрать команду можно формой на карточке турнира: /tournaments.']],
-		]]]);
-		$this->http->reset();
-		$this->dispatch($this->privateMessage($cap, 'запиши нас: я, tired angel и стас'));
-		self::assertSame([], $this->app->team_repo->listByTournament($t->id), 'nothing registered from chat');
-		$output = json_decode($this->lastAiOutput(), true);
-		self::assertFalse($output['ok']);
-		self::assertStringContainsString('/tournaments', $output['what_to_do']);
-		self::assertStringContainsString('формой на карточке турнира', $this->http->lastText());
-		self::assertSame([], $this->buttons());
-	}
-
-	public function testTeamEditToolsAreRefused(): void {
+	public function testRemovedTeamToolsAreRefused(): void {
 		$t = $this->openTournament(3);
 		$cap = $this->player('cap');
 		$mate = $this->player('mate');
 		$entry = $this->app->teams->createTeam($t->id, $cap->id, 'Секта', [$mate->id]);
-		$this->http->queueOpenAi(['id' => 'r1', 'output' => [[
-			'type' => 'function_call', 'id' => 'fc', 'call_id' => 'c1', 'name' => 'add_player',
-			'arguments' => json_encode(['tournament_id' => $t->id, 'player' => '@newbie'], JSON_UNESCAPED_UNICODE),
-		]]]);
-		$this->http->queueOpenAi(['id' => 'r2', 'output' => [[
-			'type' => 'message', 'role' => 'assistant',
-			'content' => [['type' => 'output_text', 'text' => 'Поправить команду можно в форме на карточке турнира.']],
-		]]]);
-		$this->http->reset();
-		$this->dispatch($this->privateMessage($cap, 'добавь newbie в команду'));
-		$saved = $this->app->teams->get($entry->team->id);
-		self::assertSame('Секта', $saved->team->name);
-		self::assertSame(2, $saved->size());
-		$output = json_decode($this->lastAiOutput(), true);
-		self::assertFalse($output['ok']);
-		self::assertSame('Это действие больше недоступно.', $output['error']);
-		self::assertStringContainsString('форме на карточке', $this->http->lastText());
-		self::assertSame([], $this->buttons());
+		$cases = [
+			['register_team', ['tournament_id' => $t->id, 'players' => ['я', 'tired angel', 'стас']], 'запиши нас: я, tired angel и стас'],
+			['add_player', ['tournament_id' => $t->id, 'player' => '@newbie'], 'добавь newbie в команду'],
+		];
+		foreach ($cases as [$tool, $args, $text]) {
+			$this->http->queueOpenAi(['id' => 'r' . $tool, 'output' => [[
+				'type' => 'function_call', 'id' => 'fc', 'call_id' => 'c' . $tool, 'name' => $tool,
+				'arguments' => json_encode($args, JSON_UNESCAPED_UNICODE),
+			]]]);
+			$this->http->queueOpenAi(['id' => 't' . $tool, 'output' => [[
+				'type' => 'message', 'role' => 'assistant',
+				'content' => [['type' => 'output_text', 'text' => 'Команду собирают формой на карточке турнира: /tournaments.']],
+			]]]);
+			$this->http->reset();
+			$this->dispatch($this->privateMessage($cap, $text));
+			$output = json_decode($this->lastAiOutput(), true);
+			self::assertFalse($output['ok'], $tool);
+			self::assertSame('Это действие больше недоступно.', $output['error'], $tool);
+			$saved = $this->app->teams->get($entry->team->id);
+			self::assertSame('Секта', $saved->team->name, $tool);
+			self::assertSame(2, $saved->size(), $tool);
+			self::assertSame([], $this->buttons(), $tool);
+			self::assertStringContainsString('формой на карточке турнира', $this->http->lastText(), $tool);
+		}
 	}
 
 	public function testUsernameAskIsNotIntercepted(): void {

@@ -28,8 +28,8 @@ class EditedMessageTest extends IntegrationTestCase {
 	public function testEditedMentionGetsOneReplyAndIsNotProcessed(): void {
 		$vasya = $this->player('vasya');
 		$update = $this->edited($this->groupMessage(
-			$vasya,
-			'@' . self::BOT_USERNAME . ' /new 23.11 20:00 | Кубок | 3 | 10',
+			$this->owner,
+			'@' . self::BOT_USERNAME . ' /level @vasya 5',
 		));
 		$this->dispatch($update);
 
@@ -46,7 +46,7 @@ class EditedMessageTest extends IntegrationTestCase {
 			array_filter($this->http->requests, static fn (array $r): bool => str_ends_with($r['url'], '/responses')),
 			'no AI call',
 		);
-		self::assertNull($this->app->tournament_repo->find(1));
+		self::assertSame(3, $this->app->balances->levelOf($this->app->balances->findDefault()->id, $vasya->id));
 
 		// Edited again: silence.
 		$update['update_id'] += 1000;
@@ -56,11 +56,12 @@ class EditedMessageTest extends IntegrationTestCase {
 	}
 
 	public function testEditedCommandOfOwnerIsNotExecuted(): void {
+		$vasya = $this->player('vasya');
 		$this->dispatch($this->edited($this->groupMessage(
 			$this->owner,
-			'/new@' . self::BOT_USERNAME . ' 23.11 20:00 | Кубок | 3 | 10',
+			'/level@' . self::BOT_USERNAME . ' @vasya 5',
 		)));
-		self::assertNull($this->app->tournament_repo->find(1));
+		self::assertSame(3, $this->app->balances->levelOf($this->app->balances->findDefault()->id, $vasya->id));
 		self::assertSame(Messages::EDITED_MESSAGE, $this->http->lastText());
 	}
 

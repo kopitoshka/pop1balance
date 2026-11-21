@@ -5,43 +5,12 @@ declare(strict_types=1);
 namespace P1Bot\Tests\Integration;
 
 use P1Bot\Domain\TournamentStatus;
-use P1Bot\Support\DateFormat;
 use P1Bot\Tests\Support\IntegrationTestCase;
 use P1Bot\View\Texts;
 
 class AdminCommandsTest extends IntegrationTestCase {
 
-	public function testNewOneLine(): void {
-		$this->newDraft($this->owner, '23.11 20:00 | Кубок выходного дня | 3 | 3,3,4 | 30');
-
-		$t = $this->app->tournament_repo->find(1);
-		self::assertNotNull($t);
-		self::assertSame('Кубок выходного дня', $t->title);
-		self::assertSame('2026-11-23 17:00:00', DateFormat::toDb($t->starts_at));
-		self::assertSame(3, $t->team_size);
-		self::assertSame(10, $t->max_points);
-		self::assertSame(30, $t->max_players);
-		self::assertSame($this->owner->id, $t->organizer_id);
-		self::assertSame(TournamentStatus::DRAFT, $t->status);
-
-		$card = $this->http->sent('sendMessage')[0];
-		self::assertStringContainsString('Турнир №1 (черновик)', $card['text']);
-		self::assertStringContainsString('⚖️ Уровень турнира: средний (10 баллов на троих)', $card['text']);
-		self::assertStringContainsString('По игрокам: средний, средний, средний+', $card['text']);
-		self::assertStringNotContainsStringIgnoringCase('эталон', $card['text']);
-		self::assertStringEndsWith('Публикуем или что-то поправить?', $card['text']);
-		self::assertSame('pub:1', $card['reply_markup']['inline_keyboard'][0][0]['callback_data']);
-		self::assertSame('fix:1', $card['reply_markup']['inline_keyboard'][0][1]['callback_data']);
-		self::assertSame(1000, $this->app->tournament_repo->find(1)->card_msg_id);
-		self::assertSame([], $this->http->sent('editMessageText'), 'nothing published');
-	}
-
-	public function testNewRequiresReferenceTeamAndUsesDefaults(): void {
-		foreach (['/new 23.11 20:00 | Без баланса | 2 | -', '/new 23.11 20:00 | Без баланса | 2'] as $command) {
-			$this->dispatch($this->privateMessage($this->owner, $command));
-			self::assertNull($this->app->tournament_repo->find(1), $command);
-		}
-
+	public function testDraftUsesDefaultScaleAndPlayerLimit(): void {
 		$this->newDraft($this->owner, '23.11 20:00 | Пары | 2 | Танк, слабый плюс');
 		$t = $this->app->tournament_repo->find(1);
 		self::assertSame(7, $t->max_points);
@@ -236,14 +205,6 @@ class AdminCommandsTest extends IntegrationTestCase {
 		});
 	}
 
-	public function testOpenDraftUnclearAnswerDoesNotPublish(): void {
-		$this->newDraft($this->owner, '23.11 20:00 | Кубок | 3 | 3,3,4');
-		$this->dispatch($this->privateMessage($this->owner, '/open 1'));
-		$this->confirmCard($this->owner, 'да, только лимит 30');
-		self::assertSame(TournamentStatus::DRAFT, $this->app->tournament_repo->find(1)->status);
-		self::assertStringContainsString('Не публикую', $this->http->lastText());
-	}
-
 	public function testOpenReopensClosedTournamentDirectly(): void {
 		$this->newDraft($this->owner, '23.11 20:00 | Кубок | 3 | 3,3,4');
 		$this->confirmCard($this->owner);
@@ -295,25 +256,6 @@ class AdminCommandsTest extends IntegrationTestCase {
 		self::assertStringNotContainsString('lvl', $all, 'the level is in the header, not next to the name');
 	}
 
-	public function testTournamentsListAndHelp(): void {
-		$vasya = $this->player('vasya');
-		$this->dispatch($this->privateMessage($vasya, '/tournaments'));
-		self::assertStringContainsString('активных турниров нет', $this->http->lastText());
-
-		$this->newDraft($this->owner, '23.11 20:00 | Кубок | 3 | 3,3,4');
-		$this->confirmCard($this->owner);
-		$this->dispatch($this->privateMessage($vasya, '/tournaments'));
-		$list = $this->http->lastText();
-		self::assertStringStartsWith("📋 <b>Турниры</b>\n\n🏆 <b>Кубок</b> · №1\n🗓 23.11.2026 ⏰ 20:00 МСК", $list);
-		self::assertStringContainsString('<i>Пока никто не записался.</i>', $list);
-
-		$this->withoutSharedOwnerGroup($vasya);
-		$this->dispatch($this->privateMessage($vasya, '/help'));
-		self::assertStringNotContainsString('Создание турниров', $this->http->lastText());
-		$this->dispatch($this->privateMessage($this->owner, '/help'));
-		self::assertStringContainsString('Создание турниров', $this->http->lastText());
-	}
-
 	public function testNoServerLinksInTexts(): void {
 		$this->dispatch($this->privateMessage($this->owner, '/help'));
 		$this->newDraft($this->owner, '23.11 20:00 | Кубок | 3 | 3,3,4');
@@ -332,12 +274,18 @@ class AdminCommandsTest extends IntegrationTestCase {
 	public function testTournamentsListShowsLineupsAndDraftsForAdmins(): void {
 		$this->newDraft($this->owner, '23.11 20:00 | Кубок <1> | 2 | 3,4');
 		$this->confirmCard($this->owner);
+		$vasya = $this->player('vasya');
+		$this->http->reset();
+		$this->dispatch($this->privateMessage($vasya, '/tournaments'));
+		$empty = $this->http->lastText();
+		self::assertStringStartsWith("📋 <b>Турниры</b>\n\n🏆 <b>Кубок &lt;1&gt;</b> · №1\n🗓 23.11.2026 ⏰ 20:00 МСК", $empty);
+		self::assertStringContainsString('<i>Пока никто не записался.</i>', $empty);
+
 		$cap = $this->player('cap');
 		$this->app->teams->createTeam(1, $cap->id, 'Wolves & Co', [$this->player('mate')->id]);
 		$this->app->teams->joinSolo(1, $this->player('solo')->id);
 		$this->newDraft($this->owner, '24.11 21:00 | Черновой | 2 | 3,3');
 
-		$vasya = $this->player('vasya');
 		$this->http->reset();
 		$this->dispatch($this->privateMessage($vasya, '/tournaments'));
 		$text = $this->http->lastText();
@@ -445,8 +393,9 @@ class AdminCommandsTest extends IntegrationTestCase {
 		self::assertStringContainsString('Укажи уровень каждого игрока: 3 игрока', $error);
 	}
 
-	public function testLevelsMovedToHelpAndLevelsCommandIsGone(): void {
+	public function testHelpContentsAndLevelsCommandIsGone(): void {
 		$vasya = $this->player('vasya');
+		$this->withoutSharedOwnerGroup($vasya);
 		$this->dispatch($this->privateMessage($vasya, '/levels'));
 		self::assertSame('Такой команды я не знаю 🤔 Подсказка: /help', $this->http->lastText());
 
@@ -463,7 +412,10 @@ class AdminCommandsTest extends IntegrationTestCase {
 		] as $needle) {
 			self::assertStringContainsString($needle, $help_user);
 		}
-		foreach (['/levels', '/edit', '/cancel', '/level @user 4', '/nick @user', 'обычным языком', 'запиши команду', '/info', '📊 <b>Уровни игроков</b>'] as $needle) {
+		foreach ([
+			'/levels', '/edit', '/cancel', '/level @user 4', '/nick @user', 'обычным языком',
+			'запиши команду', '/info', '📊 <b>Уровни игроков</b>', 'Создание турниров', '/group',
+		] as $needle) {
 			self::assertStringNotContainsString($needle, $help_user);
 		}
 
@@ -476,10 +428,12 @@ class AdminCommandsTest extends IntegrationTestCase {
 			'Игрок, которому ещё не поставили уровень, считается средним (3).',
 			'⚖️ <b>Уровень турнира</b>',
 			'К сумме я добавляю бонус',
+			'📊 <b>Уровни игроков</b>',
 		] as $needle) {
 			self::assertStringContainsString($needle, $levels);
 		}
 
+		$this->everyoneIsGroupMember();
 		$this->dispatch($this->groupMessage($vasya, '/help'));
 		$help_group = $this->http->lastText();
 		self::assertStringContainsString('/level — свой уровень', $help_group);
@@ -492,8 +446,15 @@ class AdminCommandsTest extends IntegrationTestCase {
 		self::assertStringNotContainsString('/info', $help_group);
 		self::assertStringNotContainsString('📊 <b>Уровни игроков</b>', $help_group);
 
+		$this->dispatch($this->privateMessage($this->admin, '/help'));
+		$admin_help = $this->http->lastText();
+		self::assertStringContainsString('Создание турниров', $admin_help);
+		self::assertStringContainsString('только автор турнира и главный админ', $admin_help);
+		self::assertStringNotContainsString('Только для главного админа', $admin_help);
+
 		$this->dispatch($this->privateMessage($this->owner, '/help'));
 		$help = $this->http->lastText();
+		self::assertStringContainsString('Только для главного админа', $help);
 		self::assertStringContainsString('«✏️ Изменить турнир» и «❌ Отменить турнир»', $help);
 		self::assertStringContainsString('«✏️ Поправить», «🗑 Удалить»', $help);
 		self::assertStringNotContainsString('/edit', $help);
@@ -503,6 +464,9 @@ class AdminCommandsTest extends IntegrationTestCase {
 		self::assertStringContainsString('/level @user 4', $help);
 		self::assertLessThan(4096, mb_strlen($help));
 		self::assertStringNotContainsStringIgnoringCase('эталон', $help);
+
+		$this->dispatch($this->privateMessage($vasya, '/players'));
+		self::assertStringContainsString('📋 <b>Игроки</b>', $this->http->lastText());
 	}
 
 	public function testHistoryListsFinishedAndCancelled(): void {

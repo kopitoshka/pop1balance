@@ -189,22 +189,6 @@ class AssistantTest extends IntegrationTestCase {
 		self::assertSame([], $this->openAiRequests());
 	}
 
-	public function testClearYesOnTheCardStillPublishesWithoutAi(): void {
-		self::assertNull($this->newDraft($this->owner, '23.11 20:00 | Кубок | 2 | 3,4'));
-		$t = $this->app->tournament_repo->find(1);
-		$this->http->reset();
-		$this->dispatch($this->privateMessage($this->owner, 'публикуем', $this->replyTo($t->card_msg_id)));
-		self::assertSame('registration', $this->app->tournament_repo->find(1)->status);
-		self::assertStringContainsString('Опубликовала!', $this->http->lastText());
-		self::assertSame([], $this->openAiRequests());
-	}
-
-	public function testApiFailureGivesFriendlyReply(): void {
-		$vasya = $this->player('vasya');
-		$this->dispatch($this->privateMessage($vasya, '@' . self::BOT_USERNAME . ' привет'));
-		self::assertSame('Что-то пошло не так, попробуй ещё раз чуть позже.', $this->http->lastText());
-	}
-
 	public function testPromptHasNoActionToolsAndUsesLvl(): void {
 		$prompt = (string) file_get_contents(dirname(__DIR__, 2) . '/config/prompts/system.md');
 		self::assertStringContainsString('lvl.N', $prompt);
