@@ -75,8 +75,21 @@ class WebAppPickerTest extends IntegrationTestCase {
 		$target = $this->player('someone');
 		$btn = $this->app->webapp_picker->levelButton($actor, $this->tgIdOf($actor), false);
 		$token = $this->tokenFromButton($btn);
-		$this->expectException(\P1Bot\Domain\Exception\DomainError::class);
-		$this->app->webapp_picker->submit($this->initDataFor($actor), $token, [$target->id], 5);
+		try {
+			$this->app->webapp_picker->submit($this->initDataFor($actor), $token, [$target->id], 5);
+			self::fail('regular player set someone else\'s level via picker');
+		} catch (\P1Bot\Domain\Exception\DomainError $e) {
+			self::assertSame(\P1Bot\Domain\AccessPolicy::LEVELS_OWNER_ONLY, $e->getMessage());
+		}
+
+		$btn = $this->app->webapp_picker->levelButton($actor, $this->tgIdOf($actor), false);
+		$token = $this->tokenFromButton($btn);
+		try {
+			$this->app->webapp_picker->submit($this->initDataFor($actor), $token, [$actor->id], 5);
+			self::fail('regular player set their own level via picker');
+		} catch (\P1Bot\Domain\Exception\DomainError $e) {
+			self::assertSame(\P1Bot\Domain\AccessPolicy::LEVEL_SELF, $e->getMessage());
+		}
 	}
 
 	public function testLevelCommandShowsPickerButton(): void {

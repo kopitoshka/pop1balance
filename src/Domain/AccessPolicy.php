@@ -20,6 +20,7 @@ class AccessPolicy {
 		uses the owner's default scale. Scale tables and columns stay, so this can be turned back on.
 	*/
 	public const LEVELS_OWNER_ONLY = 'Уровни игроков меняет только главный админ.';
+	public const LEVEL_SELF = 'Уровень ставит админ.';
 	public const OWNER_ONLY = 'Это доступно только главному админу.';
 	public const MANAGE_ONLY = 'Менять турнир может только его автор или главный админ.';
 

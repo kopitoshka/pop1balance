@@ -106,7 +106,9 @@ class PendingPlayerRunner {
 
 			case 'level_set':
 				if (!$this->access->isOwner($actor->id)) {
-					throw new PermissionDenied(AccessPolicy::LEVELS_OWNER_ONLY);
+					throw new PermissionDenied(
+						$chosen->id === $actor->id ? AccessPolicy::LEVEL_SELF : AccessPolicy::LEVELS_OWNER_ONLY,
+					);
 				}
 				$level = (int) ($action['level'] ?? 0);
 				$balance_id = isset($action['balance_id']) ? (int) $action['balance_id'] : null;

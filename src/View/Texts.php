@@ -31,12 +31,12 @@ class Texts {
 			. "/level — свой уровень (или /level @ник — чужой)\n"
 			. "/players — все игроки: уровень и игровой ник\n"
 			. "/help — эта подсказка\n"
-			. "Как считаются уровни и сила команды — /help_level\n\n"
+			. "/help_level — Как считаются уровни и сила команды\n\n"
 			. Messages::GROUP_HELP_HINT;
 	}
 
 	/**
-		/help in private: commands, then a one-line pointer to /help_level.
+		/help in private: commands, including /help_level.
 		Tournament numbers (№N) are global — the same in every group.
 	*/
 	public static function help(string $bot_username, bool $is_admin, bool $is_owner = false): string {
@@ -52,7 +52,8 @@ class Texts {
 			. "/level — свой уровень; /level @ник — чужой; /level all — у кого уже поставлен\n"
 			. "/nick — свой игровой ник; <code>/nick игровой_ник</code> — поставить или сменить\n"
 			. "/addplayer — добавить игроков через выбор в Telegram (до 10 за раз)\n"
-			. '/help — эта подсказка';
+			. "/help — эта подсказка\n"
+			. '/help_level — Как считаются уровни и сила команды';
 		if ($is_admin || $is_owner) {
 			$text .= "\n\nСоздание турниров и управление своим:\n"
 				. "/create_tournament — создать турнир через форму\n"
@@ -75,7 +76,7 @@ class Texts {
 				. "/players_import — добавить или обновить игроков списком (ник или @username, в конце уровень 1–6). "
 				. "Без аргументов жду список следующим сообщением (или отправь его с командой)";
 		}
-		return $text . "\n\nКак считаются уровни и сила команды — /help_level";
+		return $text;
 	}
 
 	/**

@@ -186,7 +186,9 @@ class WebAppPicker {
 		}
 		if ($level !== null) {
 			if (!$can_set || !$this->access->isOwner($actor->id)) {
-				throw new DomainError(AccessPolicy::LEVELS_OWNER_ONLY);
+				throw new DomainError(
+					$player->id === $actor->id ? AccessPolicy::LEVEL_SELF : AccessPolicy::LEVELS_OWNER_ONLY,
+				);
 			}
 			$this->balances->setLevel($chat_id, $actor->id, $player->id, $level);
 			$text = sprintf(

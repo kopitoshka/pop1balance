@@ -459,7 +459,7 @@ class AdminCommandsTest extends IntegrationTestCase {
 			'<code>/nick игровой_ник</code>',
 			'/team',
 			'/tournaments 2 — состав одного турнира',
-			'Как считаются уровни и сила команды — /help_level',
+			'/help_level — Как считаются уровни и сила команды',
 		] as $needle) {
 			self::assertStringContainsString($needle, $help_user);
 		}
@@ -484,7 +484,7 @@ class AdminCommandsTest extends IntegrationTestCase {
 		$help_group = $this->http->lastText();
 		self::assertStringContainsString('/level — свой уровень', $help_group);
 		self::assertStringContainsString('/tournaments 2 — состав турнира', $help_group);
-		self::assertStringContainsString('Как считаются уровни и сила команды — /help_level', $help_group);
+		self::assertStringContainsString('/help_level — Как считаются уровни и сила команды', $help_group);
 		self::assertStringNotContainsString('/levels', $help_group);
 		self::assertStringNotContainsString('запиши меня', $help_group);
 		self::assertStringNotContainsString('/new', $help_group);

@@ -89,7 +89,13 @@ class ScaleHiddenTest extends IntegrationTestCase {
 		$this->dispatch($this->privateMessage($this->admin, '/level @vasya 5'));
 		self::assertSame('Уровни игроков меняет только главный админ.', $this->http->lastText());
 		$this->dispatch($this->privateMessage($vasya, '/level @vasya 6'));
-		self::assertSame('Уровни игроков меняет только главный админ.', $this->http->lastText());
+		self::assertSame('Уровень ставит админ.', $this->http->lastText());
+		$this->dispatch($this->privateMessage($vasya, '/level 4'));
+		self::assertSame('Уровень ставит админ.', $this->http->lastText());
+		$this->dispatch($this->privateMessage($vasya, '/level высокий'));
+		self::assertSame('Уровень ставит админ.', $this->http->lastText());
+		$this->dispatch($this->privateMessage($vasya, '/level себя 4'));
+		self::assertSame('Уровень ставит админ.', $this->http->lastText());
 		self::assertSame(3, $this->app->balances->levelOf($this->app->balances->findDefault()->id, $vasya->id));
 
 		$this->dispatch($this->privateMessage($this->admin, '/balance'));
@@ -98,6 +104,10 @@ class ScaleHiddenTest extends IntegrationTestCase {
 		$this->dispatch($this->privateMessage($this->owner, '/level @vasya 5'));
 		self::assertSame('Записала: @vasya — высокий (5).', $this->http->lastText());
 		self::assertSame(5, $this->app->balances->levelOf($this->app->balances->findDefault()->id, $vasya->id));
+
+		$this->dispatch($this->privateMessage($this->owner, '/level 4'));
+		self::assertSame('Записала: ' . $this->owner->plainLabel() . ' — средний+ (4).', $this->http->lastText());
+		self::assertSame(4, $this->app->balances->levelOf($this->app->balances->findDefault()->id, $this->owner->id));
 	}
 
 	public function testEditBalanceFieldGoneAndCreateIgnoresScaleId(): void {

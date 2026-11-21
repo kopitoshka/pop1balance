@@ -320,6 +320,7 @@ class AdminCommands {
 
 	/**
 		/level | /level @user | /level all (private) | /level @user 4 (owner).
+		A bare /level 4 (or /level себя 4) is an attempt to set the actor's own level.
 		Reads the same global view scale that team point limits use (default scale).
 	*/
 	protected function levelCommand(Context $ctx, string $args): string {
@@ -352,15 +353,24 @@ class AdminCommands {
 		}
 
 		$tokens = preg_split('/\s+/u', $rest, -1, PREG_SPLIT_NO_EMPTY) ?: [];
-		// Setting: /level @user 4 [balance_id]
+		// Setting: /level @user 4 [balance_id], or /level 4 (own level).
 		if ($target !== null && $tokens !== []) {
-			if (!$ctx->is_owner) {
-				throw new PermissionDenied(AccessPolicy::LEVELS_OWNER_ONLY);
-			}
+			$this->assertCanSetLevel($ctx, $target);
 			return $this->setLevel($ctx, $target, $tokens);
 		}
 
 		if ($target === null && $args !== '') {
+			if ($this->tokensAreLevel($tokens)) {
+				$this->assertCanSetLevel($ctx, $ctx->actor);
+				return $this->setLevel($ctx, $ctx->actor, $tokens);
+			}
+			if (preg_match('/^(я|меня|себя|me|self)\s+(.+)$/ui', $args, $self) && $this->tokensAreLevel(
+				preg_split('/\s+/u', trim($self[2]), -1, PREG_SPLIT_NO_EMPTY) ?: [],
+			)) {
+				$self_tokens = preg_split('/\s+/u', trim($self[2]), -1, PREG_SPLIT_NO_EMPTY) ?: [];
+				$this->assertCanSetLevel($ctx, $ctx->actor);
+				return $this->setLevel($ctx, $ctx->actor, $self_tokens);
+			}
 			// /level @user [level…] — only when the first token is an @mention.
 			// Bare IGN may contain spaces ("Zoloto on heat") and must stay intact.
 			if (preg_match('/^@([A-Za-z][A-Za-z0-9_]{2,31})(?:\s+(.*))?$/us', $args, $m)) {
@@ -376,9 +386,7 @@ class AdminCommands {
 					$ctx->chatId(),
 				);
 				if ($rest_tokens !== []) {
-					if (!$ctx->is_owner) {
-						throw new PermissionDenied(AccessPolicy::LEVELS_OWNER_ONLY);
-					}
+					$this->assertCanSetLevel($ctx, $target);
 					return $this->setLevel($ctx, $target, $rest_tokens);
 				}
 			} else {
@@ -386,9 +394,7 @@ class AdminCommands {
 				// followed by a level. The whole text as a nick wins, so a nick ending in a digit stays.
 				$set = $this->nickWithLevel($args);
 				if ($set !== null) {
-					if (!$ctx->is_owner) {
-						throw new PermissionDenied(AccessPolicy::LEVELS_OWNER_ONLY);
-					}
+					$this->assertCanSetLevel($ctx, $set[0]);
 					return $this->setLevel($ctx, $set[0], $set[1]);
 				}
 				$target = $this->player_resolver->fromReference(
@@ -411,6 +417,27 @@ class AdminCommands {
 			$this->attachLevelPicker($ctx);
 		}
 		return $text;
+	}
+
+	/**
+		@param list<string> $tokens
+	*/
+	protected function tokensAreLevel(array $tokens): bool {
+		return $tokens !== [] && Levels::parse(implode('', $tokens)) !== null;
+	}
+
+	/**
+		Only the bot owner may set levels, including their own. A regular player
+		who tries to change their own level gets a shorter refusal.
+	*/
+	protected function assertCanSetLevel(Context $ctx, Player $player): void {
+		if ($ctx->is_owner) {
+			return;
+		}
+		if ($player->id === $ctx->actor->id) {
+			throw new PermissionDenied(AccessPolicy::LEVEL_SELF);
+		}
+		throw new PermissionDenied(AccessPolicy::LEVELS_OWNER_ONLY);
 	}
 
 	/**

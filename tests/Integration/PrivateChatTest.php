@@ -157,7 +157,7 @@ class PrivateChatTest extends IntegrationTestCase {
 		$vasya = $this->player('vasya');
 		$reply = $this->say($vasya, '/start');
 		self::assertStringContainsString('/tournaments — активные турниры', $reply);
-		self::assertStringContainsString('Как считаются уровни и сила команды — /help_level', $reply);
+		self::assertStringContainsString('/help_level — Как считаются уровни и сила команды', $reply);
 		self::assertStringNotContainsString('📊 <b>Уровни игроков</b>', $reply);
 		self::assertStringNotContainsString('Субботний кубок', $reply);
 		self::assertSame([], $this->lastButtons());
@@ -173,7 +173,7 @@ class PrivateChatTest extends IntegrationTestCase {
 		$reply = $this->say($vasya, '/help');
 		self::assertStringNotContainsString('обычным языком', $reply);
 		self::assertStringNotContainsString('📊 <b>Уровни игроков</b>', $reply, 'full levels text moved to /help_level');
-		self::assertStringContainsString('Как считаются уровни и сила команды — /help_level', $reply);
+		self::assertStringContainsString('/help_level — Как считаются уровни и сила команды', $reply);
 		$levels = $this->say($vasya, '/help_level');
 		self::assertStringContainsString('📊 <b>Уровни игроков</b>', $levels);
 		self::assertStringContainsString('К сумме я добавляю бонус', $levels);
