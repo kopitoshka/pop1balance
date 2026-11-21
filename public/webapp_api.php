@@ -3,7 +3,8 @@
 declare(strict_types=1);
 
 // Mini App API: player picker (bootstrap/search/submit) and the tournament form
-// (create_bootstrap/create_submit, edit_*) and the team form (team_*). Auth is Telegram initData HMAC, not the webhook secret.
+// (create_bootstrap/create_submit, edit_*), the team form (team_*) and the owner's player card (player_*,
+// opened by a context token or by the start_param of a Direct Mini App link). Auth is Telegram initData HMAC, not the webhook secret.
 
 use P1Bot\App\CreateTournamentForm;
 use P1Bot\App\TeamForm;
@@ -48,7 +49,8 @@ if ($init === '' && isset($_SERVER['HTTP_X_TELEGRAM_INIT_DATA'])) {
 	$init = (string) $_SERVER['HTTP_X_TELEGRAM_INIT_DATA'];
 }
 
-if ($op === '' || $token === '') {
+// The player card may come without a token: a Direct Mini App link carries the player id in the signed start_param.
+if ($op === '' || ($token === '' && !str_starts_with($op, 'player_'))) {
 	if (str_starts_with($op, 'team_')) {
 		http_response_code(400);
 		echo json_encode((new WebAppFormError(TeamForm::EXPIRED_TEXT, '', WebAppFormError::EXPIRED))->toArray(), JSON_UNESCAPED_UNICODE);
@@ -93,6 +95,17 @@ try {
 		$result = $app->team_form->leave($init, $token);
 	} elseif ($op === 'team_disband') {
 		$result = $app->team_form->disband($init, $token);
+	} elseif ($op === 'player_bootstrap') {
+		$result = $app->player_form->bootstrap($init, $token);
+	} elseif ($op === 'player_search') {
+		$result = $app->player_form->search($init, $token, (string) ($body['q'] ?? ''));
+	} elseif ($op === 'player_save') {
+		$form = $body['form'] ?? [];
+		$result = $app->player_form->save($init, $token, is_array($form) ? $form : []);
+	} elseif ($op === 'player_delete') {
+		$result = $app->player_form->delete($init, $token);
+	} elseif ($op === 'player_merge') {
+		$result = $app->player_form->merge($init, $token, (int) ($body['into_id'] ?? 0));
 	} elseif ($op === 'bootstrap') {
 		$result = $picker->bootstrap($init, $token);
 	} elseif ($op === 'search') {

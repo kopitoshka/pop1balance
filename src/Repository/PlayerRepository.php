@@ -6,6 +6,7 @@ namespace P1Bot\Repository;
 
 use DateTimeImmutable;
 use P1Bot\Domain\Model\Player;
+use P1Bot\Domain\TournamentStatus;
 use P1Bot\Support\Database;
 use P1Bot\Support\DateFormat;
 
@@ -209,7 +210,7 @@ class PlayerRepository {
 	*/
 	public function listPlaceholders(): array {
 		$rows = $this->db->fetchAll(
-			'SELECT * FROM players WHERE tg_user_id IS NULL ORDER BY id',
+			'SELECT * FROM players WHERE tg_user_id IS NULL AND deleted_at IS NULL ORDER BY id',
 		);
 		return array_map([Player::class, 'fromRow'], $rows);
 	}
@@ -333,7 +334,7 @@ class PlayerRepository {
 				continue;
 			}
 			$player = $this->find($pid);
-			if ($player === null) {
+			if ($player === null || $player->isDeleted()) {
 				continue;
 			}
 			$out[] = $player;
@@ -371,7 +372,7 @@ class PlayerRepository {
 		$q_compact = self::compactKey($query);
 		$exclude = array_fill_keys($exclude_ids, true);
 		$rows = $this->db->fetchAll(
-			'SELECT * FROM players ORDER BY id DESC LIMIT 3000',
+			'SELECT * FROM players WHERE deleted_at IS NULL ORDER BY id DESC LIMIT 3000',
 		);
 		$prefix = [];
 		$contains = [];
@@ -426,7 +427,7 @@ class PlayerRepository {
 		$limit = max(1, min(40, $limit));
 		$rows = $this->db->fetchAll(
 			'SELECT * FROM players
-				WHERE username IS NOT NULL OR display_name <> \'\' OR ign_norm IS NOT NULL
+				WHERE deleted_at IS NULL AND (username IS NOT NULL OR display_name <> \'\' OR ign_norm IS NOT NULL)
 				ORDER BY id DESC LIMIT 200',
 		);
 		$skip = array_fill_keys($exclude_ids, true);
@@ -446,7 +447,7 @@ class PlayerRepository {
 
 	/**
 		Every player the bot knows (/players): a Telegram id, an @username or an in-game nick.
-		Rows stripped by a merge (none of the three) are left out.
+		Rows stripped by a merge (none of the three) and deleted players are left out.
 		@return list<Player>
 	*/
 	public function listAllKnown(): array {
@@ -454,7 +455,8 @@ class PlayerRepository {
 			[Player::class, 'fromRow'],
 			$this->db->fetchAll(
 				'SELECT * FROM players
-					WHERE tg_user_id IS NOT NULL OR username IS NOT NULL OR ign_norm IS NOT NULL
+					WHERE deleted_at IS NULL
+						AND (tg_user_id IS NOT NULL OR username IS NOT NULL OR ign_norm IS NOT NULL)
 					ORDER BY id',
 			),
 		);
@@ -490,7 +492,7 @@ class PlayerRepository {
 		}
 		$rows = $this->db->fetchAll(
 			'SELECT * FROM players
-				WHERE username IS NOT NULL OR display_name <> \'\' OR ign_norm IS NOT NULL
+				WHERE deleted_at IS NULL AND (username IS NOT NULL OR display_name <> \'\' OR ign_norm IS NOT NULL)
 				ORDER BY id DESC LIMIT 2000',
 		);
 		$scored = [];
@@ -664,6 +666,245 @@ class PlayerRepository {
 				'skipped' => count($skip),
 			];
 		});
+	}
+
+	public function setUsername(int $player_id, ?string $username): void {
+		$this->db->run(
+			'UPDATE players SET username = :u WHERE id = :id',
+			['u' => $username === null ? null : self::normalizeUsername($username), 'id' => $player_id],
+		);
+	}
+
+	/**
+		The card stops being tied to a Telegram account (the owner re-pointed its @username):
+		no tg id and no private chat from now on. The next person who writes with that @username
+		claims the row (ensureByTelegram).
+	*/
+	public function unbindTelegram(int $player_id): void {
+		$this->db->run(
+			'UPDATE players SET tg_user_id = NULL, dm_ok = 0, dm_started_at = NULL WHERE id = :id',
+			['id' => $player_id],
+		);
+	}
+
+	public function preferredTeamName(int $player_id): ?string {
+		$value = $this->db->fetchValue('SELECT preferred_team_name FROM players WHERE id = :id', ['id' => $player_id]);
+		return $value === null || $value === '' ? null : (string) $value;
+	}
+
+	public function setPreferredTeamName(int $player_id, ?string $name): void {
+		$this->db->run(
+			'UPDATE players SET preferred_team_name = :n WHERE id = :id',
+			['n' => $name, 'id' => $player_id],
+		);
+	}
+
+	/**
+		Soft delete: the row stays (past teams, tournaments and ratings point at it) but loses the tg id,
+		@username, nick and name, so they are free again and the player vanishes from lists, pickers
+		and matching. Rows that only mattered while the player was active (private chat state, form
+		contexts, admin flags) are removed.
+	*/
+	public function softDelete(int $player_id, DateTimeImmutable $now): void {
+		$this->db->run(
+			'UPDATE players SET deleted_at = :t, tg_user_id = NULL, username = NULL, display_name = \'\',
+					ign = NULL, ign_norm = NULL, preferred_team_name = NULL,
+					dm_ok = 0, dm_started_at = NULL, dm_group_id = NULL
+				WHERE id = :id',
+			['t' => DateFormat::toDb($now), 'id' => $player_id],
+		);
+		$this->db->run('DELETE FROM conversations WHERE player_id = :id', ['id' => $player_id]);
+		$this->db->run('DELETE FROM webapp_contexts WHERE actor_player_id = :id', ['id' => $player_id]);
+		$this->db->run('DELETE FROM pending_player_actions WHERE actor_player_id = :id', ['id' => $player_id]);
+		$this->db->run('DELETE FROM admins WHERE player_id = :id', ['id' => $player_id]);
+	}
+
+	/**
+		Where the player is still in play: tournaments that are not finished or cancelled.
+		Each list item is a tournament (id, title), plus the team name where it applies.
+
+		@return array{
+			teams: list<array{tournament_id: int, title: string, team: string}>,
+			captain: list<array{tournament_id: int, title: string, team: string}>,
+			solo: list<array{tournament_id: int, title: string}>,
+			organizer: list<array{tournament_id: int, title: string}>,
+			balances: int
+		}
+	*/
+	public function activeUses(int $player_id): array {
+		$statuses = TournamentStatus::numbered();
+		$in = static function (string $prefix) use ($statuses): array {
+			$keys = [];
+			$params = [];
+			foreach ($statuses as $i => $status) {
+				$keys[] = ':' . $prefix . $i;
+				$params[$prefix . $i] = $status;
+			}
+			return [implode(', ', $keys), $params];
+		};
+		$team_row = static fn (array $r): array => [
+			'tournament_id' => (int) $r['tid'],
+			'title' => (string) $r['title'],
+			'team' => (string) $r['team'],
+		];
+		$tournament_row = static fn (array $r): array => [
+			'tournament_id' => (int) $r['tid'],
+			'title' => (string) $r['title'],
+		];
+
+		[$list, $params] = $in('s');
+		$teams = $this->db->fetchAll(
+			'SELECT tr.id AS tid, tr.title AS title, t.name AS team
+				FROM team_members tm
+				INNER JOIN teams t ON t.id = tm.team_id
+				INNER JOIN tournaments tr ON tr.id = tm.tournament_id
+				WHERE tm.player_id = :p AND tr.status IN (' . $list . ')
+				ORDER BY tr.id',
+			['p' => $player_id] + $params,
+		);
+		[$list, $params] = $in('c');
+		$captain = $this->db->fetchAll(
+			'SELECT tr.id AS tid, tr.title AS title, t.name AS team
+				FROM teams t
+				INNER JOIN tournaments tr ON tr.id = t.tournament_id
+				WHERE t.captain_id = :p AND tr.status IN (' . $list . ')
+				ORDER BY tr.id',
+			['p' => $player_id] + $params,
+		);
+		[$list, $params] = $in('o');
+		$solo = $this->db->fetchAll(
+			'SELECT tr.id AS tid, tr.title AS title
+				FROM solo_players sp
+				INNER JOIN tournaments tr ON tr.id = sp.tournament_id
+				WHERE sp.player_id = :p AND tr.status IN (' . $list . ')
+				ORDER BY tr.id',
+			['p' => $player_id] + $params,
+		);
+		[$list, $params] = $in('g');
+		$organizer = $this->db->fetchAll(
+			'SELECT tr.id AS tid, tr.title AS title
+				FROM tournaments tr
+				WHERE tr.organizer_id = :p AND tr.status IN (' . $list . ')
+				ORDER BY tr.id',
+			['p' => $player_id] + $params,
+		);
+		$balances = (int) $this->db->fetchValue(
+			'SELECT COUNT(*) FROM balances WHERE owner_id = :p',
+			['p' => $player_id],
+		);
+		return [
+			'teams' => array_map($team_row, $teams),
+			'captain' => array_map($team_row, $captain),
+			'solo' => array_map($tournament_row, $solo),
+			'organizer' => array_map($tournament_row, $organizer),
+			'balances' => $balances,
+		];
+	}
+
+	/**
+		Tournaments (any status) where both players appear, in a team or as a solo sign-up.
+		A player cannot be in one tournament twice, so a merge is refused for these.
+
+		@return list<array{tournament_id: int, title: string}>
+	*/
+	public function sharedTournaments(int $first_id, int $second_id): array {
+		$rows = $this->db->fetchAll(
+			'SELECT tr.id AS tid, tr.title AS title FROM tournaments tr
+				WHERE tr.id IN (
+					SELECT tournament_id FROM team_members WHERE player_id = :a1
+					UNION
+					SELECT tournament_id FROM solo_players WHERE player_id = :a2
+				) AND tr.id IN (
+					SELECT tournament_id FROM team_members WHERE player_id = :b1
+					UNION
+					SELECT tournament_id FROM solo_players WHERE player_id = :b2
+				)
+				ORDER BY tr.id',
+			['a1' => $first_id, 'a2' => $first_id, 'b1' => $second_id, 'b2' => $second_id],
+		);
+		return array_map(static fn (array $r): array => [
+			'tournament_id' => (int) $r['tid'],
+			'title' => (string) $r['title'],
+		], $rows);
+	}
+
+	/**
+		Full merge: $from_id is folded into the survivor $into_id and soft-deleted.
+		Moves everything that points at the duplicate (team places, captaincy, solo sign-ups,
+		organized tournaments, owned scales, rating authorship, nick history) and the ratings the
+		survivor lacks. Identity fields the survivor does not have yet (nick, @username, tg id, name,
+		preferred team name) move over; the duplicate's nick goes to the survivor's history when
+		both had one. The caller checks permissions and conflicts (sharedTournaments, two tg ids).
+	*/
+	public function absorb(int $into_id, int $from_id, DateTimeImmutable $now): void {
+		if ($into_id === $from_id) {
+			return;
+		}
+		$into = $this->find($into_id) ?? throw new \LogicException('Merge target vanished');
+		$from = $this->find($from_id) ?? throw new \LogicException('Merge source vanished');
+		$dm = $this->db->fetchOne(
+			'SELECT dm_ok, dm_started_at, dm_group_id FROM players WHERE id = :id',
+			['id' => $from_id],
+		) ?? [];
+		$from_preferred = $this->preferredTeamName($from_id);
+		$ids = ['into' => $into_id, 'from' => $from_id];
+
+		$this->db->run('UPDATE balance_ratings SET updated_by = :into WHERE updated_by = :from', $ids);
+		// Ratings the survivor does not have yet; the survivor's own level wins.
+		$this->db->run(
+			'INSERT INTO balance_ratings (balance_id, player_id, level, updated_by, updated_at)
+				SELECT br.balance_id, :into, br.level, br.updated_by, br.updated_at
+				FROM balance_ratings br
+				WHERE br.player_id = :from
+					AND NOT EXISTS (
+						SELECT 1 FROM balance_ratings x
+						WHERE x.balance_id = br.balance_id AND x.player_id = :into2
+					)',
+			$ids + ['into2' => $into_id],
+		);
+		$this->db->run('DELETE FROM balance_ratings WHERE player_id = :from', ['from' => $from_id]);
+		$this->db->run('UPDATE team_members SET player_id = :into WHERE player_id = :from', $ids);
+		$this->db->run('UPDATE solo_players SET player_id = :into WHERE player_id = :from', $ids);
+		$this->db->run('UPDATE teams SET captain_id = :into WHERE captain_id = :from', $ids);
+		$this->db->run('UPDATE tournaments SET organizer_id = :into WHERE organizer_id = :from', $ids);
+		$this->db->run('UPDATE balances SET owner_id = :into WHERE owner_id = :from', $ids);
+		$this->db->run('UPDATE player_ign_history SET player_id = :into WHERE player_id = :from', $ids);
+		$this->db->run('UPDATE player_ign_history SET changed_by = :into WHERE changed_by = :from', $ids);
+
+		// Free the duplicate's unique tg id / @username / nick before the survivor takes them.
+		$this->softDelete($from_id, $now);
+
+		if ($from->hasIgn()) {
+			if (!$into->hasIgn()) {
+				$this->updateIgn($into_id, $from->ign, $from->ign_norm);
+			} elseif ($from->ign_norm !== $into->ign_norm) {
+				$this->recordIgnHistory($into_id, (string) $from->ign, (string) $from->ign_norm, $now, null);
+			}
+		}
+		if (($into->username === null || $into->username === '') && $from->username !== null && $from->username !== '') {
+			$this->setUsername($into_id, $from->username);
+		}
+		if ($into->tg_user_id === null && $from->tg_user_id !== null) {
+			$this->db->run(
+				'UPDATE players SET tg_user_id = :tg, dm_ok = :ok, dm_started_at = :st, dm_group_id = :g WHERE id = :id',
+				[
+					'tg' => $from->tg_user_id,
+					'ok' => (int) ($dm['dm_ok'] ?? 0),
+					'st' => $dm['dm_started_at'] ?? null,
+					'g' => $dm['dm_group_id'] ?? null,
+					'id' => $into_id,
+				],
+			);
+		}
+		if ($into->display_name === '' && $from->display_name !== '') {
+			$this->db->run(
+				'UPDATE players SET display_name = :d WHERE id = :id',
+				['d' => $from->display_name, 'id' => $into_id],
+			);
+		}
+		if ($from_preferred !== null && $this->preferredTeamName($into_id) === null) {
+			$this->setPreferredTeamName($into_id, $from_preferred);
+		}
 	}
 
 	public static function normalizeUsername(string $username): string {

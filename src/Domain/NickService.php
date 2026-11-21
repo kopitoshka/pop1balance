@@ -100,6 +100,33 @@ class NickService {
 	}
 
 	/**
+		Player card (owner): sets the nick, or clears it for an empty $raw. A nick another player holds
+		is refused: two cards with one nick are duplicates, the owner merges them instead. The old nick
+		goes to the history.
+	*/
+	public function setByOwner(int $owner_id, int $target_id, ?string $raw): Player {
+		$this->access->assertOwner($owner_id);
+		if ($raw === null || trim($raw) === '') {
+			return $this->db->transactional(function () use ($owner_id, $target_id): Player {
+				$this->clear($target_id, $owner_id);
+				return $this->players->find($target_id) ?? throw new ValidationError('Такого игрока я не знаю.');
+			});
+		}
+		[$ign, $norm] = self::parse($raw);
+		return $this->db->transactional(function () use ($owner_id, $target_id, $ign, $norm): Player {
+			$holder = $this->players->findByIgnNorm($norm);
+			if ($holder !== null && $holder->id !== $target_id) {
+				throw new ValidationError(sprintf(
+					'Ник «%s» уже у игрока %s. Если это дубль — объедини их.',
+					$holder->ign,
+					$holder->plainLabel(),
+				));
+			}
+			return $this->assign($target_id, $ign, $norm, $owner_id);
+		});
+	}
+
+	/**
 		/addplayer with arguments; the caller checks access (owner or CreateAccess).
 		Username may be null (nick-only); nick may be null (username-only). An existing @username is
 		reused and gets the nick with the taken-nick override of assignByOwner (history kept).

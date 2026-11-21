@@ -9,6 +9,7 @@ use P1Bot\App\CreateTournamentForm;
 use P1Bot\App\DraftCards;
 use P1Bot\App\PrivateGroups;
 use P1Bot\App\PendingTextGuard;
+use P1Bot\App\PlayerForm;
 use P1Bot\App\TeamForm;
 use P1Bot\Domain\PlayersImport;
 use P1Bot\App\PrivateViews;
@@ -89,6 +90,7 @@ class PrivateChatHandler {
 		protected ?CreateAccess $create_access = null,
 		protected ?TeamForm $team_form = null,
 		protected ?PendingTextGuard $pending_guard = null,
+		protected ?PlayerForm $player_form = null,
 	) {
 	}
 
@@ -201,6 +203,12 @@ class PrivateChatHandler {
 				$this->views->list($chat_id, $actor, $is_owner, Texts::welcome($first_name));
 				return;
 			case self::START:
+				if (
+					$this->player_form !== null
+					&& $this->player_form->continueFromStart($chat_id, $actor, trim((string) ($decision['args'] ?? '')), $message->message_id)
+				) {
+					return;
+				}
 				if (
 					$this->team_form !== null
 					&& $this->team_form->continueFromStart($chat_id, $actor, trim((string) ($decision['args'] ?? '')), $message->message_id)

@@ -14,6 +14,11 @@ class WebAppUrl {
 	public const PICKER = 'picker.html';
 	public const CREATE_FORM = 'create.html';
 	public const TEAM_FORM = 'team.html';
+	public const PLAYER_FORM = 'player.html';
+	/**
+		The single entry page of the Direct Mini App (BotFather /newapp URL): it opens the right form by start_param.
+	*/
+	public const APP_ENTRY = 'app.html';
 
 	/**
 		https URL of a page under public/webapp/, or null when WEBHOOK_URL is not https.
@@ -59,6 +64,10 @@ class WebAppUrl {
 
 	public static function teamForm(string $webhook_url, string $token): ?string {
 		return self::withToken(self::page($webhook_url, self::TEAM_FORM), $token);
+	}
+
+	public static function playerForm(string $webhook_url, string $token): ?string {
+		return self::withToken(self::page($webhook_url, self::PLAYER_FORM), $token);
 	}
 
 	protected static function withToken(?string $page, string $token): ?string {

@@ -281,8 +281,8 @@ class OfflinePlayersTest extends IntegrationTestCase {
 		self::assertSame('<a href="tg://user?id=777">&lt;b&gt;</a>', (new Player(1, 777, null, '<b>'))->lineupLabel());
 
 		$players = $this->say($this->owner, '/players');
-		self::assertStringContainsString("• <b>Тень</b>\n", $players . "\n");
-		self::assertStringContainsString('• <a href="https://t.me/offline_user"><b>Сова</b></a> · @offline_user', $players);
+		self::assertStringContainsString("\nТень\n", $players . "\n", 'a nick-only player is plain text');
+		self::assertStringContainsString("\n<a href=\"https://t.me/offline_user\">Сова</a>\n", $players);
 
 		$t = $this->openTournament(3, null);
 		$cap = $this->player('cap');

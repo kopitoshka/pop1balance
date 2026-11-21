@@ -1,0 +1,82 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+	<meta charset="utf-8">
+	<meta name="viewport" content="width=device-width, initial-scale=1">
+	<title>Игрок</title>
+	<script src="https://telegram.org/js/telegram-web-app.js"></script>
+	<link rel="stylesheet" href="create.css">
+	<link rel="stylesheet" href="team.css">
+	<link rel="stylesheet" href="player.css">
+</head>
+<body>
+	<form id="form" novalidate>
+		<main>
+			<h1 id="heading">Игрок</h1>
+			<p id="subtitle" class="tsub"></p>
+			<div id="error" class="error banner" role="alert" hidden></div>
+			<p id="loading" class="hint">Открываю карточку…</p>
+			<fieldset id="fields" disabled hidden>
+				<section>
+					<label class="label" for="ign">Ник в игре</label>
+					<input id="ign" name="ign" type="text" autocomplete="off" aria-describedby="ign-hint ign-error">
+					<p id="ign-hint" class="hint"></p>
+					<p id="ign-error" class="error" hidden></p>
+				</section>
+				<section>
+					<p class="label" id="level-label">Уровень</p>
+					<div id="levels" class="levels" role="radiogroup" aria-labelledby="level-label"></div>
+					<p id="level-hint" class="hint"></p>
+					<p id="level-error" class="error" hidden></p>
+				</section>
+				<section>
+					<label class="label" for="username">Telegram</label>
+					<input id="username" name="username" type="text" placeholder="@username" autocomplete="off" autocapitalize="off" spellcheck="false" aria-describedby="tg-status username-hint username-error">
+					<div id="tg-status" class="status"><span id="tg-dot" class="dot"></span><span id="tg-text"></span></div>
+					<p id="username-hint" class="hint"></p>
+					<label id="unbind-row" class="check" hidden>
+						<input id="unbind" type="checkbox">
+						<span>Понимаю: Telegram-аккаунт отвяжется от карточки. Ник, уровень и команды останутся, карточку займёт тот, кто напишет мне с этим @username.</span>
+					</label>
+					<p id="username-error" class="error" hidden></p>
+					<p id="unbind-error" class="error" hidden></p>
+				</section>
+				<section>
+					<label class="label" for="team">Любимое название команды</label>
+					<input id="team" name="team" type="text" placeholder="Например, Волки" autocomplete="off" aria-describedby="team-hint team-error">
+					<p id="team-hint" class="hint">Подставлю его, когда игрок откроет форму новой команды.</p>
+					<p id="team-error" class="error" hidden></p>
+				</section>
+				<section>
+					<p class="label">Объединить с другим игроком</p>
+					<div id="merge-pick" class="merge">
+						<span class="ico" aria-hidden="true">🔗</span>
+						<input id="search" type="search" placeholder="Ник, @username или имя" autocomplete="off" aria-label="Найти игрока, с которым объединить" aria-controls="results">
+					</div>
+					<div id="results" class="res" role="listbox" hidden></div>
+					<div id="merge-chosen" class="chosen" hidden>
+						<span class="chosen-name" id="chosen-name"></span>
+						<button type="button" id="chosen-clear" class="icon" aria-label="Выбрать другого">✕</button>
+					</div>
+					<button type="button" id="merge-go" class="tglink" hidden>🔗 Объединить</button>
+					<p id="merge-hint" class="hint">Если это дубль: перенесу места в командах, уровень, ник и историю на выбранного игрока, а эту карточку уберу.</p>
+				</section>
+			</fieldset>
+		</main>
+		<div id="sheet" class="menu" hidden role="dialog" aria-modal="true" aria-labelledby="sheet-title">
+			<div class="menu-card">
+				<h2 id="sheet-title"></h2>
+				<p id="sheet-text"></p>
+				<ul id="sheet-list" class="sheet-list" hidden></ul>
+				<button type="button" id="sheet-ok" class="danger-text"></button>
+				<button type="button" id="sheet-cancel">Отмена</button>
+			</div>
+		</div>
+		<footer>
+			<button type="button" id="delete" class="danger" hidden>🗑 Удалить игрока</button>
+			<button type="submit" id="submit" disabled hidden>Сохранить</button>
+		</footer>
+	</form>
+	<script src="player.js"></script>
+</body>
+</html>

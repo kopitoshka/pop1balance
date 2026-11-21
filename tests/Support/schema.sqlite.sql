@@ -12,7 +12,8 @@ CREATE TABLE players (
 	dm_ok         INTEGER NOT NULL DEFAULT 0,
 	dm_started_at TEXT NULL,
 	dm_group_id   INTEGER NULL,
-	preferred_team_name TEXT NULL
+	preferred_team_name TEXT NULL,
+	deleted_at    TEXT NULL
 );
 
 CREATE TABLE player_ign_history (

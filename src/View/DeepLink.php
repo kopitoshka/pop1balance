@@ -6,12 +6,20 @@ namespace P1Bot\View;
 
 /**
 	t.me links into the private chat with the bot: start=t_<tournament id>, start=g_<group chat id>
-	or start=tf_<team form token> (TeamForm handles that one on /start).
+	or start=tf_<team form token> (TeamForm handles that one on /start), start=pe_<player id>
+	(PlayerForm: the owner's player card). A Direct Mini App link is t.me/<bot>/<short name>?startapp=<param>.
 */
 class DeepLink {
 
 	public static function url(string $bot_username, string $payload = ''): string {
 		return 'https://t.me/' . $bot_username . ($payload !== '' ? '?start=' . $payload : '');
+	}
+
+	/**
+		Direct Mini App link (opens the app in one tap, from a group too); the app is set up in @BotFather /newapp.
+	*/
+	public static function miniApp(string $bot_username, string $short_name, string $start_param = ''): string {
+		return 'https://t.me/' . $bot_username . '/' . $short_name . ($start_param !== '' ? '?startapp=' . $start_param : '');
 	}
 
 	public static function tournament(string $bot_username, int $tournament_id): string {

@@ -35,6 +35,10 @@ return [
 		'username'       => ltrim(Env::get('TELEGRAM_BOT_USERNAME', ''), '@'),
 		'webhook_secret' => Env::get('TELEGRAM_WEBHOOK_SECRET', ''),
 		'webhook_url'    => Env::get('WEBHOOK_URL', ''),
+		// Short name of the Direct Mini App from @BotFather /newapp (t.me/<bot>/<short name>). Empty =
+		// the ✏️ links in /players use the two-step t.me/<bot>?start=pe_<id> + button. Not a secret:
+		// fill it here, or override with TELEGRAM_MINIAPP_SHORT_NAME in .env.
+		'miniapp_short_name' => (string) preg_replace('/[^A-Za-z0-9_]/', '', Env::get('TELEGRAM_MINIAPP_SHORT_NAME', '')),
 	],
 	'owner_tg_id' => Env::int('BOT_OWNER_TG_ID', 0),
 	'openai' => [

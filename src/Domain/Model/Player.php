@@ -7,6 +7,7 @@ namespace P1Bot\Domain\Model;
 use P1Bot\View\Html;
 
 class Player {
+	public const DELETED_LABEL = 'удалённый игрок';
 
 	public function __construct(
 		public int $id,
@@ -15,6 +16,7 @@ class Player {
 		public string $display_name,
 		public ?string $ign = null,
 		public ?string $ign_norm = null,
+		public ?string $deleted_at = null,
 	) {
 	}
 
@@ -31,13 +33,24 @@ class Player {
 			isset($row['ign_norm']) && $row['ign_norm'] !== null && $row['ign_norm'] !== ''
 				? (string) $row['ign_norm']
 				: null,
+			isset($row['deleted_at']) && $row['deleted_at'] !== '' ? (string) $row['deleted_at'] : null,
 		);
+	}
+
+	/**
+		Soft-deleted by the owner: the row stays for history only.
+	*/
+	public function isDeleted(): bool {
+		return $this->deleted_at !== null;
 	}
 
 	/**
 		"@vasya" if known, otherwise the display name.
 	*/
 	public function mention(): string {
+		if ($this->isDeleted()) {
+			return self::DELETED_LABEL;
+		}
 		if ($this->username !== null && $this->username !== '') {
 			return '@' . $this->username;
 		}
@@ -78,20 +91,33 @@ class Player {
 		Already escaped — do not Html::e again.
 	*/
 	public function lineupLabel(): string {
-		if ($this->hasIgn()) {
-			$label = Html::e((string) $this->ign);
-		} elseif ($this->username !== null && $this->username !== '') {
-			$label = Html::e('@' . $this->username);
-		} else {
-			$label = Html::e($this->display_name !== '' ? $this->display_name : 'игрок #' . $this->id);
+		return $this->link(Html::e($this->name()));
+	}
+
+	/**
+		The one name a player goes by in lists: game nick, else @username, else the Telegram name.
+		Plain text (not escaped).
+	*/
+	public function name(): string {
+		if ($this->isDeleted()) {
+			return self::DELETED_LABEL;
 		}
-		return $this->link($label);
+		if ($this->hasIgn()) {
+			return (string) $this->ign;
+		}
+		if ($this->username !== null && $this->username !== '') {
+			return '@' . $this->username;
+		}
+		return $this->display_name !== '' ? $this->display_name : 'игрок #' . $this->id;
 	}
 
 	/**
 		Plain text for /level and /nick: «IGN (@user)» or mention.
 	*/
 	public function plainLabel(): string {
+		if ($this->isDeleted()) {
+			return self::DELETED_LABEL;
+		}
 		if ($this->hasIgn()) {
 			$ign = (string) $this->ign;
 			if ($this->username !== null && $this->username !== '') {

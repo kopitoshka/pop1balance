@@ -159,11 +159,13 @@ class ScaleHiddenTest extends IntegrationTestCase {
 			$this->dispatch($this->privateMessage($viewer, '/players'));
 			$text = $this->http->lastText();
 			self::assertStringStartsWith('📋 <b>Игроки</b> — ', $text);
-			self::assertStringContainsString("<b>высокий (5)</b> — 1\n• <a href=\"https://t.me/vasya\"><b>Vasya Pro</b></a> · @vasya", $text);
-			self::assertStringContainsString('<b>Уровень не ставили — считаю средний (3)</b>', $text);
-			self::assertStringContainsString('• <a href="https://t.me/petya">Petya</a> · @petya · <i>без ника</i>', $text);
-			self::assertStringContainsString('• <a href="tg://user?id=777555">Без &lt;ника&gt;</a> · <i>без ника</i>', $text);
-			self::assertLessThan(strpos($text, 'Petya'), strpos($text, 'Vasya Pro'), 'rated levels first');
+			self::assertStringContainsString("<blockquote><b>высокий (5)</b> — 1</blockquote>\n<a href=\"https://t.me/vasya\">Vasya Pro</a>\n", $text);
+			self::assertStringContainsString('<blockquote><b>Уровень не ставили — считаю средний (3)</b>', $text);
+			self::assertStringContainsString("\n<a href=\"https://t.me/petya\">@petya</a>\n", $text);
+			self::assertStringContainsString("\n<a href=\"tg://user?id=777555\">Без &lt;ника&gt;</a>\n", $text);
+			self::assertStringNotContainsString('без ника', $text);
+			self::assertStringNotContainsString('✏️', $text, 'no pencils without a configured link');
+			self::assertLessThan(strpos($text, '@petya'), strpos($text, 'Vasya Pro'), 'rated levels first');
 			self::assertStringContainsString('Как устроены уровни — /help_level', $text);
 			self::assertStringNotContainsString('📊 <b>Уровни игроков</b>', $text, 'no level help in /players');
 			self::assertSame(

@@ -13,6 +13,7 @@ use P1Bot\App\DraftCards;
 use P1Bot\App\NeedGroupChoice;
 use P1Bot\App\PrivateGroups;
 use P1Bot\App\PendingTextGuard;
+use P1Bot\App\PlayerForm;
 use P1Bot\App\PlayerResolver;
 use P1Bot\App\TournamentListing;
 use P1Bot\App\TournamentResolver;
@@ -105,6 +106,12 @@ class AdminCommands {
 
 	public function setCreateForm(?CreateTournamentForm $create_form): void {
 		$this->create_form = $create_form;
+	}
+
+	protected ?PlayerForm $player_form = null;
+
+	public function setPlayerForm(?PlayerForm $player_form): void {
+		$this->player_form = $player_form;
 	}
 
 	public function supports(string $command): bool {
@@ -759,9 +766,11 @@ class AdminCommands {
 	}
 
 	/**
-		/players: every known player with their level and in-game nick, grouped by level
-		(highest first; «не ставили» last, counted as the default level). Same access as /levels
-		had: anyone, in private and groups.
+		/players: every known player by one name (game nick, else @username, else the Telegram
+		name), grouped by level (highest first; «не ставили» last, counted as the default level),
+		each level title in a blockquote (Telegram has no background colors). A name links to the
+		Telegram profile when there is one. Anyone may ask, in private and in groups; only the
+		owner in private also gets a ✏️ link per player that opens the player card.
 	*/
 	protected function playersList(Context $ctx): string {
 		$scale = $this->balances->viewScaleId() !== null ? $this->balances->findDefault() : null;
@@ -776,6 +785,7 @@ class AdminCommands {
 		if ($total === 0) {
 			return 'Пока я не знаю ни одного игрока 🙂';
 		}
+		$edit = $ctx->is_owner && $ctx->isPrivate() && $this->player_form !== null && $this->player_form->canLink();
 		$lines = ['📋 <b>Игроки</b> — ' . $total];
 		foreach ($by_level as $level => $list) {
 			if ($list === []) {
@@ -785,15 +795,19 @@ class AdminCommands {
 				mb_strtolower(self::playerSortKey($a)),
 				mb_strtolower(self::playerSortKey($b)),
 			));
+			$title = $level === 0
+				? sprintf('Уровень не ставили — считаю %s (%d)', Levels::name(Levels::DEFAULT), Levels::DEFAULT)
+				: sprintf('%s (%d)', Levels::name($level), $level);
 			$lines[] = '';
-			$lines[] = $level === 0
-				? sprintf('<b>Уровень не ставили — считаю %s (%d)</b> — %d', Levels::name(Levels::DEFAULT), Levels::DEFAULT, count($list))
-				: sprintf('<b>%s (%d)</b> — %d', Levels::name($level), $level, count($list));
+			$lines[] = '<blockquote><b>' . Html::e($title) . '</b> — ' . count($list) . '</blockquote>';
 			foreach ($list as $player) {
-				$lines[] = '• ' . self::playerLine($player);
+				$lines[] = self::playerLine($player, $edit ? $this->player_form->editLink($player->id) : null);
 			}
 		}
 		$footer = "\n\nКак устроены уровни — /help_level";
+		if ($edit) {
+			$footer .= "\n✏️ — карточка игрока: ник, уровень, @username, объединить дубли, удалить";
+		}
 		if ($ctx->is_owner) {
 			$footer .= "\nПоставить уровень: /level @ник 4, ник: /nick @ник НикВИгре";
 		}
@@ -810,21 +824,15 @@ class AdminCommands {
 	}
 
 	/**
-		«tired angel · @just_tired_angel» or «Андрей · @kopitoshka · без ника» (HTML).
+		One list line: the name (Player::lineupLabel: nick, else @username, else the Telegram name; a link
+		to the Telegram profile when there is one), then the ✏️ link to the player card for the owner.
 	*/
-	protected static function playerLine(Player $player): string {
-		$username = $player->username !== null && $player->username !== '' ? '@' . $player->username : null;
-		if ($player->hasIgn()) {
-			return $player->link('<b>' . Html::e((string) $player->ign) . '</b>')
-				. ($username !== null ? ' · ' . Html::e($username) : '');
+	protected static function playerLine(Player $player, ?string $edit_url = null): string {
+		$line = $player->lineupLabel();
+		if ($edit_url !== null) {
+			$line .= ' <a href="' . Html::e($edit_url) . '">✏️</a>';
 		}
-		$name = $player->display_name !== '' ? $player->display_name : ($username ?? 'игрок #' . $player->id);
-		$parts = [$player->link(Html::e($name))];
-		if ($username !== null && $username !== $name) {
-			$parts[] = Html::e($username);
-		}
-		$parts[] = '<i>без ника</i>';
-		return implode(' · ', $parts);
+		return $line;
 	}
 
 	/**

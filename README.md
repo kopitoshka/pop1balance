@@ -343,8 +343,27 @@ Creating:
 - `/edit` and `/cancel` are gone (unknown command): drafts are edited/deleted with «✏️ Поправить» /
   «🗑 Удалить», published tournaments with «✏️ Изменить турнир» / «❌ Отменить турнир».
 - `/players` (replaces `/levels`, no alias) — every known player grouped by level, highest first, then
-  «Уровень не ставили — считаю средний (3)»; each line is the in-game nick and @username, or the
-  Telegram name/@username marked «без ника». Same access as `/levels` had: anyone in private and groups. The owner also sees how to set levels and nicks.
+  «Уровень не ставили — считаю средний (3)». Level headers are `<blockquote>`; each player is ONE name
+  (`Player::name()`: in-game nick, else @username, else Telegram display name), linked to the Telegram
+  profile when bound (tg id or username), no level next to it. Deleted players are not listed. Same access as `/levels` had: anyone in private and groups.
+  The owner also sees how to set levels and nicks, and **only in the owner's private chat** a ✏️ after each name opens the player card (below); groups and other users never get pencils.
+- **Player card** (owner only; `public/webapp/player.*`, entry `app.html`, API ops `player_bootstrap` / `player_search` /
+  `player_save` / `player_delete` / `player_merge`; `PlayerAdmin` is the domain layer, `PlayerForm` the Mini App glue).
+  - Opening: the ✏️ link is a Direct Mini App link `https://t.me/<bot>/<short>?startapp=p<id>` (one tap) when `telegram.miniapp_short_name` is set
+    (config key, env override `TELEGRAM_MINIAPP_SHORT_NAME`); otherwise `https://t.me/<bot>?start=pe_<id>` and the bot answers with a web_app button.
+    `app.html` dispatches on the signed `start_param` (`p<id>` → `player.html`). Every API call validates initData and checks owner-only; the
+    pencil only hides noise, a copied link gives nothing to anybody else.
+  - BotFather: `/newapp` → choose the bot → title/description/photo → Web App URL `https://<host>[/<dir>]/webapp/app.html` (same host and dir as `WEBHOOK_URL`)
+    → short name, e.g. `players` (link `t.me/<bot>/players`). Put the short name into `telegram.miniapp_short_name`. No `set_webhook.php` needed.
+  - Fields: nick (unique, may be cleared), level 1–6 / «нет», @username, preferred team name, merge, delete. The form follows Telegram theme params.
+  - @username: editing a card not bound to Telegram is free (unique). On a bound card, a different @username detaches that Telegram account
+    (tg id and DM flags are cleared; nick, level and teams stay) and needs a confirmation checkbox; the next person who writes to the bot with that @username takes over the card. Clearing the @username of a bound card is refused; the owner's own @username is not editable here.
+  - Delete = the whole player, soft (`players.deleted_at`, migration 020). Blocked, with the place named, while the player is in an active team,
+    captain of an active team, organizer of an active (or draft) tournament, in a solo sign-up, or owns a scale. Otherwise tg id, @username and nick are
+    freed (a returning person becomes a new card), the row stays so history shows «удалённый игрок». Not listed in `/players`, pickers, search, `/addplayer` uniqueness, import matching.
+  - Merge (this card → chosen survivor): re-points team_members, `captain_id`, solo sign-ups, organizer, scales, rating authorship, nick history; ratings
+    are kept for the survivor where it has none; the survivor's own nick/@username/level/tg binding win, missing ones are taken from the merged card. Refused when both cards are bound to different Telegram
+    accounts, when both played in the same tournament (any status), or when the source is the owner's card.
 - The level reference (scale 1–6 with names, the tournament level, default level 3) is part of `/help`.
 - **Players without Telegram are allowed again** (reverses the 2026-11-09 rule behind migration 014's
   purge). `/addplayer` with no arguments keeps the Telegram picker for everyone. Owner and anyone who may

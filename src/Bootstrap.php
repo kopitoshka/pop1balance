@@ -21,6 +21,7 @@ use P1Bot\App\UsernameResolver;
 use P1Bot\App\PendingPlayerRunner;
 use P1Bot\App\OrganizerTeams;
 use P1Bot\App\PendingTextGuard;
+use P1Bot\App\PlayerForm;
 use P1Bot\App\TeamForm;
 use P1Bot\App\TeamCards;
 use P1Bot\App\PrivateGroups;
@@ -33,6 +34,7 @@ use P1Bot\Domain\Levels;
 use P1Bot\Domain\BalanceService;
 use P1Bot\Domain\TeamService;
 use P1Bot\Domain\NickService;
+use P1Bot\Domain\PlayerAdmin;
 use P1Bot\Domain\PlayersImport;
 use P1Bot\Domain\TournamentService;
 use P1Bot\Handlers\AdminCommands;
@@ -115,6 +117,8 @@ class Bootstrap {
 	public WebAppPicker $webapp_picker;
 	public CreateTournamentForm $create_form;
 	public TeamForm $team_form;
+	public PlayerAdmin $player_admin;
+	public PlayerForm $player_form;
 	public PrivateViews $private_views;
 
 	/**
@@ -356,6 +360,28 @@ class Bootstrap {
 			$this->bot->username,
 			$this->dialogs,
 		);
+		$this->player_admin = new PlayerAdmin(
+			$this->players,
+			$this->nicks,
+			$this->balances,
+			$this->access,
+			$db,
+			$clock,
+			$this->logger,
+		);
+		$this->player_form = new PlayerForm(
+			$this->webapp_contexts,
+			$this->players,
+			$this->player_admin,
+			$this->access,
+			$this->balances,
+			$this->telegram,
+			$clock,
+			(string) ($config['telegram']['token'] ?? ''),
+			(string) ($config['telegram']['webhook_url'] ?? ''),
+			$this->bot->username,
+			trim((string) ($config['telegram']['miniapp_short_name'] ?? '')),
+		);
 		$commands = new AdminCommands(
 			$this->telegram,
 			$this->bot,
@@ -379,6 +405,7 @@ class Bootstrap {
 			$this->players_import,
 		);
 		$commands->setCreateForm($this->create_form);
+		$commands->setPlayerForm($this->player_form);
 		$this->drafts->setCreateForm($this->create_form);
 
 		$this->dispatcher = new Dispatcher(
@@ -512,6 +539,7 @@ class Bootstrap {
 				$this->create_access,
 				$this->team_form,
 				$this->pending_guard,
+				$this->player_form,
 			),
 			$this->group_redirect,
 			$this->dialogs,
