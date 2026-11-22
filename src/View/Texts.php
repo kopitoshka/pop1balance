@@ -19,11 +19,17 @@ class Texts {
 	}
 
 	/**
-		/help in a group: only commands that work here; management is in private.
+		/help in a group: commands that work here, plus the same /su and superadmin
+		sections as in private (so the visibility rules are the same in both places).
 	*/
-	public static function groupHelp(string $bot_username): string {
+	public static function groupHelp(
+		string $bot_username,
+		bool $is_super = false,
+		bool $can_su = false,
+		bool $can_manage_su = false,
+	): string {
 		unset($bot_username);
-		return "В этом чате я публикую анонсы турниров (они общие для всех групп) и напоминаю о старте. "
+		$text = "В этом чате я публикую анонсы турниров (они общие для всех групп) и напоминаю о старте. "
 			. "Записаться — кнопкой под анонсом.\n\n"
 			. "<b>Команды здесь</b>\n"
 			. "/tournaments — все активные турниры\n"
@@ -31,9 +37,11 @@ class Texts {
 			. "/level — свой уровень (или /level @ник — чужой)\n"
 			. "/players — все игроки: уровень и игровой ник\n"
 			. "/help — эта подсказка\n"
-			. "/help_level — Как считаются уровни и сила команды\n\n"
-			. "Поставить свой ник можно у меня в личке.\n"
+			. "/help_level — Как считаются уровни и сила команды";
+		$text .= self::suCommandLine($can_su);
+		$text .= "\n\nПоставить свой ник можно у меня в личке.\n"
 			. Messages::GROUP_HELP_HINT;
+		return $text . self::superadminHelpBlocks($is_super, $can_manage_su);
 	}
 
 	/**
@@ -61,24 +69,34 @@ class Texts {
 			. "/addplayer — добавить игроков через выбор в Telegram (до 10 за раз)\n"
 			. "/help — эта подсказка\n"
 			. '/help_level — Как считаются уровни и сила команды';
-		if ($can_su) {
-			// Only for those who have the right (the bot owner included); everyone else never sees /su.
-			$text .= "\n/su — режим суперадмина: <code>/su on</code>, <code>/su off</code>; без параметра — статус";
-		}
+		$text .= self::suCommandLine($can_su);
 		if ($is_admin || $is_super) {
 			$text .= "\n\n<b>Управление турнирами</b>\n"
 				. "/create_tournament — создать турнир через форму\n"
 				. "<code>/addplayer @username НикВИгре</code> — добавить игрока, который ещё не писал мне "
 				. "(ник можно не указывать); <code>/addplayer НикВИгре</code> — игрока без Telegram. "
-				. "Таких можно ставить в составы, но сообщений от меня они не получают. "
-				. "Капитаном такого игрока может поставить только организатор турнира или главный админ. "
-				. "По @username привяжу Telegram, когда человек сам мне напишет.\n"
-				. "Черновик правится и удаляется кнопками на его карточке («✏️ Поправить», «🗑 Удалить»), "
-				. "опубликованный турнир — кнопками «✏️ Изменить турнир» и «❌ Отменить турнир» на карточке турнира. "
-				. 'Это могут только автор турнира и главный админ.';
+				. 'Таких можно ставить в составы, но сообщений от меня они не получают.';
 		}
+		return $text . self::superadminHelpBlocks($is_super, $can_manage_su);
+	}
+
+	/**
+		The /su line in /help: only for those who have the right (the bot owner included),
+		whether or not the mode is on. Everyone else never sees /su.
+	*/
+	protected static function suCommandLine(bool $can_su): string {
+		return $can_su
+			? "\n/su — режим суперадмина: <code>/su on</code>, <code>/su off</code>; без параметра — статус"
+			: '';
+	}
+
+	/**
+		Superadmin command help only while the mode is on (isSuper). Grant / revoke / list
+		follow canManageSu: the bot owner always, other holders only with the mode on.
+	*/
+	protected static function superadminHelpBlocks(bool $is_super, bool $can_manage_su): string {
+		$text = '';
 		if ($is_super) {
-			// Superadmins only (the bot owner, or the /su mode on); not shown to anyone else.
 			$text .= "\n\n<b>Только для главного админа</b>\n"
 				. "/level @user 4 — поставить уровень игроку (1–6 или название: начальный, начальный+, средний, средний+, высокий, высокий+; «танк» = высокий)\n"
 				. "<code>/level НикВИгре 4</code> — то же по игровому нику (и для игроков без Telegram)\n"

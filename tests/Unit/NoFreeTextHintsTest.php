@@ -19,6 +19,7 @@ class NoFreeTextHintsTest extends TestCase {
 			Texts::help('pop1_bot', false),
 			Texts::help('pop1_bot', true, true),
 			Texts::groupHelp('pop1_bot'),
+			Texts::groupHelp('pop1_bot', true, true, true),
 			Texts::welcome('Андрей'),
 			Texts::welcomeTournament('Андрей'),
 			Texts::levels(),

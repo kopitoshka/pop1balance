@@ -469,16 +469,18 @@ class AdminCommandsTest extends IntegrationTestCase {
 		$admin_help = $this->http->lastText();
 		self::assertStringContainsString('<b>Управление турнирами</b>', $admin_help);
 		self::assertStringContainsString('<b>Команды</b>', $admin_help);
-		self::assertStringContainsString('только автор турнира и главный админ', $admin_help);
 		self::assertStringNotContainsString('Только для главного админа', $admin_help);
 		self::assertStringNotContainsString('Создание турниров и управление своим', $admin_help);
+		self::assertStringNotContainsString('только автор турнира и главный админ', $admin_help);
+		self::assertStringNotContainsString('Черновик правится', $admin_help);
 
 		$this->dispatch($this->privateMessage($this->owner, '/help'));
 		$help = $this->http->lastText();
 		self::assertStringContainsString('<b>Только для главного админа</b>', $help);
 		self::assertStringContainsString('<b>Управление турнирами</b>', $help);
-		self::assertStringContainsString('«✏️ Изменить турнир» и «❌ Отменить турнир»', $help);
-		self::assertStringContainsString('«✏️ Поправить», «🗑 Удалить»', $help);
+		self::assertStringNotContainsString('«✏️ Изменить турнир» и «❌ Отменить турнир»', $help);
+		self::assertStringNotContainsString('«✏️ Поправить», «🗑 Удалить»', $help);
+		self::assertStringNotContainsString('Черновик правится', $help);
 		self::assertStringNotContainsString('/edit', $help);
 		self::assertStringNotContainsString('/cancel', $help);
 		self::assertStringNotContainsString('/close', $help);

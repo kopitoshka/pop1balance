@@ -372,25 +372,69 @@ class SuperAdminTest extends IntegrationTestCase {
 
 	// ---- help and menu
 
+	/**
+		@param list<string> $must
+		@param list<string> $must_not
+	*/
+	protected function assertHelpInPrivateAndGroup(Player $who, array $must, array $must_not, string $label): void {
+		foreach (['private' => $this->say($who, '/help'), 'group' => $this->sayInGroup($who, '/help')] as $where => $help) {
+			foreach ($must as $needle) {
+				self::assertStringContainsString($needle, $help, $label . ' ' . $where . ' should have: ' . $needle);
+			}
+			foreach ($must_not as $needle) {
+				self::assertStringNotContainsString($needle, $help, $label . ' ' . $where . ' should not have: ' . $needle);
+			}
+			foreach ([
+				'Капитаном такого игрока может поставить только организатор турнира или главный админ',
+				'По @username привяжу Telegram, когда человек сам мне напишет',
+				'Черновик правится и удаляется кнопками на его карточке',
+				'Это могут только автор турнира и главный админ',
+			] as $gone) {
+				self::assertStringNotContainsString($gone, $help, $label . ' ' . $where . ' leftover help: ' . $gone);
+			}
+		}
+	}
+
 	public function testHelpShowsSuOnlyToThoseWithTheRight(): void {
-		$vasya = $this->superadmin('vasya', false);
-		$help = $this->say($vasya, '/help');
-		self::assertStringContainsString('/su — режим суперадмина', $help);
-		self::assertStringNotContainsString('/su grant', $help, 'mode off: no grant hint');
-		self::assertStringNotContainsString('Только для главного админа', $help);
+		$none = ['/su', '/su grant', 'Только для главного админа', '/players_import', '/level @user 4'];
+		$vasya = $this->player('vasya');
+		$this->withoutSharedOwnerGroup($vasya);
+		$this->assertHelpInPrivateAndGroup($vasya, [], $none, 'regular player');
+		$this->assertHelpInPrivateAndGroup($this->admin, [], $none, 'organizer');
+		self::assertStringContainsString('/create_tournament', $this->say($this->admin, '/help'), 'organizer private help');
+		self::assertStringContainsString('<code>/addplayer @username НикВИгре</code>', $this->say($this->admin, '/help'));
+		self::assertStringNotContainsString('/create_tournament', $this->sayInGroup($this->admin, '/help'));
 
-		$this->say($vasya, '/su on');
-		self::assertStringContainsString('/su grant @ник', $this->say($vasya, '/help'));
+		$holder = $this->superadmin('holder', false);
+		$this->assertHelpInPrivateAndGroup(
+			$holder,
+			['/su — режим суперадмина'],
+			['/su grant', 'Только для главного админа', '/players_import', '/level @user 4'],
+			'su right, mode off',
+		);
 
-		$owner_help = $this->say($this->owner, '/help');
-		self::assertStringContainsString('/su — режим суперадмина', $owner_help);
-		self::assertStringContainsString('/su grant @ник', $owner_help);
+		$this->say($holder, '/su on');
+		$this->assertHelpInPrivateAndGroup(
+			$holder,
+			['/su — режим суперадмина', '/su grant @ник', 'Только для главного админа', '/players_import', '/level @user 4'],
+			[],
+			'su mode on',
+		);
+
+		$this->assertHelpInPrivateAndGroup(
+			$this->owner,
+			['/su — режим суперадмина', '/su grant @ник', 'Только для главного админа', '/players_import'],
+			[],
+			'owner, mode on (default)',
+		);
 
 		$this->say($this->owner, '/su off');
-		$owner_off = $this->say($this->owner, '/help');
-		self::assertStringContainsString('/su — режим суперадмина', $owner_off, 'the owner can always find /su');
-		self::assertStringContainsString('/su grant @ник', $owner_off, 'and can always grant');
-		self::assertStringNotContainsString('Только для главного админа', $owner_off);
+		$this->assertHelpInPrivateAndGroup(
+			$this->owner,
+			['/su — режим суперадмина', '/su grant @ник'],
+			['Только для главного админа', '/players_import', '/level @user 4'],
+			'owner, mode off',
+		);
 	}
 
 	public function testMenuFollowsGrantRevokeAndMode(): void {

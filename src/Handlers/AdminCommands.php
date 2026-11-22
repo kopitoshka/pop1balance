@@ -192,7 +192,7 @@ class AdminCommands {
 					Messages::GROUP_REDIRECT_BUTTON,
 					DeepLink::url($this->bot->username),
 				);
-				return Texts::groupHelp($this->bot->username);
+				return Texts::groupHelp($this->bot->username, $ctx->is_super, $ctx->can_su, $ctx->can_manage_su);
 			case 'help_level':
 				return Texts::levels();
 			case 'tournaments':

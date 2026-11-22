@@ -329,8 +329,9 @@ class OfflinePlayersTest extends IntegrationTestCase {
 		$help = \P1Bot\View\Texts::help('pop1_bot', true, true);
 		self::assertStringContainsString('<code>/addplayer @username НикВИгре</code>', $help);
 		self::assertStringContainsString('<code>/addplayer НикВИгре</code>', $help);
-		self::assertStringContainsString('Капитаном такого игрока может поставить только организатор турнира или главный админ', $help);
 		self::assertStringContainsString('<code>/level НикВИгре 4</code>', $help);
+		self::assertStringNotContainsString('Капитаном такого игрока', $help);
+		self::assertStringNotContainsString('Черновик правится', $help);
 		self::assertStringNotContainsString('/addplayer @username', \P1Bot\View\Texts::help('pop1_bot', false, false));
 	}
 }

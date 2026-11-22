@@ -25,9 +25,10 @@ class HtmlTelegramTextsTest extends TestCase {
 		$samples = [
 			Texts::greeting('pop1balance_bot'),
 			Texts::groupHelp('pop1balance_bot'),
+			Texts::groupHelp('pop1balance_bot', true, true, true),
 			Texts::help('pop1balance_bot', false, false),
-			Texts::help('pop1balance_bot', true, false),
-			Texts::help('pop1balance_bot', true, true),
+			Texts::help('pop1balance_bot', true, false, true, true),
+			Texts::help('pop1balance_bot', true, true, true, true),
 			Texts::welcome('Андрей'),
 			Texts::welcome(''),
 			Texts::welcomeTournament('Андрей'),
