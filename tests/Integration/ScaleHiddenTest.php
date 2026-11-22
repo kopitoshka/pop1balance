@@ -39,7 +39,7 @@ class ScaleHiddenTest extends IntegrationTestCase {
 		$this->newDraft($this->admin, '23.11 20:00 | Кубок | 3 | 10');
 
 		$card = $this->http->lastText();
-		self::assertStringContainsString('Уровень турнира', $card);
+		self::assertStringContainsString('Макс. уровень', $card);
 		self::assertStringNotContainsStringIgnoringCase('шкал', $card);
 		self::assertStringNotContainsStringIgnoringCase('баланс', $card);
 		self::assertSame(
@@ -77,11 +77,11 @@ class ScaleHiddenTest extends IntegrationTestCase {
 		$this->dispatch($this->privateMessage($this->owner, '/level @vasya 5'));
 		$this->http->reset();
 		$this->dispatch($this->privateMessage($vasya, '/level'));
-		self::assertStringContainsString('Твой уровень: высокий (5)', $this->http->lastText());
+		self::assertStringContainsString('Твой уровень: Танк (5)', $this->http->lastText());
 		self::assertStringContainsString('Как устроены уровни — /help_level', $this->http->lastText());
 		self::assertStringNotContainsString('Поставить:', $this->http->lastText());
 		$this->dispatch($this->privateMessage($this->admin, '/level @vasya'));
-		self::assertStringContainsString('@vasya — высокий (5)', $this->http->lastText());
+		self::assertStringContainsString('@vasya — Танк (5)', $this->http->lastText());
 	}
 
 	public function testOnlyOwnerSetsLevels(): void {
@@ -92,7 +92,7 @@ class ScaleHiddenTest extends IntegrationTestCase {
 		self::assertSame('Уровень ставит админ.', $this->http->lastText());
 		$this->dispatch($this->privateMessage($vasya, '/level 4'));
 		self::assertSame('Уровень ставит админ.', $this->http->lastText());
-		$this->dispatch($this->privateMessage($vasya, '/level высокий'));
+		$this->dispatch($this->privateMessage($vasya, '/level Танк'));
 		self::assertSame('Уровень ставит админ.', $this->http->lastText());
 		$this->dispatch($this->privateMessage($vasya, '/level себя 4'));
 		self::assertSame('Уровень ставит админ.', $this->http->lastText());
@@ -102,11 +102,11 @@ class ScaleHiddenTest extends IntegrationTestCase {
 		self::assertStringContainsString('не знаю', mb_strtolower($this->http->lastText()));
 
 		$this->dispatch($this->privateMessage($this->owner, '/level @vasya 5'));
-		self::assertSame('Записала: @vasya — высокий (5).', $this->http->lastText());
+		self::assertSame('Записала: @vasya — Танк (5).', $this->http->lastText());
 		self::assertSame(5, $this->app->balances->levelOf($this->app->balances->findDefault()->id, $vasya->id));
 
 		$this->dispatch($this->privateMessage($this->owner, '/level 4'));
-		self::assertSame('Записала: ' . $this->owner->plainLabel() . ' — средний+ (4).', $this->http->lastText());
+		self::assertSame('Записала: ' . $this->owner->plainLabel() . ' — Вертолёт (4).', $this->http->lastText());
 		self::assertSame(4, $this->app->balances->levelOf($this->app->balances->findDefault()->id, $this->owner->id));
 	}
 
@@ -166,8 +166,8 @@ class ScaleHiddenTest extends IntegrationTestCase {
 			$this->dispatch($this->privateMessage($viewer, '/players'));
 			$text = $this->http->lastText();
 			self::assertStringStartsWith('📋 <b>Игроки</b> — ', $text);
-			self::assertStringContainsString("<blockquote><b>высокий (5)</b></blockquote>\n<a href=\"https://t.me/vasya\">Vasya Pro</a>\n", $text);
-			self::assertStringContainsString('<blockquote><b>Уровень не ставили — считаю средний (3)</b>', $text);
+			self::assertStringContainsString("<blockquote><b>Танк (5)</b></blockquote>\n<a href=\"https://t.me/vasya\">Vasya Pro</a>\n", $text);
+			self::assertStringContainsString('<blockquote><b>Уровень не ставили — считаю БТР (3)</b>', $text);
 			self::assertStringContainsString("\n<a href=\"https://t.me/petya\">@petya</a>\n", $text);
 			self::assertStringContainsString("\n<a href=\"tg://user?id=777555\">Без &lt;ника&gt;</a>\n", $text);
 			self::assertStringNotContainsString('без ника', $text);

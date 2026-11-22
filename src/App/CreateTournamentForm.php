@@ -911,13 +911,17 @@ class CreateTournamentForm {
 		One line for the draft conversation history (the AI sees it when the user replies to the card).
 	*/
 	protected function summary(CreateTournament $c): string {
+		$points = $c->reference_team;
+		if ($points !== null && str_contains($points, ',')) {
+			$points = (string) Levels::teamPoints(array_map('intval', explode(',', $points)));
+		}
 		return sprintf(
-			'%s, %s, %s МСК, игроков в команде: %d, уровень: %s, лимит: %d',
+			'%s, %s, %s МСК, игроков в команде: %d, Макс. уровень: %s, лимит: %d',
 			$c->title,
 			$c->map ?? 'без карты',
 			$c->starts_at_msk,
 			$c->team_size,
-			(string) $c->reference_team,
+			(string) ($points ?? 'не задан'),
 			(int) $c->max_players,
 		);
 	}

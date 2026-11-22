@@ -88,10 +88,10 @@ class PlayersImportParseTest extends TestCase {
 			'errors' => [['raw' => 'Stas 66', 'reason' => 'уровень должен быть от 1 до 6, а указан 66.']],
 		]);
 		self::assertStringContainsString('<b>Добавила</b> (1):', $html);
-		self::assertStringContainsString('• Новый — средний (3)', $html);
+		self::assertStringContainsString('• Новый — БТР (3)', $html);
 		self::assertStringContainsString('<b>Обновила</b> (1):', $html);
 		self::assertStringContainsString(
-			'• <a href="https://t.me/vasya">Vasya (@vasya)</a> — средний (3) → высокий (5)',
+			'• <a href="https://t.me/vasya">Vasya (@vasya)</a> — БТР (3) → Танк (5)',
 			$html,
 		);
 		self::assertStringContainsString('Пропустила 2 строки (игрок уже есть и уровень не менялся).', $html);

@@ -106,11 +106,11 @@ class Messages {
 	}
 
 	/**
-		"Субботний кубок — 14.11.2026 19:00 МСК, команды по 3, уровень: средний (10 баллов на троих), занято 18/24, запас 2"
+		"Субботний кубок — 14.11.2026 19:00 МСК, команды по 3, Макс. уровень: 10, занято 18/24, запас 2"
 	*/
 	public static function tournamentLine(Tournament $t, Lineup $lineup): string {
 		return sprintf(
-			'%s — %s, команды по %d, уровень: %s, %s',
+			'%s — %s, команды по %d, %s, %s',
 			$t->title,
 			MoscowTime::format($t->starts_at),
 			$t->team_size,

@@ -254,10 +254,10 @@ class PrivateChatTest extends IntegrationTestCase {
 
 	public function testOwnerCommandsWorkInPrivate(): void {
 		$vasya = $this->player('vasya');
-		self::assertSame('Записала: @vasya — высокий (5).', $this->say($this->owner, '/level @vasya 5'));
+		self::assertSame('Записала: @vasya — Танк (5).', $this->say($this->owner, '/level @vasya 5'));
 		self::assertSame(5, $this->app->balances->levelOf($this->app->balances->findDefault()->id, $vasya->id));
 		self::assertStringContainsString('@vasya', $this->say($this->owner, '/players'));
-		self::assertStringContainsString('высокий', $this->http->lastText());
+		self::assertStringContainsString('Танк', $this->http->lastText());
 		self::assertStringContainsString('только главный админ', $this->say($this->admin, '/level @vasya 2'));
 	}
 

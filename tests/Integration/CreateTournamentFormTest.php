@@ -226,7 +226,7 @@ class CreateTournamentFormTest extends IntegrationTestCase {
 		self::assertSame(['default' => 24, 'max' => 1000], $boot['max_players']);
 		self::assertSame(20, $boot['registration_close_minutes']);
 		self::assertSame(3, $boot['default_level']);
-		self::assertSame(['level' => 3, 'name' => 'средний'], $boot['levels'][2]);
+		self::assertSame(['level' => 3, 'name' => 'БТР'], $boot['levels'][2]);
 		self::assertCount(6, $boot['levels']);
 		self::assertSame('2026-11-09 15:00:00', $boot['now_msk'], 'Moscow time, UTC+3');
 		self::assertSame('2026-11-10', $boot['default_date']);
@@ -306,8 +306,8 @@ class CreateTournamentFormTest extends IntegrationTestCase {
 		self::assertSame($this->tgIdOf($this->owner), $card['chat_id']);
 		self::assertStringContainsString('Турнир №1 (черновик)', $card['text']);
 		self::assertStringContainsString('🗺 Карта: Classic', $card['text']);
-		self::assertStringContainsString('⚖️ Уровень турнира: средний+ (11 баллов на троих)', $card['text']);
-		self::assertStringContainsString('По игрокам: средний, средний, высокий', $card['text']);
+		self::assertStringContainsString('⚖️ Макс. уровень: 11', $card['text']);
+		self::assertStringContainsString('По игрокам: БТР, БТР, Танк', $card['text']);
 		self::assertStringNotContainsStringIgnoringCase('эталон', $card['text']);
 		self::assertStringEndsWith('Публикуем или что-то поправить?', $card['text']);
 		self::assertSame('pub:1', $card['reply_markup']['inline_keyboard'][0][0]['callback_data']);
@@ -336,7 +336,7 @@ class CreateTournamentFormTest extends IntegrationTestCase {
 		$t = $this->app->tournament_repo->find(1);
 		self::assertNull($t->reference_team);
 		self::assertSame(10, $t->max_points);
-		self::assertStringContainsString('средний (10 баллов на троих)', $this->http->lastText());
+		self::assertStringContainsString('Макс. уровень: 10', $this->http->lastText());
 	}
 
 	public function testMoscowTimeWhateverTheServerZone(): void {
@@ -410,7 +410,7 @@ class CreateTournamentFormTest extends IntegrationTestCase {
 		self::assertSame(1, $t->team_size);
 		self::assertSame(5, $t->max_points);
 		self::assertSame(1, $t->max_players);
-		self::assertSame('высокий (5 баллов на одного)', $t->levelLabel());
+		self::assertSame('Макс. уровень: 5', $t->levelLabel());
 
 		self::assertNull($this->submitForm($this->owner, $this->form([
 			'title' => 'Соло суммой',
@@ -446,7 +446,7 @@ class CreateTournamentFormTest extends IntegrationTestCase {
 		$t = $this->app->tournament_repo->find(1);
 		self::assertSame(12, $t->team_size);
 		self::assertSame(36, $t->max_points);
-		self::assertSame('средний (36 баллов на 12 игроков)', $t->levelLabel());
+		self::assertSame('Макс. уровень: 36', $t->levelLabel());
 
 		self::assertNull($this->submitForm($this->owner, $this->form([
 			'title' => 'Дюжина суммой',

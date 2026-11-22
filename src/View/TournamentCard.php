@@ -32,13 +32,13 @@ class TournamentCard {
 		}
 		$lines[] = '👥 Команды по ' . $t->team_size . ' ' . RuPlural::choose($t->team_size, ['игроку', 'игрока', 'игроков']);
 		if ($t->max_points !== null) {
-			$lines[] = '⚖️ Уровень турнира: ' . Html::e($t->levelLabel());
+			$lines[] = '⚖️ ' . Html::e($t->levelLabel());
 			if ($t->reference_team !== null) {
 				$levels = array_map('intval', explode(',', $t->reference_team));
 				$lines[] = '📊 По игрокам: ' . Html::e(Levels::describeReferenceTeam($levels));
 			}
 		} else {
-			$lines[] = '⚖️ Уровень турнира: не задан';
+			$lines[] = '⚖️ Макс. уровень: не задан';
 		}
 		// $balance is not shown for now: scales are hidden from users (see AccessPolicy::LEVELS_OWNER_ONLY).
 		$lines[] = '🎟 Лимит участников: ' . $t->max_players;

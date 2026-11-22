@@ -22,7 +22,7 @@ class TournamentServiceTest extends IntegrationTestCase {
 			'  Субботний кубок ',
 			'2026-11-14 19:00',
 			3,
-			'средний, средний, средний+',
+			'БТР, БТР, Вертолёт',
 		));
 
 		self::assertSame('Субботний кубок', $t->title);
@@ -33,19 +33,19 @@ class TournamentServiceTest extends IntegrationTestCase {
 		self::assertSame(24, $t->max_players);
 		self::assertSame($this->app->balances->findDefault()->id, $t->balance_id);
 		self::assertSame(TournamentStatus::DRAFT, $t->status);
-		self::assertSame('средний (10 баллов на троих)', $t->levelLabel());
+		self::assertSame('Макс. уровень: 10', $t->levelLabel());
 	}
 
 	public function testElevenPointsForThreeIsAveragePlus(): void {
 		$t = $this->openTournament(3, '3,4,4');
 		self::assertSame(12, $t->max_points, '4+4 pair adds 1 to the raw 11');
-		self::assertSame('средний+ (12 баллов на троих)', $t->levelLabel(), 'label uses the reference levels, not the bonus-inflated total');
+		self::assertSame('Макс. уровень: 12', $t->levelLabel(), 'label uses the reference levels, not the bonus-inflated total');
 	}
 
 	public function testFourFourFourKeepsAveragePlusLabel(): void {
 		$t = $this->openTournament(3, '4,4,4');
 		self::assertSame(15, $t->max_points);
-		self::assertSame('средний+ (15 баллов на троих)', $t->levelLabel());
+		self::assertSame('Макс. уровень: 15', $t->levelLabel());
 	}
 
 	/**
@@ -101,7 +101,7 @@ class TournamentServiceTest extends IntegrationTestCase {
 				'X',
 				'2026-11-14 19:00',
 				3,
-				'средний, средний, крутой',
+				'БТР, БТР, крутой',
 			),
 			'single level name' => new CreateTournament(
 				self::CHAT_ID,
@@ -109,7 +109,7 @@ class TournamentServiceTest extends IntegrationTestCase {
 				'X',
 				'2026-11-14 19:00',
 				3,
-				'средний',
+				'БТР',
 			),
 			'total too small' => new CreateTournament(self::CHAT_ID, $this->owner->id, 'X', '2026-11-14 19:00', 3, '2'),
 			'total too big' => new CreateTournament(self::CHAT_ID, $this->owner->id, 'X', '2026-11-14 19:00', 3, '28'),
@@ -244,7 +244,7 @@ class TournamentServiceTest extends IntegrationTestCase {
 		$lineup = $this->app->tournaments->lineup($t->id);
 		self::assertSame('занято 4/4, запас 3', $lineup->summary());
 		self::assertSame(
-			'Субботний кубок — 14.11.2026 19:00 МСК, команды по 2, уровень: без ограничения по уровню, занято 4/4, запас 3',
+			'Субботний кубок — 14.11.2026 19:00 МСК, команды по 2, без ограничения по уровню, занято 4/4, запас 3',
 			Messages::tournamentLine($t, $lineup),
 		);
 
@@ -277,19 +277,19 @@ class TournamentServiceTest extends IntegrationTestCase {
 		self::assertSame(10, $t->max_points);
 		self::assertNull($t->reference_team);
 		self::assertNotNull($t->balance_id);
-		self::assertSame('средний (10 баллов на троих)', $t->levelLabel());
+		self::assertSame('Макс. уровень: 10', $t->levelLabel());
 
 		$t = $this->app->tournaments->edit($this->owner->id, $t->id, new EditTournament(null, null, null, '18'));
 		self::assertSame(18, $t->max_points);
-		self::assertSame('высокий+ (18 баллов на троих)', $t->levelLabel());
+		self::assertSame('Макс. уровень: 18', $t->levelLabel());
 		$t = $this->app->tournaments->edit($this->owner->id, $t->id, new EditTournament(null, null, null, '3'));
-		self::assertSame('начальный (3 балла на троих)', $t->levelLabel());
+		self::assertSame('Макс. уровень: 3', $t->levelLabel());
 
 		// A list sets max points to the sum and keeps the per-player levels.
 		$t = $this->app->tournaments->edit(
 			$this->owner->id,
 			$t->id,
-			new EditTournament(null, null, null, 'средний, средний, высокий'),
+			new EditTournament(null, null, null, 'БТР, БТР, Танк'),
 		);
 		self::assertSame(11, $t->max_points);
 		self::assertSame('3,3,5', $t->reference_team);

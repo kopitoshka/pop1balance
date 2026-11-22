@@ -157,7 +157,7 @@ class CronRunner {
 			sprintf('⏰ %s стартует турнир %s!', $when, Html::b($t->title)),
 			'🗓 ' . MoscowTime::format($t->starts_at, 'd.m.Y ⏰ H:i'),
 			sprintf('👥 Команды по %d %s', $t->team_size, RuPlural::choose($t->team_size, ['игроку', 'игрока', 'игроков'])),
-			'⚖️ Уровень: ' . Html::e($t->levelLabel()),
+			'⚖️ ' . Html::e($t->levelLabel()),
 			sprintf('🎟 Занято %d/%d', $lineup->occupied(), $t->max_players),
 			'',
 			$this->tournaments->isUserRegistrationOpen($t)

@@ -258,9 +258,9 @@ class OfflinePlayersTest extends IntegrationTestCase {
 	public function testLevelAndNickByIgnForOfflinePlayers(): void {
 		$this->say($this->owner, '/addplayer Stas 66');
 		$stas = $this->app->players->findByIgnNorm('stas 66');
-		self::assertSame('Записала: Stas 66 — высокий (5).', $this->say($this->owner, '/level Stas 66 5'));
+		self::assertSame('Записала: Stas 66 — Танк (5).', $this->say($this->owner, '/level Stas 66 5'));
 		self::assertSame(5, $this->app->balances->levelOf($this->app->balances->findDefault()->id, $stas->id));
-		self::assertStringStartsWith('Stas 66 — высокий (5)', $this->say($this->owner, '/level stas 66'), 'a nick ending in a digit is a nick, not a level');
+		self::assertStringStartsWith('Stas 66 — Танк (5)', $this->say($this->owner, '/level stas 66'), 'a nick ending in a digit is a nick, not a level');
 
 		$vasya = $this->player('vasya');
 		self::assertSame(AccessPolicy::LEVELS_OWNER_ONLY, $this->say($vasya, '/level Stas 66 2'));
@@ -296,7 +296,7 @@ class OfflinePlayersTest extends IntegrationTestCase {
 	public function testUsernameOnlyPlayerIsTargetableByUsername(): void {
 		$this->say($this->owner, '/addplayer @offline_owl');
 		$owl = $this->app->players->findByUsername('offline_owl');
-		self::assertSame('Записала: @offline_owl — средний+ (4).', $this->say($this->owner, '/level @offline_owl 4'));
+		self::assertSame('Записала: @offline_owl — Вертолёт (4).', $this->say($this->owner, '/level @offline_owl 4'));
 		self::assertSame(4, $this->app->balances->levelOf($this->app->balances->findDefault()->id, $owl->id));
 		self::assertSame('Поставила ник «Сова» игроку @offline_owl.', $this->say($this->owner, '/nick @offline_owl Сова'));
 		self::assertSame(1, (int) $this->db->fetchValue("SELECT COUNT(*) FROM players WHERE username = 'offline_owl'"));

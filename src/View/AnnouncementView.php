@@ -157,7 +157,7 @@ class AnnouncementView {
 			$lines[] = $map;
 		}
 		$lines[] = '👤 Организатор: ' . $this->name($t->organizer_id);
-		$lines[] = '⚖️ Уровень: ' . Html::e($t->levelLabel());
+		$lines[] = '⚖️ ' . Html::e($t->levelLabel());
 		$lines[] = '👥 Команды по ' . $t->team_size . ' ' . RuPlural::choose($t->team_size, ['игроку', 'игрока', 'игроков']);
 		$lines[] = (self::STATUS_ICONS[$status] ?? '📌') . ' ' . Html::e(self::ucfirst(TournamentStatus::label($status)));
 		$lines[] = '🎟 Занято ' . $lineup->occupied() . '/' . $lineup->max_players . ' · запас ' . $lineup->reserveCount();

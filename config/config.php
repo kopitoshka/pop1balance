@@ -62,6 +62,16 @@ return [
 		// this level or higher adds min(level_i, level_j) minus the offset.
 		'pair_bonus_min_level' => 4,
 		'pair_bonus_offset' => 3,
+		// Official player class names (1..6). Change here to rename them everywhere.
+		// A tournament limit is shown as «Макс. уровень: 11», not as a class name.
+		'level_names' => [
+			1 => 'Пехота',
+			2 => 'Джип',
+			3 => 'БТР',
+			4 => 'Вертолёт',
+			5 => 'Танк',
+			6 => 'Тяжёлый танк',
+		],
 	],
 	// Tournament pictures (Mini App upload, shown as a link preview above one-tournament messages).
 	'media' => [

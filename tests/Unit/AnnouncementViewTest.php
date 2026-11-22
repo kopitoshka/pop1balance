@@ -70,7 +70,7 @@ class AnnouncementViewTest extends TestCase {
 		self::assertStringContainsString('🏆 <b>Кубок &lt;выходного&gt;</b> · №2', $text);
 		self::assertStringContainsString('🗓 14.11.2026 ⏰ 19:00 МСК', $text);
 		self::assertStringContainsString('👤 Организатор: <a href="https://t.me/andrey">@andrey</a>', $text);
-		self::assertStringContainsString('⚖️ Уровень: средний+ (7 баллов на двоих)', $text);
+		self::assertStringContainsString('⚖️ Макс. уровень: 7', $text);
 		self::assertStringContainsString('👥 Команды по 2 игрока', $text);
 		self::assertStringContainsString('🟢 Идёт регистрация', $text);
 		self::assertStringContainsString('🎟 Занято 4/4 · запас 3', $text);
@@ -82,7 +82,7 @@ class AnnouncementViewTest extends TestCase {
 		self::assertStringNotContainsString('blockquote expandable', $text);
 		self::assertStringContainsString("⏳ <b>Запас:</b>\nB. <b>Late</b> · lvl.6\n👑 <a href=\"https://t.me/p6\">@p6</a>, <a href=\"https://t.me/p7\">@p7</a>\n🙋 Соло: <a href=\"https://t.me/p8\">@p8</a>", $text);
 		self::assertStringContainsString("🧩 <b>Собираются:</b>\n?. Forming · собирается 1/2 · lvl.3\n👑 <a href=\"https://t.me/p9\">@p9</a>", $text);
-		self::assertDoesNotMatchRegularExpression('/средний \(3\)/u', $text, 'individual player levels are not shown');
+		self::assertDoesNotMatchRegularExpression('/БТР \(3\)/u', $text, 'individual player levels are not shown');
 		self::assertStringContainsString('в личке у @pop1_bot', $text);
 	}
 

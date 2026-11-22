@@ -75,7 +75,7 @@ class FuzzySuggestTest extends IntegrationTestCase {
 			$this->owner,
 			'sug:' . $pending_id . ':' . $target->id,
 		));
-		self::assertStringContainsString('высокий', $this->http->lastText());
+		self::assertStringContainsString('Танк', $this->http->lastText());
 		self::assertStringContainsString('@petya', $this->http->lastText());
 	}
 

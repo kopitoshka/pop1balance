@@ -386,7 +386,7 @@ Creating:
 - `/edit` and `/cancel` are gone (unknown command): drafts are edited/deleted with «✏️ Поправить» /
   «🗑 Удалить», published tournaments with «✏️ Изменить турнир» / «❌ Отменить турнир».
 - `/players` (replaces `/levels`, no alias) — every known player grouped by level, highest first, then
-  «Уровень не ставили — считаю средний (3)». Level headers are `<blockquote>`; each player is ONE name
+  «Уровень не ставили — считаю БТР (3)». Level headers are `<blockquote>`; each player is ONE name
   (`Player::name()`: in-game nick, else @username, else Telegram display name), linked to the Telegram
   profile when bound (tg id or username), no level next to it. Deleted players are not listed. Same access as `/levels` had: anyone in private and groups.
   The owner also sees how to set levels and nicks, and **only in the owner's private chat** a ✏️ after each name opens the player card (below); groups and other users never get pencils.
@@ -507,11 +507,13 @@ Every tournament has a level (see below). There is no "no level" option any more
 
 ### Levels
 
-`1 начальный, 2 начальный+, 3 средний, 4 средний+, 5 высокий, 6 высокий+`. Parsing synonyms: слабый / базовый /
-начинающий = начальный, танк = высокий («слабый» accepted but not shown in `/help`). Case-insensitive, «плюс» = «+»
-(«слабый плюс» = 2, «танк+» = 6),
-small typos are tolerated («выскоий» = высокий). Full help for users: the end of `/help` (the AI sends the same
-text via the `levels_help` tool when asked «какие есть уровни»).
+`1 Пехота, 2 Джип, 3 БТР, 4 Вертолёт, 5 Танк, 6 Тяжёлый танк` (ё in Вертолёт and Тяжёлый). Names live in
+`config/config.php` → `tournament.level_names` and are applied through `Levels::configure()`.
+Parsing still accepts the old names and synonyms: слабый / базовый / начинающий = Пехота, танк = Танк
+(«слабый» accepted but not offered to users). Case-insensitive, «плюс» = «+» («слабый плюс» = 2, «танк+» = 6),
+small typos are tolerated («выскоий» = Танк). A trailing «+» on a class name means the next class
+(«БТР+» parses as Вертолёт) but is never shown: official names have no «+». Full help for users:
+`/help_level` (the AI sends the same text via the `levels_help` tool).
 
 ### Tournament level
 
@@ -525,14 +527,13 @@ It is set (in the form and plain text) in one of two ways:
   team_size × 1 … the strength of a team of all 6s with pair bonuses (3–27 for threes). Stored with
   `reference_team = NULL`.
 - **levels of all players**, exactly team_size of them (names, synonyms or digits 1–6):
-  «средний, средний, высокий» / `3,3,5` → `max_points = 11`, `reference_team = '3,3,5'`;
+  «БТР, БТР, Танк» / `3,3,5` → `max_points = 11`, `reference_team = '3,3,5'`;
   `4,4,4` → `max_points = 15` (12 plus three pair bonuses of 1).
 
-A single level name («средний») is accepted only for one-player teams (team_size = 1). Anything else (no value, wrong number
+A single level name («БТР») is accepted only for one-player teams (team_size = 1). Anything else (no value, wrong number
 of levels, digit outside 1–6, total out of range, unknown word) is rejected with the reason plus the usage
-help. The label («средний (10 баллов на троих)») is
-round(sum of the reference-team levels / team_size) when the limit was set per player, otherwise
-round(max_points / team_size). Changing the team size needs a new level.
+help. The tournament limit is shown as «Макс. уровень: 11» (points only, no player class name) on the
+announcement, the draft card, `/tournaments N` and the form summary. Changing the team size needs a new level.
 After the first sign-up (team or solo) team size is locked (disabled in the form); the tournament
 level may still be changed. Teams that then go over the limit stay registered and are marked
 «⚠️ выше уровня». The bot still refuses a size change. DB columns are unchanged (`reference_team`, `max_points`).

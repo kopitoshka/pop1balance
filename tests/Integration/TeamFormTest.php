@@ -422,7 +422,7 @@ class TeamFormTest extends IntegrationTestCase {
 		self::assertSame($tired->id, $found['players'][0]['id'], 'space/underscore-insensitive');
 		$found = $this->app->team_form->search($this->initDataFor($cap), $token, 'astana');
 		self::assertSame('Волки', $found['players'][0]['in_team']);
-		self::assertSame('средний', $found['players'][0]['level_name']);
+		self::assertSame('БТР', $found['players'][0]['level_name']);
 	}
 
 	public function testContactsRoundTrip(): void {

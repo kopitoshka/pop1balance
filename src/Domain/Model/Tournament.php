@@ -9,7 +9,6 @@ use P1Bot\Domain\Exception\InvalidLevel;
 use P1Bot\Domain\Levels;
 use P1Bot\Domain\TournamentStatus;
 use P1Bot\Support\DateFormat;
-use P1Bot\Support\RuPlural;
 
 class Tournament {
 
@@ -102,27 +101,14 @@ class Tournament {
 	}
 
 	/**
-		"средний (10 баллов на троих)" or "без ограничения по уровню".
+		«Макс. уровень: 11» — the points cap only, no player class name — or
+		«без ограничения по уровню» when the limit is not set.
 	*/
 	public function levelLabel(): string {
-		$level = $this->averageLevel();
-		if ($level === null) {
+		if (!$this->hasLevelLimit()) {
 			return 'без ограничения по уровню';
 		}
-		$who = match ($this->team_size) {
-			1 => 'одного',
-			2 => 'двоих',
-			3 => 'троих',
-			4 => 'четверых',
-			default => $this->team_size . ' ' . RuPlural::choose($this->team_size, ['игрока', 'игроков', 'игроков']),
-		};
-		return sprintf(
-			'%s (%d %s на %s)',
-			Levels::name($level),
-			$this->max_points,
-			RuPlural::points((int) $this->max_points),
-			$who,
-		);
+		return 'Макс. уровень: ' . (int) $this->max_points;
 	}
 
 	public function isRegistrationOpen(): bool {

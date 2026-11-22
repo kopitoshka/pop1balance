@@ -10,11 +10,30 @@ use PHPUnit\Framework\TestCase;
 
 class LevelsTest extends TestCase {
 
+	protected function setUp(): void {
+		parent::setUp();
+		Levels::configure([]);
+	}
+
 	public function testNames(): void {
-		self::assertSame('начальный', Levels::name(1));
-		self::assertSame('средний', Levels::name(Levels::DEFAULT));
-		self::assertSame('высокий+', Levels::name(6));
+		self::assertSame('Пехота', Levels::name(1));
+		self::assertSame('Джип', Levels::name(2));
+		self::assertSame('БТР', Levels::name(Levels::DEFAULT));
+		self::assertSame('Вертолёт', Levels::name(4));
+		self::assertSame('Танк', Levels::name(5));
+		self::assertSame('Тяжёлый танк', Levels::name(6));
+		self::assertSame(Levels::DEFAULT_NAMES, Levels::all());
 		self::assertCount(6, Levels::all());
+	}
+
+	public function testConfigureOverridesNames(): void {
+		Levels::configure(['level_names' => [
+			1 => 'A', 2 => 'B', 3 => 'C', 4 => 'D', 5 => 'E', 6 => 'F',
+		]]);
+		self::assertSame('C', Levels::name(3));
+		self::assertSame(4, Levels::parse('Вертолёт'));
+		Levels::configure([]);
+		self::assertSame('БТР', Levels::name(3));
 	}
 
 	public function testInvalidLevelIsRejected(): void {
@@ -26,6 +45,16 @@ class LevelsTest extends TestCase {
 		self::assertSame(4, Levels::parse('4'));
 		self::assertSame(4, Levels::parse('Средний +'));
 		self::assertSame(2, Levels::parse('начальный+'));
+		self::assertSame(1, Levels::parse('Пехота'));
+		self::assertSame(2, Levels::parse('джип'));
+		self::assertSame(3, Levels::parse('БТР'));
+		self::assertSame(4, Levels::parse('Вертолёт'));
+		self::assertSame(4, Levels::parse('вертолет'));
+		self::assertSame(5, Levels::parse('Танк'));
+		self::assertSame(6, Levels::parse('Тяжёлый танк'));
+		self::assertSame(6, Levels::parse('тяжелый танк'));
+		self::assertSame(4, Levels::parse('БТР+'));
+		self::assertNull(Levels::parse('Тяжёлый танк+'));
 		self::assertNull(Levels::parse('0'));
 		self::assertNull(Levels::parse('нуб'));
 	}
@@ -62,11 +91,12 @@ class LevelsTest extends TestCase {
 	}
 
 	public function testDescribeReferenceTeam(): void {
-		self::assertSame('средний, средний, средний+', Levels::describeReferenceTeam([3, 3, 4]));
+		self::assertSame('БТР, БТР, Вертолёт', Levels::describeReferenceTeam([3, 3, 4]));
 	}
 
 	public function testParseReferenceTeamWithSpacesAndPlusWords(): void {
 		self::assertSame([3, 3, 4], Levels::parseReferenceTeam('средний средний средний плюс'));
+		self::assertSame([6, 3, 2], Levels::parseReferenceTeam('тяжёлый танк, БТР, джип'));
 		self::assertSame([1, 6, 3], Levels::parseReferenceTeam('слабый, танк + ,  3'));
 		self::assertSame([5, 6], Levels::parseReferenceTeam('Выскоий, выскоий+'));
 	}
@@ -148,9 +178,9 @@ class LevelsTest extends TestCase {
 	*/
 	public function averageProvider(): array {
 		return [
-			'9/3 средний' => [9, 3, 3],
-			'10/3 средний' => [10, 3, 3],
-			'11/3 средний+' => [11, 3, 4],
+			'9/3 БТР' => [9, 3, 3],
+			'10/3 БТР' => [10, 3, 3],
+			'11/3 Вертолёт' => [11, 3, 4],
 			'7/2 rounds half up' => [7, 2, 4],
 			'clamped high' => [30, 4, 6],
 		];

@@ -85,7 +85,7 @@ class PlayerCardTest extends IntegrationTestCase {
 		$this->say($this->owner, '/addplayer Тень');
 		$text = $this->say($this->player('petya'), '/players');
 
-		self::assertStringContainsString("<blockquote><b>высокий (5)</b></blockquote>\n<a href=\"https://t.me/vasya\">ruskid</a>\n", $text);
+		self::assertStringContainsString("<blockquote><b>Танк (5)</b></blockquote>\n<a href=\"https://t.me/vasya\">ruskid</a>\n", $text);
 		self::assertStringContainsString("\n<a href=\"https://t.me/petya\">@petya</a>\n", $text);
 		self::assertStringContainsString("\n<a href=\"tg://user?id=777555\">Без &lt;ника&gt;</a>\n", $text);
 		self::assertStringContainsString("\nТень\n", $text . "\n", 'no Telegram and no username: plain text');

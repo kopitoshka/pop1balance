@@ -9,7 +9,9 @@ use P1Bot\Domain\Exception\ValidationError;
 use P1Bot\Support\RuPlural;
 
 /**
-	Player levels 1..6 and their Russian names.
+	Player levels 1..6 and their Russian names (Пехота…Тяжёлый танк).
+	Official names come from config (tournament.level_names) or DEFAULT_NAMES.
+	Old adjective names (начальный, средний+, …) stay accepted as synonyms when parsing.
 */
 class Levels {
 	public const MIN = 1;
@@ -30,13 +32,36 @@ class Levels {
 	protected static int $pair_bonus_min_level = self::PAIR_BONUS_MIN_LEVEL;
 	protected static int $pair_bonus_offset = self::PAIR_BONUS_OFFSET;
 
-	protected const NAMES = [
-		1 => 'начальный',
-		2 => 'начальный+',
-		3 => 'средний',
-		4 => 'средний+',
-		5 => 'высокий',
-		6 => 'высокий+',
+	/**
+		Default official names (with ё). A tournament limit is not named after a class:
+		it is shown as «Макс. уровень: 11».
+	*/
+	public const DEFAULT_NAMES = [
+		1 => 'Пехота',
+		2 => 'Джип',
+		3 => 'БТР',
+		4 => 'Вертолёт',
+		5 => 'Танк',
+		6 => 'Тяжёлый танк',
+	];
+
+	/**
+		@var array<int, string>
+	*/
+	protected static array $names = self::DEFAULT_NAMES;
+
+	/**
+		Historical and informal words still accepted when parsing (not shown as official names).
+		«танк» is both the official name of level 5 and the old synonym of «высокий».
+	*/
+	protected const SYNONYMS = [
+		'начальный' => 1,
+		'слабый' => 1,
+		'базовый' => 1,
+		'начинающий' => 1,
+		'средний' => 3,
+		'высокий' => 5,
+		'танк' => 5,
 	];
 
 	public static function isValid(int $level): bool {
@@ -51,32 +76,20 @@ class Levels {
 
 	public static function name(int $level): string {
 		self::assertValid($level);
-		return self::NAMES[$level];
+		return self::$names[$level];
 	}
 
 	/**
 		@return array<int, string>
 	*/
 	public static function all(): array {
-		return self::NAMES;
+		return self::$names;
 	}
 
 	/**
-		Base words (without "+") that mean a level: canonical names and synonyms.
-	*/
-	protected const WORDS = [
-		'начальный' => 1,
-		'слабый' => 1,
-		'базовый' => 1,
-		'начинающий' => 1,
-		'средний' => 3,
-		'высокий' => 5,
-		'танк' => 5,
-	];
-
-	/**
-		Accepts "4", "средний+", "Средний плюс", synonyms ("слабый" = начальный, "танк" = высокий)
-		and small typos ("выскоий+"). Returns null if not recognised or ambiguous.
+		Accepts "4", official names («Вертолёт», «Тяжёлый танк»), old names ("средний+", "Средний плюс"),
+		synonyms ("слабый" = Пехота, "танк" = Танк) and small typos ("выскоий+").
+		Returns null if not recognised, ambiguous, or out of 1..6.
 	*/
 	public static function parse(string $value): ?int {
 		$value = self::normalize($value);
@@ -93,17 +106,35 @@ class Levels {
 		if ($word === '' || str_contains($word, '+')) {
 			return null;
 		}
-		$base = self::WORDS[$word] ?? self::fuzzyWord($word);
+		$base = self::wordMap()[$word] ?? self::fuzzyWord($word);
 		if ($base === null) {
 			return null;
 		}
-		return $plus ? $base + 1 : $base;
+		$level = $plus ? $base + 1 : $base;
+		return self::isValid($level) ? $level : null;
+	}
+
+	/**
+		Official names (normalized) plus SYNONYMS. «тяжёлый танк» is stored without spaces or ё.
+		@return array<string, int>
+	*/
+	protected static function wordMap(): array {
+		$map = self::SYNONYMS;
+		foreach ([self::DEFAULT_NAMES, self::$names] as $set) {
+			foreach ($set as $level => $name) {
+				$key = self::normalize($name);
+				if ($key !== '') {
+					$map[$key] = $level;
+				}
+			}
+		}
+		return $map;
 	}
 
 	/**
 		Tournament level (= the maximum team level), as typed by a user:
 		 - one number: the total points per team (max_points), from teamSize×1 to maxTeamPoints(teamSize), e.g. "10";
-		 - levels of all players, exactly teamSize of them: "средний, средний, высокий", "3,3,5" (max_points uses teamPoints).
+		 - levels of all players, exactly teamSize of them: "БТР, БТР, Танк", "3,3,5" (max_points uses teamPoints).
 		A single level name is a list of one, so it only fits a team of one.
 
 		@return array{0: list<int>|null, 1: int} [levels or null for a plain total, max_points]
@@ -153,7 +184,7 @@ class Levels {
 	}
 
 	/**
-		Parses a list of levels: "3,3,4", "средний, средний, средний+", "средний средний средний плюс".
+		Parses a list of levels: "3,3,4", "БТР, БТР, Вертолёт", "средний средний средний плюс".
 
 		@return list<int>
 	*/
@@ -169,7 +200,7 @@ class Levels {
 				throw new InvalidLevel(sprintf(
 					'Не понимаю уровень «%s». Уровни: %s.',
 					$part,
-					implode(', ', self::NAMES),
+					implode(', ', self::$names),
 				));
 			}
 			$levels[] = $level;
@@ -190,11 +221,47 @@ class Levels {
 			}
 			$parts[] = $token;
 		}
-		return $parts;
+		return self::mergeNamedPhrases($parts);
 	}
 
 	/**
-		"средний, средний, средний+"
+		Joins adjacent tokens that together are an official name («тяжёлый» + «танк»).
+		Longest match wins. A trailing «+» stays on the last word of the phrase.
+
+		@param list<string> $parts
+		@return list<string>
+	*/
+	protected static function mergeNamedPhrases(array $parts): array {
+		if ($parts === []) {
+			return [];
+		}
+		$map = self::wordMap();
+		$out = [];
+		$n = count($parts);
+		$i = 0;
+		while ($i < $n) {
+			$used = 1;
+			for ($len = $n - $i; $len >= 2; $len--) {
+				$chunk = array_slice($parts, $i, $len);
+				$last = $chunk[$len - 1];
+				$plus = str_ends_with($last, '+');
+				if ($plus) {
+					$chunk[$len - 1] = substr($last, 0, -1);
+				}
+				$key = self::normalize(implode(' ', $chunk));
+				if ($key !== '' && isset($map[$key])) {
+					$used = $len;
+					break;
+				}
+			}
+			$out[] = implode(' ', array_slice($parts, $i, $used));
+			$i += $used;
+		}
+		return $out;
+	}
+
+	/**
+		"БТР, БТР, Вертолёт"
 	*/
 	public static function describeReferenceTeam(array $levels): string {
 		return implode(', ', array_map([self::class, 'name'], $levels));
@@ -221,7 +288,7 @@ class Levels {
 		$best = null;
 		$best_distance = PHP_INT_MAX;
 		$ambiguous = false;
-		foreach (self::WORDS as $candidate => $level) {
+		foreach (self::wordMap() as $candidate => $level) {
 			$distance = self::distance($target, self::singleByte($candidate));
 			if ($distance < $best_distance) {
 				[$best, $best_distance, $ambiguous] = [$level, $distance, false];
@@ -279,6 +346,26 @@ class Levels {
 	public static function configure(array $tournament = []): void {
 		self::$pair_bonus_min_level = (int) ($tournament['pair_bonus_min_level'] ?? self::PAIR_BONUS_MIN_LEVEL);
 		self::$pair_bonus_offset = (int) ($tournament['pair_bonus_offset'] ?? self::PAIR_BONUS_OFFSET);
+		self::$names = self::parseNames($tournament['level_names'] ?? null);
+	}
+
+	/**
+		@param mixed $raw tournament.level_names: a map 1..6 => label, or null to use the defaults
+		@return array<int, string>
+	*/
+	protected static function parseNames(mixed $raw): array {
+		if (!is_array($raw)) {
+			return self::DEFAULT_NAMES;
+		}
+		$names = [];
+		for ($level = self::MIN; $level <= self::MAX; $level++) {
+			$label = trim((string) ($raw[$level] ?? $raw[(string) $level] ?? ''));
+			if ($label === '') {
+				return self::DEFAULT_NAMES;
+			}
+			$names[$level] = $label;
+		}
+		return $names;
 	}
 
 	public static function pairBonusMinLevel(): int {
@@ -324,7 +411,8 @@ class Levels {
 	}
 
 	/**
-		Tournament level: round(max_points / team_size), e.g. 10/3 -> 3 (средний), 11/3 -> 4 (средний+).
+		Average class of a limit: round(max_points / team_size), e.g. 10/3 -> 3 (БТР), 11/3 -> 4 (Вертолёт).
+		Shown names of that class are for players; a tournament limit is displayed as «Макс. уровень: 11».
 	*/
 	public static function averageLevel(int $max_points, int $team_size): int {
 		$level = (int) round($max_points / $team_size);

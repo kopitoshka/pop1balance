@@ -125,7 +125,8 @@ Domain/ — бизнес-правила
     NickService.php
         Игровые ники (IGN)
     Levels.php
-        Парсинг уровней 1–6 и уровня турнира
+        Уровни игроков 1–6 (имена из config
+        tournament.level_names) и разбор уровня турнира
     TournamentMaps.php
         Карты турнира: Classic, Evolving, Phoenix, custom
     Lineup.php

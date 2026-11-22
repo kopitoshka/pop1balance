@@ -66,7 +66,7 @@ class WebAppPickerTest extends IntegrationTestCase {
 
 		$this->http->reset();
 		$this->app->webapp_picker->submit($init, $token, [$target->id], 4);
-		self::assertStringContainsString('средний+', $this->http->lastText());
+		self::assertStringContainsString('Вертолёт', $this->http->lastText());
 		self::assertSame(4, $this->app->balances->explicitLevel($this->app->balances->viewScaleId(), $target->id));
 	}
 

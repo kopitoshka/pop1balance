@@ -51,11 +51,11 @@ class PlayersImportTest extends IntegrationTestCase {
 		]);
 		$reply = $this->say($this->owner, "/players_import\n" . $list);
 		self::assertStringContainsString('<b>Добавила</b> (3):', $reply);
-		self::assertStringContainsString('Zoloto on heat — высокий (5)', $reply);
-		self::assertStringContainsString('<a href="https://t.me/new_guy">@new_guy</a> — средний (3)', $reply);
-		self::assertStringContainsString('Тихий Охотник — средний (3)', $reply);
+		self::assertStringContainsString('Zoloto on heat — Танк (5)', $reply);
+		self::assertStringContainsString('<a href="https://t.me/new_guy">@new_guy</a> — БТР (3)', $reply);
+		self::assertStringContainsString('Тихий Охотник — БТР (3)', $reply);
 		self::assertStringContainsString('<b>Обновила</b> (1):', $reply);
-		self::assertStringContainsString('Petya (@petya)</a> — высокий (5) → средний+ (4)', $reply);
+		self::assertStringContainsString('Petya (@petya)</a> — Танк (5) → Вертолёт (4)', $reply);
 		self::assertStringContainsString('Пропустила 2 строки (игрок уже есть и уровень не менялся).', $reply);
 		self::assertStringContainsString('• «Stas 66» — уровень должен быть от 1 до 6, а указан 66.', $reply);
 		self::assertNull($this->app->players->findByIgnNorm('stas'), 'an error line changes nothing');
@@ -125,7 +125,7 @@ class PlayersImportTest extends IntegrationTestCase {
 
 		$reply = $this->say($this->owner, "Ждун 4");
 		self::assertStringContainsString('<b>Добавила</b> (1):', $reply);
-		self::assertStringContainsString('Ждун — средний+ (4)', $reply);
+		self::assertStringContainsString('Ждун — Вертолёт (4)', $reply);
 		self::assertNotNull($this->app->players->findByIgnNorm('ждун'));
 	}
 
@@ -151,7 +151,7 @@ class PlayersImportTest extends IntegrationTestCase {
 
 	public function testLongReplyIsSplitIntoSeveralMessages(): void {
 		$lines = [];
-		for ($i = 1; $i <= 120; $i++) {
+		for ($i = 1; $i <= 220; $i++) {
 			$lines[] = sprintf('LongImportPlayer%03d', $i);
 		}
 		$this->http->reset();
@@ -161,10 +161,10 @@ class PlayersImportTest extends IntegrationTestCase {
 		foreach ($texts as $text) {
 			self::assertLessThanOrEqual(4096, mb_strlen($text));
 		}
-		self::assertStringContainsString('<b>Добавила</b> (120):', $texts[0]);
-		self::assertStringContainsString('LongImportPlayer001 — средний (3)', $this->allTexts());
-		self::assertStringContainsString('LongImportPlayer120 — средний (3)', end($texts));
-		self::assertNotNull($this->app->players->findByIgnNorm('longimportplayer120'));
+		self::assertStringContainsString('<b>Добавила</b> (220):', $texts[0]);
+		self::assertStringContainsString('LongImportPlayer001 — БТР (3)', $this->allTexts());
+		self::assertStringContainsString('LongImportPlayer220 — БТР (3)', end($texts));
+		self::assertNotNull($this->app->players->findByIgnNorm('longimportplayer220'));
 	}
 
 	public function testHelpListsTheCommandForTheOwnerOnly(): void {

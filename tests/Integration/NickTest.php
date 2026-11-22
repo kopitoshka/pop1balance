@@ -100,7 +100,7 @@ class NickTest extends IntegrationTestCase {
 		$this->dispatch($this->privateMessage($this->owner, '/level @vasya 4'));
 		$this->http->reset();
 		$this->dispatch($this->privateMessage($this->owner, '/level Zoloto on heat'));
-		self::assertStringContainsString('Zoloto on heat (@vasya) — средний+ (4)', $this->http->lastText());
+		self::assertStringContainsString('Zoloto on heat (@vasya) — Вертолёт (4)', $this->http->lastText());
 	}
 
 	public function testHistoryKeepsPreviousNick(): void {

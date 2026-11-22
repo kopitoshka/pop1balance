@@ -117,11 +117,9 @@
 		return String(level);
 	}
 
-	// «средний» → «средним», «высокий+» → «высоким+» (level names are adjectives).
-	function instrumental(name) {
-		return name.replace(/(ий|ый)(\+?)$/, function (m, ending, plus) {
-			return (ending === 'ий' ? 'им' : 'ым') + plus;
-		});
+	// Class names are nouns («БТР», «Тяжёлый танк»): show them as a quoted label, no adjective case.
+	function classLabel(name) {
+		return '«' + name + '»';
 	}
 
 	function teamSize() {
@@ -732,7 +730,7 @@
 		clock_offset = Date.parse(data.now_msk.replace(' ', 'T') + 'Z') - Date.now();
 		el.help_levels.textContent = 'У каждого игрока уровень от ' + data.level_min + ' до ' + data.level_max + ': '
 			+ data.levels.map(function (l) { return l.level + ' ' + l.name; }).join(', ')
-			+ '. Игрок без уровня считается ' + instrumental(levelName(data.default_level))
+			+ '. Игрок без уровня считается ' + classLabel(levelName(data.default_level))
 			+ ' (' + data.default_level + ').';
 		for (var n = data.team_size.min; n <= data.team_size.max; n++) {
 			var o = document.createElement('option');
