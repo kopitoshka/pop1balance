@@ -151,13 +151,34 @@ class AnnouncementView {
 		$lines = [
 			'🏆 ' . Html::b($t->title) . ($t->number !== null ? ' · №' . $t->number : ''),
 			self::when($t),
-			'👤 Организатор: ' . $this->name($t->organizer_id),
-			'⚖️ Уровень: ' . Html::e($t->levelLabel()),
-			'👥 Команды по ' . $t->team_size . ' ' . RuPlural::choose($t->team_size, ['игроку', 'игрока', 'игроков']),
-			(self::STATUS_ICONS[$status] ?? '📌') . ' ' . Html::e(self::ucfirst(TournamentStatus::label($status))),
-			'🎟 Занято ' . $lineup->occupied() . '/' . $lineup->max_players . ' · запас ' . $lineup->reserveCount(),
 		];
-		return implode("\n", $lines);
+		$map = self::mapLine($t);
+		if ($map !== null) {
+			$lines[] = $map;
+		}
+		$lines[] = '👤 Организатор: ' . $this->name($t->organizer_id);
+		$lines[] = '⚖️ Уровень: ' . Html::e($t->levelLabel());
+		$lines[] = '👥 Команды по ' . $t->team_size . ' ' . RuPlural::choose($t->team_size, ['игроку', 'игрока', 'игроков']);
+		$lines[] = (self::STATUS_ICONS[$status] ?? '📌') . ' ' . Html::e(self::ucfirst(TournamentStatus::label($status)));
+		$lines[] = '🎟 Занято ' . $lineup->occupied() . '/' . $lineup->max_players . ' · запас ' . $lineup->reserveCount();
+		$text = implode("\n", $lines);
+		$description = self::descriptionBlock($t);
+		return $description === null ? $text : $text . "\n\n" . $description;
+	}
+
+	/**
+		"🗺 Карта: Phoenix", or null when the tournament has no map (created before the field existed).
+	*/
+	public static function mapLine(Tournament $t): ?string {
+		return $t->map !== null && $t->map !== '' ? '🗺 Карта: ' . Html::e($t->map) : null;
+	}
+
+	/**
+		The optional description, escaped for Telegram HTML.
+	*/
+	public static function descriptionBlock(Tournament $t): ?string {
+		$text = $t->description !== null ? trim($t->description) : '';
+		return $text !== '' ? Html::e($text) : null;
 	}
 
 	/**

@@ -77,7 +77,9 @@ CREATE TABLE tournaments (
 	card_shown_to   INTEGER NULL,
 	reminded_at     TEXT NULL,
 	created_at      TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-	image_path      TEXT NULL
+	image_path      TEXT NULL,
+	map             TEXT NULL,
+	description     TEXT NULL
 );
 CREATE INDEX idx_tournaments_chat_status ON tournaments (chat_id, status, starts_at);
 

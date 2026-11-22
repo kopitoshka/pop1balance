@@ -20,6 +20,9 @@ class EditTournament {
 		public ?int $balance_id = null,
 		public ?int $max_players = null,
 		public bool $remove_level_limit = false,
+		public ?string $map = null,
+		public ?string $description = null,
+		public bool $clear_description = false,
 	) {
 	}
 }

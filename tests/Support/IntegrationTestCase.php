@@ -193,6 +193,9 @@ abstract class IntegrationTestCase extends TestCase {
 	protected function submitForm(Player $who, array $form, ?string $token = null): ?string {
 		$this->app->chats->ensure((int) $who->tg_user_id, $who->display_name);
 		$token = $token ?? (string) $this->app->create_form->issueToken($who);
+		if (!array_key_exists('map', $form)) {
+			$form['map'] = 'Classic';
+		}
 		try {
 			$this->app->create_form->submit($this->initDataFor($who), $token, $form);
 		} catch (WebAppFormError $e) {

@@ -16,7 +16,11 @@ fieldset { border: 0; padding: 0; margin: 0; min-width: 0; }
 section { margin: 0 0 18px; }
 .label { display: block; font-size: 13px; color: var(--hint); margin: 0 0 6px 4px; text-transform: uppercase; letter-spacing: .02em; }
 input, select, button { font: inherit; }
-input:not([type=range]), select { min-width: 0; width: 100%; padding: 11px 12px; border: 1px solid transparent; border-radius: 10px; background: var(--sec); color: var(--fg); font-size: 16px; }
+input:not([type=range]), select, textarea { min-width: 0; width: 100%; padding: 11px 12px; border: 1px solid transparent; border-radius: 10px; background: var(--sec); color: var(--fg); font-size: 16px; }
+textarea { min-height: 84px; resize: vertical; font: inherit; line-height: 1.35; }
+textarea::placeholder { color: var(--hint); opacity: 1; }
+textarea:focus-visible { outline: 2px solid var(--link); outline-offset: 2px; }
+textarea.bad { border-color: var(--err); }
 input::placeholder { color: var(--hint); opacity: 1; }
 input:focus-visible, select:focus-visible, button:focus-visible { outline: 2px solid var(--link); outline-offset: 2px; }
 input.bad, select.bad { border-color: var(--err); }
@@ -74,10 +78,14 @@ footer { position: sticky; bottom: 0; padding: 4px 0 env(safe-area-inset-bottom)
 .lock-hint { margin: 0 0 10px; }
 
 /* Tournament picture (experimental, hidden when the feature is off). */
+#image-section { position: relative; }
 .img-preview { margin: 0 0 8px; border-radius: 10px; overflow: hidden; background: var(--sec); }
 .img-preview img { display: block; width: 100%; max-height: 240px; object-fit: cover; }
 .img-actions { display: flex; gap: 8px; }
-.img-button { flex: 1; padding: 11px; border: 0; border-radius: 10px; background: var(--sec); color: var(--link); font-size: 15px; cursor: pointer; }
-.img-button:disabled { opacity: .5; cursor: default; }
+.img-button { flex: 1; display: flex; align-items: center; justify-content: center; min-height: 44px; padding: 11px 12px; border: 1px solid transparent; border-radius: 10px; background: var(--sec); color: var(--fg); font: inherit; font-size: 16px; text-align: center; cursor: pointer; }
+.img-button[aria-disabled="true"], .img-button:disabled { opacity: .5; cursor: default; pointer-events: none; }
 .img-remove { flex: 0 0 auto; color: var(--hint); }
-.sr-file { position: absolute; width: 1px; height: 1px; opacity: 0; overflow: hidden; pointer-events: none; }
+/* Visually hidden: the native «Choose File» must not appear next to the custom button.
+	A file input often ignores width/height, so the wrap is clipped to nothing; the label still opens it. */
+.sr-file-wrap { position: absolute; width: 0; height: 0; overflow: hidden; clip: rect(0, 0, 0, 0); clip-path: inset(50%); border: 0; padding: 0; margin: 0; }
+.sr-file { position: absolute; left: -10000px; top: 0; width: 0; height: 0; padding: 0; margin: 0; border: 0; opacity: 0; overflow: hidden; appearance: none; -webkit-appearance: none; }

@@ -45,6 +45,8 @@ class EditTournamentFormTest extends IntegrationTestCase {
 			'team_size' => 5,
 			'level_mode' => 'players',
 			'levels' => [2, 3, 4, 5, 6],
+			'map' => 'Classic',
+			'description' => '',
 			'max_players' => 45,
 		];
 	}
@@ -97,7 +99,8 @@ class EditTournamentFormTest extends IntegrationTestCase {
 		self::assertSame('edit', $boot['mode']);
 		self::assertSame([
 			'id' => 1, 'number' => 1, 'title' => 'Кубок <тест>', 'date' => '2026-11-23', 'time' => '20:07',
-			'team_size' => 3, 'level_mode' => 'players', 'levels' => [3, 4, 5], 'points' => 13, 'max_players' => 30, 'image_url' => null,
+			'team_size' => 3, 'level_mode' => 'players', 'levels' => [3, 4, 5], 'points' => 13, 'max_players' => 30,
+			'map' => 'Classic', 'description' => null, 'image_url' => null,
 		], $boot['tournament']);
 	}
 
@@ -209,7 +212,7 @@ class EditTournamentFormTest extends IntegrationTestCase {
 		self::assertFalse($boot['level_locked']);
 		$this->http->reset();
 		$this->app->create_form->editSubmit($this->initDataFor($this->owner), $token, [
-			'title' => 'Кубок плюс', 'date' => '2026-11-23', 'time' => '20:00', 'team_size' => 3,
+			'title' => 'Кубок плюс', 'map' => 'Classic', 'date' => '2026-11-23', 'time' => '20:00', 'team_size' => 3,
 			'level_mode' => 'sum', 'points' => 11, 'max_players' => 30,
 		]);
 		$t = $this->app->tournament_repo->find(1);
@@ -226,7 +229,7 @@ class EditTournamentFormTest extends IntegrationTestCase {
 		self::assertContains(CreateTournamentForm::EDIT_PUBLISHED_BUTTON, $buttons, 'fresh tournament card');
 
 		$this->app->create_form->editSubmit($this->initDataFor($this->owner), $this->token(), [
-			'title' => 'Кубок плюс', 'date' => '2026-11-24', 'time' => '21:00', 'team_size' => 3,
+			'title' => 'Кубок плюс', 'map' => 'Classic', 'date' => '2026-11-24', 'time' => '21:00', 'team_size' => 3,
 			'level_mode' => 'sum', 'points' => 11, 'max_players' => 30,
 		]);
 		$t = $this->app->tournament_repo->find(1);
@@ -244,13 +247,13 @@ class EditTournamentFormTest extends IntegrationTestCase {
 		self::assertSame(CreateTournamentForm::SIZE_LOCKED_HINT, $boot['size_locked_text']);
 		self::assertFalse($boot['level_locked']);
 		$e = $this->errorFrom(fn() => $this->app->create_form->editSubmit($this->initDataFor($this->owner), $token, [
-			'title' => 'Кубок', 'date' => '2026-11-23', 'time' => '20:00', 'team_size' => 2,
+			'title' => 'Кубок', 'map' => 'Classic', 'date' => '2026-11-23', 'time' => '20:00', 'team_size' => 2,
 			'level_mode' => 'sum', 'points' => 7, 'max_players' => 40,
 		]), WebAppFormError::INVALID);
 		self::assertStringContainsString('Размер команды уже не поменять', $e->getMessage());
 		self::assertSame(24, $this->app->tournament_repo->find(1)->max_players, 'a tampered form rolls back the whole save');
 		$this->app->create_form->editSubmit($this->initDataFor($this->owner), $token, [
-			'title' => 'Кубок', 'date' => '2026-11-23', 'time' => '20:00', 'team_size' => 3,
+			'title' => 'Кубок', 'map' => 'Classic', 'date' => '2026-11-23', 'time' => '20:00', 'team_size' => 3,
 			'level_mode' => 'sum', 'points' => 8, 'max_players' => 40,
 		]);
 		$t = $this->app->tournament_repo->find(1);
@@ -261,7 +264,7 @@ class EditTournamentFormTest extends IntegrationTestCase {
 		$this->newDraft($this->owner, '23.11 20:00 | Кубок | 3 | 3,3,4');
 		$old_card = $this->app->tournament_repo->find(1)->card_msg_id;
 		$this->app->create_form->editSubmit($this->initDataFor($this->owner), $this->token(), [
-			'title' => 'Кубок', 'date' => '2026-11-23', 'time' => '20:00', 'team_size' => 3,
+			'title' => 'Кубок', 'map' => 'Classic', 'date' => '2026-11-23', 'time' => '20:00', 'team_size' => 3,
 			'level_mode' => 'players', 'levels' => [3, 3, 5], 'max_players' => 24,
 		]);
 		$t = $this->app->tournament_repo->find(1);
@@ -316,12 +319,12 @@ class EditTournamentFormTest extends IntegrationTestCase {
 		$texts = array_column(array_merge([], ...$this->app->private_views->rows($this->app->tournaments->get(1), $this->owner)), 'text');
 		self::assertContains(CreateTournamentForm::EDIT_PUBLISHED_BUTTON, $texts);
 		$this->app->create_form->editSubmit($this->initDataFor($this->owner), $this->token(), [
-			'title' => 'Кубок идёт', 'date' => '2026-11-23', 'time' => '20:00', 'team_size' => 3,
+			'title' => 'Кубок идёт', 'map' => 'Classic', 'date' => '2026-11-23', 'time' => '20:00', 'team_size' => 3,
 			'level_mode' => 'sum', 'points' => 10, 'max_players' => 24,
 		]);
 		self::assertSame('Кубок идёт', $this->app->tournament_repo->find(1)->title);
 		$e = $this->errorFrom(fn() => $this->app->create_form->editSubmit($this->initDataFor($this->owner), $this->token(), [
-			'title' => 'Кубок идёт', 'date' => '2026-11-22', 'time' => '20:00', 'team_size' => 3,
+			'title' => 'Кубок идёт', 'map' => 'Classic', 'date' => '2026-11-22', 'time' => '20:00', 'team_size' => 3,
 			'level_mode' => 'sum', 'points' => 10, 'max_players' => 24,
 		]), WebAppFormError::INVALID);
 		self::assertSame('start', $e->field, 'a new time must be in the future');
@@ -340,7 +343,7 @@ class EditTournamentFormTest extends IntegrationTestCase {
 		self::assertSame(15, $this->app->teams->pointsOf($entry));
 		$this->http->reset();
 		$this->app->create_form->editSubmit($this->initDataFor($this->owner), $this->token(), [
-			'title' => 'Кубок', 'date' => '2026-11-23', 'time' => '20:00', 'team_size' => 3,
+			'title' => 'Кубок', 'map' => 'Classic', 'date' => '2026-11-23', 'time' => '20:00', 'team_size' => 3,
 			'level_mode' => 'sum', 'points' => 10, 'max_players' => 24,
 		]);
 		$t = $this->app->tournament_repo->find(1);
@@ -357,4 +360,60 @@ class EditTournamentFormTest extends IntegrationTestCase {
 		);
 		self::assertSame([], $dms, 'nobody is notified when the level is lowered');
 	}
+
+	public function testEditPrefillsAndRequiresMapAndCanChangeDescription(): void {
+		$this->newDraft($this->owner, '23.11 20:07 | Кубок | 3 | 3,4,5 | 30');
+		$boot = $this->app->create_form->editBootstrap($this->initDataFor($this->owner), $this->token());
+		self::assertSame('Classic', $boot['tournament']['map']);
+		self::assertNull($boot['tournament']['description']);
+
+		$e = $this->errorFrom(
+			fn () => $this->app->create_form->editSubmit($this->initDataFor($this->owner), $this->token(), $this->form(['map' => ''])),
+			WebAppFormError::INVALID,
+		);
+		self::assertSame('map', $e->field);
+
+		$this->app->create_form->editSubmit($this->initDataFor($this->owner), $this->token(), $this->form([
+			'map' => 'Phoenix',
+			'description' => 'Новый текст <раз>',
+		]));
+		$t = $this->app->tournament_repo->find(1);
+		self::assertSame('Phoenix', $t->map);
+		self::assertSame('Новый текст <раз>', $t->description);
+		$sent = $this->http->sent('sendMessage');
+		$card = end($sent)['text'];
+		self::assertStringContainsString('🗺 Карта: Phoenix', $card);
+		self::assertStringContainsString('Новый текст &lt;раз&gt;', $card);
+	}
+
+	public function testEditOfLegacyTournamentWithoutMapRequiresIt(): void {
+		$t = $this->app->tournaments->create(new \P1Bot\Domain\CreateTournament(
+			self::CHAT_ID,
+			$this->owner->id,
+			'Старый кубок',
+			'2026-11-23 20:07',
+			3,
+			'3,4,5',
+		));
+		self::assertNull($t->map);
+		$boot = $this->app->create_form->editBootstrap($this->initDataFor($this->owner), $this->token($this->owner, $t->id));
+		self::assertNull($boot['tournament']['map']);
+		$e = $this->errorFrom(
+			fn () => $this->app->create_form->editSubmit(
+				$this->initDataFor($this->owner),
+				$this->token($this->owner, $t->id),
+				$this->form(['title' => 'Старый кубок', 'date' => '2026-11-23', 'time' => '20:07', 'map' => '']),
+			),
+			WebAppFormError::INVALID,
+		);
+		self::assertSame('map', $e->field);
+		self::assertNull($this->app->tournament_repo->find($t->id)->map);
+		$this->app->create_form->editSubmit(
+			$this->initDataFor($this->owner),
+			$this->token($this->owner, $t->id),
+			$this->form(['title' => 'Старый кубок', 'date' => '2026-11-23', 'time' => '20:07', 'map' => 'Classic']),
+		);
+		self::assertSame('Classic', $this->app->tournament_repo->find($t->id)->map);
+	}
+
 }

@@ -56,7 +56,7 @@ class PlayersList {
 				? sprintf('Уровень не ставили — считаю %s (%d)', Levels::name(Levels::DEFAULT), Levels::DEFAULT)
 				: sprintf('%s (%d)', Levels::name($level), $level);
 			$lines[] = '';
-			$lines[] = '<blockquote><b>' . Html::e($title) . '</b> — ' . count($list) . '</blockquote>';
+			$lines[] = '<blockquote><b>' . Html::e($title) . '</b></blockquote>';
 			foreach ($list as $player) {
 				$url = $edit ? $edit_link($player->id) : null;
 				$lines[] = self::playerLine($player, $url);

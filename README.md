@@ -336,9 +336,15 @@ Creating:
 - `/create_tournament` (private only: in the private and owner command menus, not in groups, and as «➕ Создать турнир» under the
   tournament list for those who may create) opens the **Mini App form** (`public/webapp/create.*`,
   API `webapp_api.php` ops `create_bootstrap` / `create_submit`, initData HMAC + `webapp_contexts`
-  token, TTL 6 h). Fields: title (1–255), date and time **MSK** in the future (hint «Регистрация
+  token, TTL 6 h). Fields: title (1–255), required map («Карта»: Classic, Evolving, Phoenix, custom;
+  first option empty, «Выбери карту»), optional short description («Описание», up to 500 characters,
+  plain text), date and time **MSK** in the future (hint «Регистрация
   закроется в HH:MM»), team size 1–12 (default 3), tournament level («По игрокам»: a level per
   player, or «Суммой»: total team_size…team_size×6), player limit (default 24, team_size…1000).
+  The create form prefills the organizer's last tournament (title, map, description, time of day,
+  team size, level, player limit — not the date and not the picture). The map and the description
+  appear on the announcement, the draft card and `/tournaments N` as «🗺 Карта: Phoenix» and a short
+  paragraph; older tournaments without a map omit the line.
   Date and time use the page's own controls, not the device locale: a Russian calendar starting on
   Monday (past days disabled) and 24-hour hour/minute selects (minutes in steps of 5).
   The server validates everything again. In a group the command answers with a deep link

@@ -14,6 +14,8 @@ class CreateTournament {
 		@param string|null $reference_team strongest allowed team, e.g. "3,3,4"; null = no level limit
 		@param int|null    $balance_id     scale for levels; null with a reference team = default scale
 		@param int|null    $max_players    null = configured default (24)
+		@param string|null $map            Classic, Evolving, Phoenix or custom; null = unset
+		@param string|null $description    optional short plain text
 	*/
 	public function __construct(
 		public ?int $chat_id,
@@ -24,6 +26,8 @@ class CreateTournament {
 		public ?string $reference_team = null,
 		public ?int $balance_id = null,
 		public ?int $max_players = null,
+		public ?string $map = null,
+		public ?string $description = null,
 	) {
 	}
 }

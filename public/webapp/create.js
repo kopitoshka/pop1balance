@@ -42,6 +42,9 @@
 		loading: $('loading'),
 		banner: $('error'),
 		title: $('title'),
+		map: $('map'),
+		description: $('description'),
+		description_hint: $('description-hint'),
 		date: $('date'),
 		time: $('time'),
 		heading: $('heading'),
@@ -80,6 +83,7 @@
 		image_pick: $('image-pick'),
 		image_remove: $('image-remove'),
 		image_file: $('image-file'),
+		image_name: $('image-name'),
 		image_hint: $('image-hint'),
 		submit: $('submit')
 	};
@@ -284,6 +288,13 @@
 		} else if (title.length > boot.title_max) {
 			errors.title = 'Название — не длиннее ' + boot.title_max + ' символов';
 		}
+		if (!el.map.value) {
+			errors.map = 'Выбери карту';
+		}
+		var description = el.description.value.trim();
+		if (description.length > (boot.description_max || 500)) {
+			errors.description = 'Описание — не длиннее ' + (boot.description_max || 500) + ' символов';
+		}
 		if (!el.date.value) {
 			errors.start = 'Выбери дату начала';
 		} else if (!el.time.value) {
@@ -330,11 +341,17 @@
 		var n = teamSize();
 		var errors = validate();
 		var shown = {};
-		['title', 'start', 'team_size', 'level', 'max_players'].forEach(function (f) {
+		['title', 'map', 'description', 'start', 'team_size', 'level', 'max_players'].forEach(function (f) {
 			var msg = server_errors[f] || ((submitted || touched[f]) ? errors[f] : '');
 			shown[f] = msg || '';
 		});
 		showFieldError('title', el.title, shown.title);
+		showFieldError('map', el.map, shown.map);
+		showFieldError('description', el.description, shown.description);
+		if (el.description_hint && boot.description_max) {
+			var used = el.description.value.trim().length;
+			el.description_hint.textContent = used === 0 ? 'Необязательно, до ' + boot.description_max + ' символов' : (used + ' / ' + boot.description_max);
+		}
 		showFieldError('start', null, shown.start);
 		el.date_button.classList.toggle('bad', !!shown.start);
 		el.time_picker.classList.toggle('bad', !!shown.start);
@@ -411,9 +428,13 @@
 			el.image_img.src = image.url;
 		}
 		el.image_pick.textContent = image.uploading ? 'Загружаю…' : (image.url ? 'Заменить' : 'Выбрать картинку');
-		el.image_pick.disabled = image.uploading;
+		el.image_pick.setAttribute('aria-disabled', image.uploading ? 'true' : 'false');
 		el.image_remove.hidden = !image.url;
 		el.image_remove.disabled = image.uploading;
+		if (el.image_name) {
+			el.image_name.hidden = !image.name;
+			el.image_name.textContent = image.name || '';
+		}
 		el.image_hint.textContent = 'JPEG, PNG или WebP, до ' + boot.images.max_text
 			+ '. Картинка покажется над турниром в группе.';
 	}
@@ -469,6 +490,7 @@
 			return;
 		}
 		image.uploading = true;
+		image.name = file.name || 'картинка';
 		image.error = '';
 		delete server_errors.image;
 		renderImage();
@@ -516,10 +538,6 @@
 		});
 	}
 
-	el.image_pick.addEventListener('click', function () {
-		el.image_file.value = '';
-		el.image_file.click();
-	});
 	el.image_file.addEventListener('change', function () {
 		var file = el.image_file.files && el.image_file.files[0];
 		if (file) {
@@ -530,6 +548,7 @@
 		// A saved picture is deleted on save; a fresh upload that was never saved is just dropped.
 		image.action = image.existing ? 'remove' : 'keep';
 		image.url = '';
+		image.name = '';
 		el.image_img.removeAttribute('src');
 		image.error = '';
 		renderImage();
@@ -641,6 +660,8 @@
 	function formData() {
 		var data = {
 			title: el.title.value.trim(),
+			map: el.map.value,
+			description: el.description.value.trim(),
 			date: el.date.value,
 			time: el.time.value,
 			team_size: teamSize(),
@@ -721,12 +742,26 @@
 		}
 		el.team_size.value = String(data.team_size['default']);
 		el.title.maxLength = data.title_max;
+		el.description.maxLength = data.description_max || 500;
+		(data.maps || []).forEach(function (name) {
+			var o = document.createElement('option');
+			o.value = name;
+			o.textContent = name;
+			el.map.appendChild(o);
+		});
+		if (data.map_placeholder) {
+			el.map.options[0].textContent = data.map_placeholder;
+		}
 		fillSelect(el.hour, 0, 23, 1);
 		fillSelect(el.minute, 0, 59, MINUTE_STEP);
 		el.max_players.max = data.max_players.max;
 		var t = data.tournament;
 		if (form_mode === 'edit' && t) {
 			el.title.value = t.title;
+			if (t.map) {
+				el.map.value = t.map;
+			}
+			el.description.value = t.description || '';
 			setDate(t.date);
 			setTime(t.time);
 			el.team_size.value = String(t.team_size);
@@ -743,6 +778,19 @@
 			if (data.default_title) {
 				el.title.value = data.default_title;
 			}
+			if (data.default_map) {
+				el.map.value = data.default_map;
+			}
+			if (data.default_description) {
+				el.description.value = data.default_description;
+			}
+			if (data.default_levels && data.default_levels.length) {
+				levels = data.default_levels.slice();
+			}
+			if (data.default_points != null) {
+				el.points.value = data.default_points;
+				points_touched = true;
+			}
 		}
 		if (form_mode === 'edit' && t && t.image_url) {
 			image.existing = t.image_url;
@@ -752,6 +800,8 @@
 		fitTeamSize();
 		if (form_mode === 'edit' && t) {
 			setMode(t.level_mode);
+		} else if (data.default_level_mode) {
+			setMode(data.default_level_mode);
 		}
 		if (data.published) {
 			el.heading.textContent = 'Изменить турнир';
@@ -778,6 +828,8 @@
 	}
 
 	onInput('title', el.title);
+	onInput('map', el.map);
+	onInput('description', el.description);
 	el.date_button.addEventListener('click', function () {
 		toggleCalendar(el.calendar.hidden);
 	});

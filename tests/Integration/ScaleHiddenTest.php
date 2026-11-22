@@ -166,7 +166,7 @@ class ScaleHiddenTest extends IntegrationTestCase {
 			$this->dispatch($this->privateMessage($viewer, '/players'));
 			$text = $this->http->lastText();
 			self::assertStringStartsWith('📋 <b>Игроки</b> — ', $text);
-			self::assertStringContainsString("<blockquote><b>высокий (5)</b> — 1</blockquote>\n<a href=\"https://t.me/vasya\">Vasya Pro</a>\n", $text);
+			self::assertStringContainsString("<blockquote><b>высокий (5)</b></blockquote>\n<a href=\"https://t.me/vasya\">Vasya Pro</a>\n", $text);
 			self::assertStringContainsString('<blockquote><b>Уровень не ставили — считаю средний (3)</b>', $text);
 			self::assertStringContainsString("\n<a href=\"https://t.me/petya\">@petya</a>\n", $text);
 			self::assertStringContainsString("\n<a href=\"tg://user?id=777555\">Без &lt;ника&gt;</a>\n", $text);

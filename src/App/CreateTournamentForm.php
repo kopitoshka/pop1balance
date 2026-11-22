@@ -16,6 +16,7 @@ use P1Bot\Domain\Levels;
 use P1Bot\Domain\Model\Player;
 use P1Bot\Domain\Model\Tournament;
 use P1Bot\Domain\MoscowTime;
+use P1Bot\Domain\TournamentMaps;
 use P1Bot\Domain\TournamentService;
 use P1Bot\Domain\TournamentStatus;
 use P1Bot\Repository\PendingActionRepository;
@@ -254,7 +255,20 @@ class CreateTournamentForm {
 	public function bootstrap(string $init_data, string $token): array {
 		[$actor] = $this->authorize($init_data, $token);
 		$out = $this->settings();
-		$out['default_title'] = $this->tournaments->latestTitleByOrganizer($actor->id) ?? '';
+		$out['default_title'] = '';
+		$last = $this->tournaments->latestByOrganizer($actor->id);
+		if ($last !== null) {
+			$values = $this->values($last);
+			$out['default_title'] = $values['title'];
+			$out['default_map'] = $values['map'];
+			$out['default_description'] = $values['description'];
+			$out['default_time'] = $values['time'];
+			$out['default_level_mode'] = $values['level_mode'];
+			$out['default_levels'] = $values['levels'];
+			$out['default_points'] = $values['points'];
+			$out['team_size']['default'] = $values['team_size'];
+			$out['max_players']['default'] = $values['max_players'];
+		}
 		return $out;
 	}
 
@@ -295,8 +309,16 @@ class CreateTournamentForm {
 			'now_msk' => $now_msk->format('Y-m-d H:i:s'),
 			'default_date' => $now_msk->modify('+1 day')->format('Y-m-d'),
 			'default_time' => self::DEFAULT_TIME,
+			'default_map' => null,
+			'default_description' => '',
+			'default_level_mode' => null,
+			'default_levels' => [],
+			'default_points' => null,
 			'registration_close_minutes' => $this->tournaments->registrationCloseMinutes(),
 			'title_max' => TournamentService::TITLE_MAX_LENGTH,
+			'maps' => TournamentMaps::VALUES,
+			'map_placeholder' => TournamentMaps::PLACEHOLDER,
+			'description_max' => TournamentService::DESCRIPTION_MAX_LENGTH,
 			'team_size' => [
 				'min' => TournamentService::MIN_TEAM_SIZE,
 				'max' => TournamentService::MAX_TEAM_SIZE,
@@ -412,6 +434,8 @@ class CreateTournamentForm {
 			'levels' => $per_player ? $levels : [],
 			'points' => $t->max_points ?? $t->team_size * Levels::DEFAULT,
 			'max_players' => $t->max_players,
+			'map' => $t->map,
+			'description' => $t->description,
 			'image_url' => $this->images !== null && $this->images->enabled() ? $this->images->url($t->image_path) : null,
 		];
 	}
@@ -439,6 +463,9 @@ class CreateTournamentForm {
 			team_size: $level_same ? null : $form->team_size,
 			reference_team: $level_same ? null : $form->reference_team,
 			max_players: $form->max_players,
+			map: $form->map,
+			description: $form->description,
+			clear_description: $form->description === null,
 		);
 		if ($this->dialogs !== null) {
 			$this->dialogs->begin($user, $ctx['chat_id'], 'private', '');
@@ -615,6 +642,24 @@ class CreateTournamentForm {
 			$errors['title'] = sprintf('Название — не длиннее %d символов', TournamentService::TITLE_MAX_LENGTH);
 		}
 
+		$map = trim((string) ($input['map'] ?? ''));
+		if ($map === '') {
+			$errors['map'] = TournamentMaps::REQUIRED_TEXT;
+			$map = '';
+		} elseif (!TournamentMaps::isValid($map)) {
+			$errors['map'] = TournamentMaps::UNKNOWN_TEXT;
+		}
+
+		$description = str_replace("\r\n", "\n", (string) ($input['description'] ?? ''));
+		$description = str_replace("\0", '', $description);
+		$description = trim($description);
+		if (mb_strlen($description) > TournamentService::DESCRIPTION_MAX_LENGTH) {
+			$errors['description'] = sprintf(
+				'Описание — не длиннее %d символов',
+				TournamentService::DESCRIPTION_MAX_LENGTH,
+			);
+		}
+
 		$date = (string) ($input['date'] ?? '');
 		$time = (string) ($input['time'] ?? '');
 		$same_start = $existing !== null && $existing->status !== TournamentStatus::DRAFT
@@ -664,6 +709,8 @@ class CreateTournamentForm {
 			$reference,
 			null,
 			$max_players,
+			$map !== '' && TournamentMaps::isValid($map) ? $map : null,
+			$description !== '' ? $description : null,
 		);
 	}
 
@@ -865,8 +912,9 @@ class CreateTournamentForm {
 	*/
 	protected function summary(CreateTournament $c): string {
 		return sprintf(
-			'%s, %s МСК, игроков в команде: %d, уровень: %s, лимит: %d',
+			'%s, %s, %s МСК, игроков в команде: %d, уровень: %s, лимит: %d',
 			$c->title,
+			$c->map ?? 'без карты',
 			$c->starts_at_msk,
 			$c->team_size,
 			(string) $c->reference_team,

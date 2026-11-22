@@ -107,7 +107,9 @@ class TournamentImageTest extends IntegrationTestCase {
 	protected function form(array $override = []): array {
 		return $override + [
 			'title' => 'Кубок', 'date' => '2026-11-23', 'time' => '20:07', 'team_size' => 3,
-			'level_mode' => 'players', 'levels' => [3, 4, 5], 'max_players' => 24,
+			'level_mode' => 'players', 'levels' => [3, 4, 5], 'map' => 'Classic',
+			'description' => '',
+			'max_players' => 24,
 		];
 	}
 

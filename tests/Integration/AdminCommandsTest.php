@@ -250,8 +250,8 @@ class AdminCommandsTest extends IntegrationTestCase {
 
 		$this->dispatch($this->privateMessage($this->owner, '/players'));
 		$all = $this->http->lastText();
-		self::assertStringContainsString('<blockquote><b>средний+ (4)</b> — 1</blockquote>', $all);
-		self::assertStringContainsString('<blockquote><b>высокий+ (6)</b> — 1</blockquote>', $all);
+		self::assertStringContainsString('<blockquote><b>средний+ (4)</b></blockquote>', $all);
+		self::assertStringContainsString('<blockquote><b>высокий+ (6)</b></blockquote>', $all);
 		self::assertStringContainsString("\n<a href=\"https://t.me/vasya\">@vasya</a>\n", $all);
 		self::assertStringNotContainsString('lvl', $all, 'the level is in the header, not next to the name');
 	}

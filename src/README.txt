@@ -126,6 +126,8 @@ Domain/ — бизнес-правила
         Игровые ники (IGN)
     Levels.php
         Парсинг уровней 1–6 и уровня турнира
+    TournamentMaps.php
+        Карты турнира: Classic, Evolving, Phoenix, custom
     Lineup.php
         Основной состав / запас
     AccessPolicy.php

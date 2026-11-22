@@ -71,6 +71,8 @@ class CreateTournamentFormTest extends IntegrationTestCase {
 			'team_size' => 3,
 			'level_mode' => 'players',
 			'levels' => [3, 3, 5],
+			'map' => 'Classic',
+			'description' => '',
 			'max_players' => 24,
 		];
 	}
@@ -228,20 +230,61 @@ class CreateTournamentFormTest extends IntegrationTestCase {
 		self::assertCount(6, $boot['levels']);
 		self::assertSame('2026-11-09 15:00:00', $boot['now_msk'], 'Moscow time, UTC+3');
 		self::assertSame('2026-11-10', $boot['default_date']);
+		self::assertSame('20:00', $boot['default_time']);
 		self::assertSame('', $boot['default_title']);
+		self::assertNull($boot['default_map']);
+		self::assertSame('', $boot['default_description']);
+		self::assertSame(['Classic', 'Evolving', 'Phoenix', 'custom'], $boot['maps']);
+		self::assertSame('Выбери карту', $boot['map_placeholder']);
+		self::assertSame(500, $boot['description_max']);
 	}
 
 	public function testBootstrapPrefillsTheOrganizersLastTitle(): void {
-		self::assertNull($this->submitForm($this->owner, $this->form(['title' => 'Феникс четверговый'])));
-		self::assertNull($this->submitForm($this->owner, $this->form(['title' => 'Кубок пятницы', 'date' => '2026-11-24'])));
+		self::assertNull($this->submitForm($this->owner, $this->form([
+			'title' => 'Феникс четверговый',
+			'map' => 'Phoenix',
+			'description' => 'Играем до трёх',
+			'time' => '21:15',
+			'team_size' => 2,
+			'level_mode' => 'sum',
+			'points' => 8,
+			'max_players' => 16,
+		])));
+		self::assertNull($this->submitForm($this->owner, $this->form([
+			'title' => 'Кубок пятницы',
+			'date' => '2026-11-24',
+			'map' => 'Evolving',
+			'description' => 'Микс <вечер>',
+			'time' => '19:30',
+			'team_size' => 4,
+			'level_mode' => 'players',
+			'levels' => [2, 3, 4, 5],
+			'max_players' => 32,
+		])));
+		// A picture on the last tournament must not be offered as a default.
+		$this->app->tournament_repo->update(2, ['image_path' => str_repeat('a', 32) . '.jpg']);
 		$token = (string) $this->app->create_form->issueToken($this->owner);
 		$boot = $this->app->create_form->bootstrap($this->initDataFor($this->owner), $token);
 		self::assertSame('Кубок пятницы', $boot['default_title']);
+		self::assertSame('Evolving', $boot['default_map']);
+		self::assertSame('Микс <вечер>', $boot['default_description']);
+		self::assertSame('19:30', $boot['default_time']);
+		self::assertSame('2026-11-10', $boot['default_date'], 'the date of the last tournament is not reused');
+		self::assertSame(4, $boot['team_size']['default']);
+		self::assertSame(32, $boot['max_players']['default']);
+		self::assertSame('players', $boot['default_level_mode']);
+		self::assertSame([2, 3, 4, 5], $boot['default_levels']);
+		self::assertSame($this->app->tournament_repo->find(2)->max_points, $boot['default_points']);
+		self::assertArrayNotHasKey('default_image', $boot);
+		self::assertArrayNotHasKey('default_image_url', $boot);
 
 		$admin = $this->admin;
 		$token = (string) $this->app->create_form->issueToken($admin);
 		$boot = $this->app->create_form->bootstrap($this->initDataFor($admin), $token);
 		self::assertSame('', $boot['default_title'], 'another organizer does not inherit the title');
+		self::assertNull($boot['default_map']);
+		self::assertSame(3, $boot['team_size']['default']);
+		self::assertSame('20:00', $boot['default_time']);
 	}
 
 	public function testSubmitPerPlayerCreatesDraftAndSendsCard(): void {
@@ -262,6 +305,7 @@ class CreateTournamentFormTest extends IntegrationTestCase {
 		$card = $sent[0];
 		self::assertSame($this->tgIdOf($this->owner), $card['chat_id']);
 		self::assertStringContainsString('Турнир №1 (черновик)', $card['text']);
+		self::assertStringContainsString('🗺 Карта: Classic', $card['text']);
 		self::assertStringContainsString('⚖️ Уровень турнира: средний+ (11 баллов на троих)', $card['text']);
 		self::assertStringContainsString('По игрокам: средний, средний, высокий', $card['text']);
 		self::assertStringNotContainsStringIgnoringCase('эталон', $card['text']);
@@ -329,13 +373,17 @@ class CreateTournamentFormTest extends IntegrationTestCase {
 			'sum too small' => [['level_mode' => 'sum', 'points' => 2], 'от 3 до 27'],
 			'limit below team' => [['max_players' => 2], 'от 3 до 1000'],
 			'limit too big' => [['max_players' => 1001], 'от 3 до 1000'],
+			'no map' => [['map' => ''], 'Выбери карту'],
+			'bad map' => [['map' => 'Dust'], 'Classic, Evolving, Phoenix или custom'],
+			'description too long' => [['description' => str_repeat('я', 501)], 'не длиннее 500'],
 		];
 		$fields = [
 			'title' => 'title', 'title too long' => 'title', 'no date' => 'start', 'bad date' => 'start',
 			'bad time' => 'start', 'team size 0' => 'team_size', 'team size 13' => 'team_size',
 			'team size text' => 'team_size', 'levels count' => 'level', 'level 7' => 'level', 'no mode' => 'level',
 			'sum too big' => 'level', 'sum too small' => 'level', 'limit below team' => 'max_players',
-			'limit too big' => 'max_players',
+			'limit too big' => 'max_players', 'no map' => 'map', 'bad map' => 'map',
+			'description too long' => 'description',
 		];
 		foreach ($cases as $name => [$override, $needle]) {
 			$e = $this->formError($this->owner, $this->form($override));
@@ -487,6 +535,45 @@ class CreateTournamentFormTest extends IntegrationTestCase {
 			self::assertSame(WebAppFormError::EXPIRED, $e->reason);
 		}
 		self::assertNull($this->app->tournament_repo->find(1));
+	}
+
+	public function testMapAndDescriptionAreStoredEscapedOnCardAndAnnouncement(): void {
+		self::assertNull($this->submitForm($this->owner, $this->form([
+			'map' => 'custom',
+			'description' => "Вечерний микс на <Фениксе>\nвторая строка",
+		])));
+		$t = $this->app->tournament_repo->find(1);
+		self::assertSame('custom', $t->map);
+		self::assertSame("Вечерний микс на <Фениксе>\nвторая строка", $t->description);
+		$card = $this->http->sent('sendMessage')[0]['text'];
+		self::assertStringContainsString('🗺 Карта: custom', $card);
+		self::assertStringContainsString('Вечерний микс на &lt;Фениксе&gt;', $card);
+		self::assertStringContainsString("вторая строка", $card);
+		self::assertStringNotContainsString('<Фениксе>', $card);
+
+		$this->dispatch($this->press($this->owner, 'pub:1', (int) $t->card_msg_id));
+		$posted = array_values(array_filter(
+			$this->http->sent('sendMessage'),
+			static fn (array $m): bool => (int) $m['chat_id'] === self::CHAT_ID,
+		));
+		self::assertNotSame([], $posted);
+		self::assertStringContainsString('🗺 Карта: custom', $posted[0]['text']);
+		self::assertStringContainsString('Вечерний микс на &lt;Фениксе&gt;', $posted[0]['text']);
+
+		$this->http->reset();
+		$this->dispatch($this->privateMessage($this->owner, '/tournaments 1'));
+		$messages = $this->http->sent('sendMessage');
+		self::assertStringContainsString('🗺 Карта: custom', $messages[0]['text']);
+		self::assertStringContainsString('Вечерний микс на &lt;Фениксе&gt;', $messages[0]['text']);
+	}
+
+	public function testEmptyDescriptionIsStoredAsNull(): void {
+		self::assertNull($this->submitForm($this->owner, $this->form(['map' => 'Phoenix', 'description' => '   '])));
+		$t = $this->app->tournament_repo->find(1);
+		self::assertSame('Phoenix', $t->map);
+		self::assertNull($t->description);
+		self::assertStringContainsString('🗺 Карта: Phoenix', $this->http->sent('sendMessage')[0]['text']);
+		self::assertStringNotContainsString('Описание', $this->http->sent('sendMessage')[0]['text']);
 	}
 
 	public function testSubmitClearsPendingTextInput(): void {

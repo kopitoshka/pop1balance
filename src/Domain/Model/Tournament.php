@@ -30,6 +30,8 @@ class Tournament {
 		public ?int $card_msg_id = null,
 		public ?int $card_shown_to = null,
 		public ?string $image_path = null,
+		public ?string $map = null,
+		public ?string $description = null,
 	) {
 	}
 
@@ -59,6 +61,8 @@ class Tournament {
 			isset($row['card_msg_id']) ? (int) $row['card_msg_id'] : null,
 			isset($row['card_shown_to']) ? (int) $row['card_shown_to'] : null,
 			isset($row['image_path']) && $row['image_path'] !== '' ? (string) $row['image_path'] : null,
+			isset($row['map']) && $row['map'] !== '' ? (string) $row['map'] : null,
+			isset($row['description']) && $row['description'] !== '' ? (string) $row['description'] : null,
 		);
 	}
 

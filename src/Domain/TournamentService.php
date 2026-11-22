@@ -22,6 +22,7 @@ class TournamentService {
 	public const MAX_TEAM_SIZE = 12;
 	public const MAX_PLAYERS_LIMIT = 1000;
 	public const TITLE_MAX_LENGTH = 255;
+	public const DESCRIPTION_MAX_LENGTH = 500;
 
 	public const REFERENCE_REQUIRED = 'Нужно указать уровень турнира: одним числом — сумму баллов на команду, '
 		. 'или уровнями всех игроков команды, например «средний, средний, средний+».';
@@ -103,6 +104,8 @@ class TournamentService {
 			'max_points' => $max_points,
 			'max_players' => $max_players,
 			'status' => TournamentStatus::DRAFT,
+			'map' => $this->validMap($input->map, required: false),
+			'description' => $this->validDescription($input->description),
 		], $this->clock->now());
 	}
 
@@ -114,6 +117,14 @@ class TournamentService {
 			$fields = [];
 			if ($edit->title !== null) {
 				$fields['title'] = $this->validTitle($edit->title);
+			}
+			if ($edit->map !== null) {
+				$fields['map'] = $this->validMap($edit->map, required: true);
+			}
+			if ($edit->clear_description) {
+				$fields['description'] = null;
+			} elseif ($edit->description !== null) {
+				$fields['description'] = $this->validDescription($edit->description);
 			}
 			if ($edit->starts_at_msk !== null) {
 				$fields['starts_at'] = $this->validStart($edit->starts_at_msk);
@@ -417,7 +428,16 @@ class TournamentService {
 		Title of this organizer's most recently created tournament, or null if they have none.
 	*/
 	public function latestTitleByOrganizer(int $organizer_id): ?string {
-		return $this->tournaments->latestTitleByOrganizer($organizer_id);
+		$title = $this->latestByOrganizer($organizer_id)?->title;
+		$title = $title !== null ? trim($title) : '';
+		return $title !== '' ? $title : null;
+	}
+
+	/**
+		The most recently created tournament of this organizer, if any (for prefill of the create form).
+	*/
+	public function latestByOrganizer(int $organizer_id): ?Tournament {
+		return $this->tournaments->latestByOrganizer($organizer_id);
 	}
 
 	/**
@@ -485,6 +505,41 @@ class TournamentService {
 	*/
 	public function hasEntries(int $tournament_id): bool {
 		return $this->teams->listByTournament($tournament_id) !== [] || $this->solos->listByTournament($tournament_id) !== [];
+	}
+
+	/**
+		@param bool $required when true an empty value is an error; when false, empty becomes null
+	*/
+	protected function validMap(?string $map, bool $required): ?string {
+		$map = $map !== null ? trim($map) : '';
+		if ($map === '') {
+			if ($required) {
+				throw new ValidationError(TournamentMaps::REQUIRED_TEXT);
+			}
+			return null;
+		}
+		if (!TournamentMaps::isValid($map)) {
+			throw new ValidationError(TournamentMaps::UNKNOWN_TEXT);
+		}
+		return $map;
+	}
+
+	protected function validDescription(?string $text): ?string {
+		$text = str_replace("
+", "
+", (string) $text);
+		$text = str_replace(" ", '', $text);
+		$text = trim($text);
+		if ($text === '') {
+			return null;
+		}
+		if (mb_strlen($text) > self::DESCRIPTION_MAX_LENGTH) {
+			throw new ValidationError(sprintf(
+				'Описание — не длиннее %d символов.',
+				self::DESCRIPTION_MAX_LENGTH,
+			));
+		}
+		return $text;
 	}
 
 	protected function validTitle(string $title): string {

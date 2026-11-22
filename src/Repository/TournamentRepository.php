@@ -17,7 +17,7 @@ class TournamentRepository {
 	protected const UPDATABLE = [
 		'title', 'starts_at', 'team_size', 'balance_id', 'reference_team', 'max_points',
 		'max_players', 'status', 'announce_msg_id', 'reminded_at', 'card_msg_id', 'card_shown_to',
-		'image_path',
+		'image_path', 'map', 'description',
 	];
 
 	public function __construct(protected Database $db) {
@@ -30,13 +30,14 @@ class TournamentRepository {
 
 	/**
 		@param array{chat_id: ?int, organizer_id: int, title: string, starts_at: DateTimeImmutable, team_size: int,
-		    balance_id: ?int, reference_team: ?string, max_points: ?int, max_players: int, status: string} $data
+		    balance_id: ?int, reference_team: ?string, max_points: ?int, max_players: int, status: string,
+		    map: ?string, description: ?string} $data
 	*/
 	public function create(array $data, DateTimeImmutable $now): Tournament {
 		$id = $this->db->insert(
 			'INSERT INTO tournaments
-				(chat_id, organizer_id, title, starts_at, team_size, balance_id, reference_team, max_points, max_players, status, created_at)
-				VALUES (:chat, :org, :title, :starts, :size, :bal, :ref, :maxp, :maxpl, :status, :created)',
+				(chat_id, organizer_id, title, starts_at, team_size, balance_id, reference_team, max_points, max_players, status, created_at, map, description)
+				VALUES (:chat, :org, :title, :starts, :size, :bal, :ref, :maxp, :maxpl, :status, :created, :map, :descr)',
 			[
 				'chat' => $data['chat_id'],
 				'org' => $data['organizer_id'],
@@ -49,6 +50,8 @@ class TournamentRepository {
 				'maxpl' => $data['max_players'],
 				'status' => TournamentStatus::assertValid($data['status']),
 				'created' => DateFormat::toDb($now),
+				'map' => $data['map'] ?? null,
+				'descr' => $data['description'] ?? null,
 			],
 		);
 		return $this->find($id) ?? throw new \LogicException('Tournament insert failed');
@@ -228,18 +231,23 @@ class TournamentRepository {
 	}
 
 	/**
-		Title of the most recently created tournament of this organizer, if any.
+		The most recently created tournament of this organizer, if any.
 	*/
-	public function latestTitleByOrganizer(int $organizer_id): ?string {
+	public function latestByOrganizer(int $organizer_id): ?Tournament {
 		$row = $this->db->fetchOne(
-			'SELECT title FROM tournaments WHERE organizer_id = :org
+			'SELECT * FROM tournaments WHERE organizer_id = :org
 				ORDER BY created_at DESC, id DESC LIMIT 1',
 			['org' => $organizer_id],
 		);
-		if ($row === null) {
-			return null;
-		}
-		$title = trim((string) $row['title']);
+		return $row === null ? null : Tournament::fromRow($row);
+	}
+
+	/**
+		Title of the most recently created tournament of this organizer, if any.
+	*/
+	public function latestTitleByOrganizer(int $organizer_id): ?string {
+		$title = $this->latestByOrganizer($organizer_id)?->title;
+		$title = $title !== null ? trim($title) : '';
 		return $title !== '' ? $title : null;
 	}
 }

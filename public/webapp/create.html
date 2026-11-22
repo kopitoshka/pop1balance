@@ -20,6 +20,19 @@
 					<p id="title-error" class="error" hidden></p>
 				</section>
 				<section>
+					<label class="label" for="map">Карта</label>
+					<select id="map" name="map" required aria-describedby="map-error">
+						<option value="" selected>Выбери карту</option>
+					</select>
+					<p id="map-error" class="error" hidden></p>
+				</section>
+				<section>
+					<label class="label" for="description">Описание</label>
+					<textarea id="description" name="description" rows="3" maxlength="500" placeholder="По желанию, коротко о турнире" aria-describedby="description-error description-hint"></textarea>
+					<p id="description-hint" class="hint"></p>
+					<p id="description-error" class="error" hidden></p>
+				</section>
+				<section>
 					<label class="label" for="date">Начало (МСК)</label>
 					<div class="start-row">
 						<input id="date" name="date" type="hidden">
@@ -94,10 +107,11 @@
 					<p class="label">Картинка турнира</p>
 					<div id="image-preview" class="img-preview" hidden><img id="image-img" alt="Картинка турнира"></div>
 					<div class="img-actions">
-						<button type="button" id="image-pick" class="img-button">Выбрать картинку</button>
+						<label for="image-file" id="image-pick" class="img-button">Выбрать картинку</label>
 						<button type="button" id="image-remove" class="img-button img-remove" hidden>Убрать</button>
 					</div>
-					<input id="image-file" class="sr-file" type="file" accept="image/jpeg,image/png,image/webp" tabindex="-1" aria-label="Файл картинки">
+					<span class="sr-file-wrap"><input id="image-file" class="sr-file" type="file" accept="image/jpeg,image/png,image/webp" tabindex="-1" aria-labelledby="image-pick"></span>
+					<p id="image-name" class="hint" hidden></p>
 					<p id="image-hint" class="hint"></p>
 					<p id="image-error" class="error" hidden></p>
 				</section>

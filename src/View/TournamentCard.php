@@ -21,8 +21,16 @@ class TournamentCard {
 			'📝 ' . Html::b('Турнир' . ($t->number !== null ? ' №' . $t->number : '') . ' (черновик)'),
 			'🏆 Название: ' . Html::e($t->title),
 			AnnouncementView::when($t),
-			'👥 Команды по ' . $t->team_size . ' ' . RuPlural::choose($t->team_size, ['игроку', 'игрока', 'игроков']),
 		];
+		$map = AnnouncementView::mapLine($t);
+		if ($map !== null) {
+			$lines[] = $map;
+		}
+		$description = AnnouncementView::descriptionBlock($t);
+		if ($description !== null) {
+			$lines[] = $description;
+		}
+		$lines[] = '👥 Команды по ' . $t->team_size . ' ' . RuPlural::choose($t->team_size, ['игроку', 'игрока', 'игроков']);
 		if ($t->max_points !== null) {
 			$lines[] = '⚖️ Уровень турнира: ' . Html::e($t->levelLabel());
 			if ($t->reference_team !== null) {
