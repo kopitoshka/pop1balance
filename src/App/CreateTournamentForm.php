@@ -246,8 +246,10 @@ class CreateTournamentForm {
 		@return array<string, mixed>
 	*/
 	public function bootstrap(string $init_data, string $token): array {
-		$this->authorize($init_data, $token);
-		return $this->settings();
+		[$actor] = $this->authorize($init_data, $token);
+		$out = $this->settings();
+		$out['default_title'] = $this->tournaments->latestTitleByOrganizer($actor->id) ?? '';
+		return $out;
 	}
 
 	/**

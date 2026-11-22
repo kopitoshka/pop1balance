@@ -145,9 +145,10 @@ class Announcer {
 		Tournament $t,
 		int $limit = AnnouncementView::MESSAGE_LIMIT,
 		string $footer = '',
+		bool $collapse_teams = false,
 	): string {
 		$lineup = $this->tournaments->lineup($t->id);
-		return $this->view($t, $lineup)->listBlock($t, $lineup, $limit, $footer);
+		return $this->view($t, $lineup)->listBlock($t, $lineup, $limit, $footer, $collapse_teams);
 	}
 
 	/**

@@ -203,7 +203,8 @@ class GroupRedirectTest extends IntegrationTestCase {
 		$this->openTournament(3);
 		$reply = $this->groupReply($this->player('vasya'), '@pop1_bot Что нового?');
 		self::assertStringContainsString('Субботний кубок', $reply['text']);
-		self::assertStringContainsString('📋', $reply['text']);
+		self::assertStringContainsString('🏆', $reply['text']);
+		self::assertStringNotContainsString('📋', $reply['text']);
 		self::assertSame([], array_filter($this->http->requests, static function (array $r): bool {
 			return str_ends_with($r['url'], '/responses');
 		}));

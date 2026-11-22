@@ -53,10 +53,11 @@ class DialogLogTest extends IntegrationTestCase {
 		$this->dispatch($this->privateMessage($vasya, '/tournaments'));
 		$log = $this->dialog('vasya.log');
 		self::assertStringContainsString(
-			"\n\t🏆 Субботний кубок · №1",
+			'личка бот → @vasya: 🏆 Субботний кубок · №1',
 			$log,
-			'continuation lines are indented, HTML stripped',
+			'list has no title line; first line is the tournament, HTML stripped',
 		);
+		self::assertStringContainsString("\n\t🗓 14.11.2026", $log, 'continuation lines are indented');
 		self::assertStringNotContainsString('<b>', $log);
 		foreach (explode("\n", trim($log)) as $line) {
 			self::assertMatchesRegularExpression('/^(\[\d{4}-\d\d-\d\d \d\d:\d\d:\d\d MSK\] |\t|$)/u', $line);

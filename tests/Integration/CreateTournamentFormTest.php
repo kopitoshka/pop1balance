@@ -228,6 +228,20 @@ class CreateTournamentFormTest extends IntegrationTestCase {
 		self::assertCount(6, $boot['levels']);
 		self::assertSame('2026-11-09 15:00:00', $boot['now_msk'], 'Moscow time, UTC+3');
 		self::assertSame('2026-11-10', $boot['default_date']);
+		self::assertSame('', $boot['default_title']);
+	}
+
+	public function testBootstrapPrefillsTheOrganizersLastTitle(): void {
+		self::assertNull($this->submitForm($this->owner, $this->form(['title' => 'Феникс четверговый'])));
+		self::assertNull($this->submitForm($this->owner, $this->form(['title' => 'Кубок пятницы', 'date' => '2026-11-24'])));
+		$token = (string) $this->app->create_form->issueToken($this->owner);
+		$boot = $this->app->create_form->bootstrap($this->initDataFor($this->owner), $token);
+		self::assertSame('Кубок пятницы', $boot['default_title']);
+
+		$admin = $this->admin;
+		$token = (string) $this->app->create_form->issueToken($admin);
+		$boot = $this->app->create_form->bootstrap($this->initDataFor($admin), $token);
+		self::assertSame('', $boot['default_title'], 'another organizer does not inherit the title');
 	}
 
 	public function testSubmitPerPlayerCreatesDraftAndSendsCard(): void {

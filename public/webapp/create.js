@@ -584,6 +584,9 @@
 			setDate(data.default_date);
 			setTime(data.default_time);
 			el.max_players.value = data.max_players['default'];
+			if (data.default_title) {
+				el.title.value = data.default_title;
+			}
 		}
 		fitTeamSize();
 		if (form_mode === 'edit' && t) {

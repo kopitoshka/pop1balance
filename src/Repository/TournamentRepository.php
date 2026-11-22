@@ -212,4 +212,20 @@ class TournamentRepository {
 		);
 		return array_map([Tournament::class, 'fromRow'], $rows);
 	}
+
+	/**
+		Title of the most recently created tournament of this organizer, if any.
+	*/
+	public function latestTitleByOrganizer(int $organizer_id): ?string {
+		$row = $this->db->fetchOne(
+			'SELECT title FROM tournaments WHERE organizer_id = :org
+				ORDER BY created_at DESC, id DESC LIMIT 1',
+			['org' => $organizer_id],
+		);
+		if ($row === null) {
+			return null;
+		}
+		$title = trim((string) $row['title']);
+		return $title !== '' ? $title : null;
+	}
 }

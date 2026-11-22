@@ -66,8 +66,10 @@ class PlayersList {
 		if ($edit) {
 			$footer .= "\n✏️ — карточка игрока: ник, уровень, @username, объединить дубли, удалить";
 		}
-		if ($is_owner) {
+		if ($is_owner && $is_private) {
 			$footer .= "\nПоставить уровень: /level @ник 4, ник: /nick @ник НикВИгре";
+		} elseif (!$is_private) {
+			$footer .= "\nПоставить свой ник можно у меня в личке.";
 		}
 		$chunks = self::split(implode("\n", $lines));
 		$last = (string) array_pop($chunks);

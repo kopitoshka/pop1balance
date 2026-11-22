@@ -75,9 +75,11 @@ class AnnouncementViewTest extends TestCase {
 		self::assertStringContainsString('🟢 Идёт регистрация', $text);
 		self::assertStringContainsString('🎟 Занято 4/4 · запас 3', $text);
 		self::assertStringContainsString(
-			"🛡 <b>Команды:</b>\nA. <b>Bears</b> · lvl.6\n👑 <a href=\"https://t.me/p4\">@p4</a>, <a href=\"https://t.me/p5\">@p5</a>\nC. <b>Wolves</b> · lvl.6\n👑 <a href=\"https://t.me/p2\">@p2</a>, <a href=\"https://t.me/p3\">@p3</a>",
+			"<blockquote>A. <b>Bears</b> · lvl.6\n👑 <a href=\"https://t.me/p4\">@p4</a>, <a href=\"https://t.me/p5\">@p5</a>\n\nC. <b>Wolves</b> · lvl.6\n👑 <a href=\"https://t.me/p2\">@p2</a>, <a href=\"https://t.me/p3\">@p3</a></blockquote>",
 			$text,
 		);
+		self::assertStringNotContainsString('Команды:', $text);
+		self::assertStringNotContainsString('blockquote expandable', $text);
 		self::assertStringContainsString("⏳ <b>Запас:</b>\nB. <b>Late</b> · lvl.6\n👑 <a href=\"https://t.me/p6\">@p6</a>, <a href=\"https://t.me/p7\">@p7</a>\n🙋 Соло: <a href=\"https://t.me/p8\">@p8</a>", $text);
 		self::assertStringContainsString("🧩 <b>Собираются:</b>\n?. Forming · собирается 1/2 · lvl.3\n👑 <a href=\"https://t.me/p9\">@p9</a>", $text);
 		self::assertDoesNotMatchRegularExpression('/средний \(3\)/u', $text, 'individual player levels are not shown');
@@ -143,6 +145,11 @@ class AnnouncementViewTest extends TestCase {
 		self::assertMatchesRegularExpression('~<i>…и ещё \d+ строк[аи]?\. Полный состав: /tournaments 1</i>$~u', $block);
 		self::assertStringContainsString('A. <b>Команда номер 1</b>', $block);
 		self::assertSame(substr_count($block, '<b>'), substr_count($block, '</b>'), 'no broken tags');
+		self::assertSame(substr_count($block, '<blockquote'), substr_count($block, '</blockquote>'), 'blockquote stays whole');
+		self::assertStringNotContainsString('blockquote expandable', $block);
+		$hint_pos = strpos($block, '<i>…и ещё');
+		$close_pos = strrpos(substr($block, 0, $hint_pos), '</blockquote>');
+		self::assertNotFalse($close_pos, 'blockquote is closed before the cut hint');
 
 		$announcement = $view->render($t, $lineup);
 		self::assertLessThanOrEqual(4000, mb_strlen($announcement));
@@ -152,6 +159,8 @@ class AnnouncementViewTest extends TestCase {
 		self::assertGreaterThan(1, count($messages));
 		foreach ($messages as $m) {
 			self::assertLessThanOrEqual(4000, mb_strlen($m));
+			self::assertSame(substr_count($m, '<blockquote'), substr_count($m, '</blockquote>'), 'blockquote not split mid-tag');
+			self::assertStringNotContainsString('blockquote expandable', $m);
 		}
 		self::assertStringContainsString('?. <b>Команда номер 100</b>', end($messages));
 	}

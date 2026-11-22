@@ -178,8 +178,17 @@ class ScaleHiddenTest extends IntegrationTestCase {
 			self::assertSame(
 				$viewer->id === $this->owner->id,
 				str_contains($text, 'Поставить уровень: /level @ник 4'),
-				'only the owner sees how to set levels',
+				'only the owner sees how to set levels in private',
 			);
+		}
+
+		$this->everyoneIsGroupMember();
+		foreach ([$this->owner, $petya] as $viewer) {
+			$this->http->reset();
+			$this->dispatch($this->groupMessage($viewer, '/players'));
+			$text = $this->http->lastText();
+			self::assertStringContainsString('Поставить свой ник можно у меня в личке.', $text);
+			self::assertStringNotContainsString('Поставить уровень', $text);
 		}
 	}
 

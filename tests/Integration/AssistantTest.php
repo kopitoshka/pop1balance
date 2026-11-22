@@ -96,7 +96,7 @@ class AssistantTest extends IntegrationTestCase {
 
 		$sent = $this->http->sent('sendMessage');
 		self::assertCount(2, $sent);
-		self::assertStringStartsWith('📋 <b>Турниры</b>', $sent[0]['text']);
+		self::assertStringStartsWith('🏆 <b>', $sent[0]['text']);
 		self::assertStringContainsString('👑 <a href="https://t.me/', $sent[0]['text']);
 		self::assertStringContainsString('@cap</a>', $sent[0]['text']);
 		self::assertStringContainsString('@mate</a>', $sent[0]['text']);
@@ -111,7 +111,7 @@ class AssistantTest extends IntegrationTestCase {
 		$this->dispatch($this->privateMessage($vasya, '@' . self::BOT_USERNAME . ' покажи ещё раз турниры'));
 		$sent = $this->http->sent('sendMessage');
 		self::assertCount(1, $sent);
-		self::assertStringStartsWith('📋 <b>Турниры</b>', $sent[0]['text']);
+		self::assertStringStartsWith('🏆 <b>', $sent[0]['text']);
 	}
 
 	public function testToolsUseGlobalNumbers(): void {

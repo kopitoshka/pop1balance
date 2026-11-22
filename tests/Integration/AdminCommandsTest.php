@@ -278,7 +278,10 @@ class AdminCommandsTest extends IntegrationTestCase {
 		$this->http->reset();
 		$this->dispatch($this->privateMessage($vasya, '/tournaments'));
 		$empty = $this->http->lastText();
-		self::assertStringStartsWith("📋 <b>Турниры</b>\n\n🏆 <b>Кубок &lt;1&gt;</b> · №1\n🗓 23.11.2026 ⏰ 20:00 МСК", $empty);
+		self::assertStringStartsWith("🏆 <b>Кубок &lt;1&gt;</b> · №1\n🗓 23.11.2026 ⏰ 20:00 МСК", $empty);
+		self::assertStringNotContainsString('📋 <b>Турниры</b>', $empty);
+		self::assertStringNotContainsString('Команды:', $empty);
+		self::assertStringNotContainsString('blockquote expandable', $empty);
 		self::assertStringContainsString('<i>Пока никто не записался.</i>', $empty);
 
 		$cap = $this->player('cap');
@@ -305,6 +308,8 @@ class AdminCommandsTest extends IntegrationTestCase {
 		$text = $this->http->lastText();
 		self::assertStringContainsString("➖➖➖➖➖\n\n🏆 <b>Черновой</b> · №2", $text);
 		self::assertStringContainsString('Черновик, его видишь только ты. Опубликовать: /open 2', $text);
+		self::assertStringContainsString('<blockquote expandable>', $text, 'several tournaments: teams collapse');
+		self::assertStringNotContainsString('📋 <b>Турниры</b>', $text);
 	}
 
 	public function testLongTournamentListIsSplitIntoMessages(): void {
@@ -334,6 +339,16 @@ class AdminCommandsTest extends IntegrationTestCase {
 		$all = implode("\n", array_column($sent, 'text'));
 		foreach ([1, 2, 3] as $i) {
 			self::assertStringContainsString('🏆 <b>Кубок ' . $i . '</b>', $all);
+		}
+		foreach ($sent as $message) {
+			$text = $message['text'];
+			self::assertSame(substr_count($text, '<blockquote'), substr_count($text, '</blockquote>'));
+			$tournaments = substr_count($text, '🏆 <b>');
+			if ($tournaments > 1) {
+				self::assertStringContainsString('<blockquote expandable>', $text);
+			} else {
+				self::assertStringNotContainsString('blockquote expandable', $text);
+			}
 		}
 	}
 
@@ -414,7 +429,8 @@ class AdminCommandsTest extends IntegrationTestCase {
 		}
 		foreach ([
 			'/levels', '/edit', '/cancel', '/level @user 4', '/nick @user', 'обычным языком',
-			'запиши команду', '/info', '📊 <b>Уровни игроков</b>', 'Создание турниров', '/group',
+			'запиши команду', '/info', '📊 <b>Уровни игроков</b>', 'Управление турнирами',
+			'Создание турниров и управление своим', '/group', 'Поставить уровень',
 		] as $needle) {
 			self::assertStringNotContainsString($needle, $help_user);
 		}
@@ -439,6 +455,9 @@ class AdminCommandsTest extends IntegrationTestCase {
 		self::assertStringContainsString('/level — свой уровень', $help_group);
 		self::assertStringContainsString('/tournaments 2 — состав турнира', $help_group);
 		self::assertStringContainsString('/help_level — Как считаются уровни и сила команды', $help_group);
+		self::assertStringContainsString('Поставить свой ник можно у меня в личке.', $help_group);
+		self::assertStringContainsString('<b>Команды здесь</b>', $help_group);
+		self::assertStringNotContainsString('Поставить уровень', $help_group);
 		self::assertStringNotContainsString('/levels', $help_group);
 		self::assertStringNotContainsString('запиши меня', $help_group);
 		self::assertStringNotContainsString('/new', $help_group);
@@ -448,13 +467,16 @@ class AdminCommandsTest extends IntegrationTestCase {
 
 		$this->dispatch($this->privateMessage($this->admin, '/help'));
 		$admin_help = $this->http->lastText();
-		self::assertStringContainsString('Создание турниров', $admin_help);
+		self::assertStringContainsString('<b>Управление турнирами</b>', $admin_help);
+		self::assertStringContainsString('<b>Команды</b>', $admin_help);
 		self::assertStringContainsString('только автор турнира и главный админ', $admin_help);
 		self::assertStringNotContainsString('Только для главного админа', $admin_help);
+		self::assertStringNotContainsString('Создание турниров и управление своим', $admin_help);
 
 		$this->dispatch($this->privateMessage($this->owner, '/help'));
 		$help = $this->http->lastText();
-		self::assertStringContainsString('Только для главного админа', $help);
+		self::assertStringContainsString('<b>Только для главного админа</b>', $help);
+		self::assertStringContainsString('<b>Управление турнирами</b>', $help);
 		self::assertStringContainsString('«✏️ Изменить турнир» и «❌ Отменить турнир»', $help);
 		self::assertStringContainsString('«✏️ Поправить», «🗑 Удалить»', $help);
 		self::assertStringNotContainsString('/edit', $help);

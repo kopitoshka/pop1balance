@@ -384,6 +384,13 @@ class TournamentService {
 	}
 
 	/**
+		Title of this organizer's most recently created tournament, or null if they have none.
+	*/
+	public function latestTitleByOrganizer(int $organizer_id): ?string {
+		return $this->tournaments->latestTitleByOrganizer($organizer_id);
+	}
+
+	/**
 		Kept for callers that still pass a chat; tournaments are global so this equals listAllActive.
 		@return list<Tournament>
 	*/

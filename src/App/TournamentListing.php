@@ -18,9 +18,7 @@ use P1Bot\View\Html;
 	packed into messages under Telegram's 4096 characters. Tournaments are global.
 */
 class TournamentListing {
-	protected const TITLE = '📋 <b>Турниры</b>';
 	protected const SEPARATOR = "\n\n➖➖➖➖➖\n\n";
-
 
 	protected const HISTORY_TITLE = '📜 <b>Прошедшие турниры</b>';
 	protected const HISTORY_LIMIT = 10;
@@ -39,22 +37,18 @@ class TournamentListing {
 	*/
 	public function messages(int $chat_id, bool $with_drafts, int $limit = AnnouncementView::MESSAGE_LIMIT): array {
 		unset($chat_id);
-		$block_limit = $limit - mb_strlen(self::TITLE) - mb_strlen(self::SEPARATOR);
-		$blocks = [];
+		$block_limit = $limit - mb_strlen(self::SEPARATOR);
+		$items = [];
 		foreach ($this->tournaments->listAllActive() as $t) {
-			$blocks[] = $this->announcer->listBlock($t, $block_limit);
+			$items[] = [$t, ''];
 		}
 		if ($with_drafts) {
 			foreach ($this->tournaments->listAllByStatus([TournamentStatus::DRAFT]) as $t) {
 				$this->announcer->number($t);
-				$blocks[] = $this->announcer->listBlock(
-					$t,
-					$block_limit,
-					'<i>Черновик. Опубликовать: /open ' . $t->number . '</i>',
-				);
+				$items[] = [$t, '<i>Черновик. Опубликовать: /open ' . $t->number . '</i>'];
 			}
 		}
-		return $this->pack($blocks, $limit);
+		return $this->pack($items, $limit, $block_limit);
 	}
 
 	/**
@@ -70,13 +64,13 @@ class TournamentListing {
 		int $limit = AnnouncementView::MESSAGE_LIMIT,
 	): array {
 		unset($groups);
-		$block_limit = $limit - mb_strlen(self::TITLE) - mb_strlen(self::SEPARATOR);
-		$blocks = [];
+		$block_limit = $limit - mb_strlen(self::SEPARATOR);
+		$items = [];
 		foreach ($this->privateTournaments([], $player_id, $is_owner) as $t) {
 			$footer = $t->status === TournamentStatus::DRAFT ? sprintf(self::PRIVATE_DRAFT, (int) $t->number) : '';
-			$blocks[] = $this->announcer->listBlock($t, $block_limit, $footer);
+			$items[] = [$t, $footer];
 		}
-		return $this->pack($blocks, $limit);
+		return $this->pack($items, $limit, $block_limit);
 	}
 
 	/**
@@ -176,25 +170,49 @@ class TournamentListing {
 	}
 
 	/**
-		@param list<string> $blocks
+		@param list<array{0: Tournament, 1: string}> $items tournament + optional footer
 		@return list<string>
 	*/
-	protected function pack(array $blocks, int $limit): array {
-		if ($blocks === []) {
+	protected function pack(array $items, int $limit, int $block_limit): array {
+		if ($items === []) {
 			return [];
 		}
 
-		$messages = [];
-		$current = self::TITLE;
-		foreach ($blocks as $block) {
-			if (mb_strlen($current . self::SEPARATOR . $block) > $limit) {
-				$messages[] = $current;
-				$current = $block;
+		$plain = [];
+		foreach ($items as [$t, $footer]) {
+			$plain[] = $this->announcer->listBlock($t, $block_limit, $footer, false);
+		}
+
+		$groups = [];
+		$current = [];
+		$current_len = 0;
+		foreach ($plain as $i => $block) {
+			$len = mb_strlen($block);
+			if ($current !== [] && $current_len + mb_strlen(self::SEPARATOR) + $len > $limit) {
+				$groups[] = $current;
+				$current = [$i];
+				$current_len = $len;
 				continue;
 			}
-			$current .= ($current === self::TITLE ? "\n\n" : self::SEPARATOR) . $block;
+			$current[] = $i;
+			$current_len = $current_len === 0 ? $len : $current_len + mb_strlen(self::SEPARATOR) + $len;
 		}
-		$messages[] = $current;
+		$groups[] = $current;
+
+		$messages = [];
+		foreach ($groups as $idxs) {
+			$collapse = count($idxs) > 1;
+			$parts = [];
+			foreach ($idxs as $i) {
+				if (!$collapse) {
+					$parts[] = $plain[$i];
+					continue;
+				}
+				[$t, $footer] = $items[$i];
+				$parts[] = $this->announcer->listBlock($t, $block_limit, $footer, true);
+			}
+			$messages[] = implode(self::SEPARATOR, $parts);
+		}
 		return $messages;
 	}
 }

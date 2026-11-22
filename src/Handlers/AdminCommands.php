@@ -501,18 +501,18 @@ class AdminCommands {
 				? sprintf('Твой уровень: %s (%d)', Levels::name($explicit), $explicit)
 				: sprintf('%s — %s (%d)', Html::e($player->plainLabel()), Levels::name($explicit), $explicit);
 		}
-		return $body . $this->levelFooter($ctx->is_owner);
+		return $body . $this->levelFooter($ctx->is_owner, $ctx->isPrivate());
 	}
 
 	protected function listAllLevels(Context $ctx): string {
 		$scale_id = $this->balances->viewScaleId();
 		$scale = $scale_id !== null ? $this->balances->findDefault() : null;
 		if ($scale === null) {
-			return 'Пока никому уровень не ставили 🙂' . $this->levelFooter($ctx->is_owner);
+			return 'Пока никому уровень не ставили 🙂' . $this->levelFooter($ctx->is_owner, $ctx->isPrivate());
 		}
 		$ratings = $this->balances->effectiveRatings($scale->id);
 		if ($ratings === []) {
-			return 'Пока никому уровень не ставили 🙂' . $this->levelFooter($ctx->is_owner);
+			return 'Пока никому уровень не ставили 🙂' . $this->levelFooter($ctx->is_owner, $ctx->isPrivate());
 		}
 		$rows = [];
 		foreach ($ratings as $player_id => $rating) {
@@ -541,12 +541,12 @@ class AdminCommands {
 		if ($total > self::LEVEL_ALL_LIMIT) {
 			$lines[] = sprintf('<i>…и ещё %d</i>', $total - self::LEVEL_ALL_LIMIT);
 		}
-		return implode("\n", $lines) . $this->levelFooter($ctx->is_owner);
+		return implode("\n", $lines) . $this->levelFooter($ctx->is_owner, $ctx->isPrivate());
 	}
 
-	protected function levelFooter(bool $is_owner): string {
+	protected function levelFooter(bool $is_owner, bool $is_private): string {
 		$footer = "\n\nКак устроены уровни — /help_level, все игроки — /players";
-		if ($is_owner) {
+		if ($is_owner && $is_private) {
 			$footer .= "\nПоставить: /level @ник 4";
 		}
 		return $footer;

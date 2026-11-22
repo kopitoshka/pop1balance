@@ -19,9 +19,10 @@ use P1Bot\Support\TeamLetters;
 	Tournament block (HTML): header with icons + teams, solo players, reserve and forming teams.
 	One rendering for the announcement, /tournaments, /tournaments N and the AI list. Each team is two lines:
 	letter, name, strength as «lvl.N», and «⚠️ выше уровня» when over the limit; then the players,
-	captain first with a crown. Status words («записана», «запас») are not repeated: teams already sit
-	under the «Команды» / «Запас» section headers. Forming teams still show «собирается N/SIZE».
-	Individual player levels are never shown.
+	captain first with a crown. The main teams sit in one <blockquote>, separated by an empty line,
+	without a «Команды» header. When the message lists more than one tournament the quote is
+	<blockquote expandable>. Forming teams still show «собирается N/SIZE». Individual player
+	levels are never shown.
 */
 class AnnouncementView {
 	/**
@@ -78,8 +79,9 @@ class AnnouncementView {
 		Lineup $lineup,
 		int $limit = self::MESSAGE_LIMIT,
 		string $footer = '',
+		bool $collapse_teams = false,
 	): string {
-		return $this->compose($t, $lineup, $footer, $limit, true);
+		return $this->compose($t, $lineup, $footer, $limit, true, null, $collapse_teams);
 	}
 
 	/**
@@ -90,19 +92,48 @@ class AnnouncementView {
 	public function fullMessages(Tournament $t, Lineup $lineup, int $limit = self::MESSAGE_LIMIT): array {
 		$sections = $this->sections($lineup, $t);
 		if ($sections === []) {
-			$sections = [['<i>Пока никто не записался.</i>']];
+			$sections = [['kind' => 'plain', 'lines' => ['<i>Пока никто не записался.</i>']]];
 		}
 		$messages = [];
 		$current = $this->header($t, $lineup);
+		$open = '<blockquote>';
 		foreach ($sections as $section) {
-			foreach ($section as $j => $line) {
+			if ($section['kind'] === 'quote') {
+				$quote_open = false;
+				foreach ($section['lines'] as $line) {
+					if ($quote_open) {
+						if (mb_strlen($current . "\n\n" . $line . '</blockquote>') > $limit) {
+							$current .= '</blockquote>';
+							$messages[] = $current;
+							$current = $open . $line;
+							continue;
+						}
+						$current .= "\n\n" . $line;
+						continue;
+					}
+					$glue = $current === '' ? '' : "\n\n";
+					if ($current !== '' && mb_strlen($current . $glue . $open . $line . '</blockquote>') > $limit) {
+						$messages[] = $current;
+						$current = $open . $line;
+						$quote_open = true;
+						continue;
+					}
+					$current .= $glue . $open . $line;
+					$quote_open = true;
+				}
+				if ($quote_open) {
+					$current .= '</blockquote>';
+				}
+				continue;
+			}
+			foreach ($section['lines'] as $j => $line) {
 				$glue = $j === 0 ? "\n\n" : "\n";
-				if (mb_strlen($current . $glue . $line) > $limit) {
+				if ($current !== '' && mb_strlen($current . $glue . $line) > $limit) {
 					$messages[] = $current;
 					$current = $line;
 					continue;
 				}
-				$current .= $glue . $line;
+				$current .= ($current === '' ? '' : $glue) . $line;
 			}
 		}
 		$messages[] = $current;
@@ -141,7 +172,7 @@ class AnnouncementView {
 		Main, solo, reserve and forming lists.
 	*/
 	public function lineupText(Lineup $lineup, Tournament $t): string {
-		return $this->join($this->sections($lineup, $t));
+		return $this->join($this->sections($lineup, $t), false);
 	}
 
 	protected function compose(
@@ -151,42 +182,55 @@ class AnnouncementView {
 		int $limit,
 		bool $empty_hint,
 		?bool $registration_open = null,
+		bool $collapse_teams = false,
 	): string {
 		$head = $this->header($t, $lineup, $registration_open);
 		$sections = $this->sections($lineup, $t);
 		if ($sections === [] && $empty_hint) {
-			$sections = [['<i>Пока никто не записался.</i>']];
+			$sections = [['kind' => 'plain', 'lines' => ['<i>Пока никто не записался.</i>']]];
 		}
 		$tail = $footer !== '' ? "\n\n" . $footer : '';
 
-		$full = $head . ($sections !== [] ? "\n\n" . $this->join($sections) : '') . $tail;
+		$full = $head . ($sections !== [] ? "\n\n" . $this->join($sections, $collapse_teams) : '') . $tail;
 		if (mb_strlen($full) <= $limit) {
 			return $full;
 		}
 
 		// Too long: keep whole cut-units (a team is two lines) while they fit, then say
-		// how many visual lines were left out.
+		// how many visual lines were left out. A blockquote is always closed before the hint.
 		$units = static fn (string $line): int => substr_count($line, "\n") + 1;
 		$total = 0;
 		foreach ($sections as $section) {
-			foreach ($section as $line) {
+			foreach ($section['lines'] as $line) {
 				$total += $units($line);
 			}
 		}
-		$body = '';
+		$kept = [];
 		$shown = 0;
-		foreach ($sections as $i => $section) {
-			foreach ($section as $j => $line) {
-				$next = $body . ($body === '' ? '' : ($j === 0 ? "\n\n" : "\n")) . $line;
+		foreach ($sections as $section) {
+			$lines = [];
+			$cut = false;
+			foreach ($section['lines'] as $line) {
+				$trial = $kept;
+				$trial[] = ['kind' => $section['kind'], 'lines' => array_merge($lines, [$line])];
 				$unit = $units($line);
 				$hint = self::cutHint($total - $shown - $unit, $t->number);
-				if (mb_strlen($head . "\n\n" . $next . "\n" . $hint . $tail) > $limit) {
-					break 2;
+				$body = $this->join($trial, $collapse_teams);
+				if (mb_strlen($head . "\n\n" . $body . "\n" . $hint . $tail) > $limit) {
+					$cut = true;
+					break;
 				}
-				$body = $next;
+				$lines[] = $line;
 				$shown += $unit;
 			}
+			if ($lines !== []) {
+				$kept[] = ['kind' => $section['kind'], 'lines' => $lines];
+			}
+			if ($cut) {
+				break;
+			}
 		}
+		$body = $this->join($kept, $collapse_teams);
 		return $head . "\n\n" . ($body !== '' ? $body . "\n" : '') . self::cutHint($total - $shown, $t->number) . $tail;
 	}
 
@@ -196,28 +240,41 @@ class AnnouncementView {
 	}
 
 	/**
-		@param list<list<string>> $sections
+		@param list<array{kind: 'plain'|'quote', lines: list<string>}> $sections
 	*/
-	protected function join(array $sections): string {
-		return implode("\n\n", array_map(static function (array $s): string {
-			return implode("\n", $s);
-		}, array_values(array_filter($sections, static function (array $s): bool {
-			return $s !== [];
-		}))));
+	protected function join(array $sections, bool $collapse_teams): string {
+		$parts = [];
+		foreach ($sections as $section) {
+			if ($section['lines'] === []) {
+				continue;
+			}
+			$parts[] = $section['kind'] === 'quote'
+				? self::quote($section['lines'], $collapse_teams)
+				: implode("\n", $section['lines']);
+		}
+		return implode("\n\n", $parts);
 	}
 
 	/**
-		@return list<list<string>> sections, each a list of lines (cut points)
+		@param list<string> $teams
+	*/
+	protected static function quote(array $teams, bool $expandable): string {
+		$tag = $expandable ? '<blockquote expandable>' : '<blockquote>';
+		return $tag . implode("\n\n", $teams) . '</blockquote>';
+	}
+
+	/**
+		@return list<array{kind: 'plain'|'quote', lines: list<string>}> sections of cut-units
 	*/
 	protected function sections(Lineup $lineup, Tournament $t): array {
 		$sections = [];
 		if ($lineup->main_teams !== []) {
-			$sections[] = array_merge(['🛡 <b>Команды:</b>'], $this->teams(Lineup::sortByLetter($lineup->main_teams), $t));
+			$sections[] = ['kind' => 'quote', 'lines' => $this->teams(Lineup::sortByLetter($lineup->main_teams), $t)];
 		}
 		if ($lineup->main_solo !== []) {
 			// In a 1-player format nobody looks for a team: solos already play on their own.
 			$title = $t->team_size === 1 ? '🙋 <b>Соло:</b>' : '🙋 <b>Ищут команду:</b>';
-			$sections[] = array_merge([$title], $this->solos($lineup->main_solo));
+			$sections[] = ['kind' => 'plain', 'lines' => array_merge([$title], $this->solos($lineup->main_solo))];
 		}
 		if ($lineup->reserve_teams !== [] || $lineup->reserve_solo !== []) {
 			$reserve = ['⏳ <b>Запас:</b>'];
@@ -225,14 +282,14 @@ class AnnouncementView {
 			foreach ($this->solos($lineup->reserve_solo) as $i => $line) {
 				$reserve[] = ($i === 0 ? '🙋 Соло: ' : '') . $line;
 			}
-			$sections[] = $reserve;
+			$sections[] = ['kind' => 'plain', 'lines' => $reserve];
 		}
 		if ($lineup->forming_teams !== []) {
 			$forming = ['🧩 <b>Собираются:</b>'];
 			foreach (Lineup::sortByLetter($lineup->forming_teams) as $e) {
 				$forming[] = $this->teamBlock($e, $t, 'собирается ' . count($e->members) . '/' . $t->team_size);
 			}
-			$sections[] = $forming;
+			$sections[] = ['kind' => 'plain', 'lines' => $forming];
 		}
 		return $sections;
 	}
