@@ -49,6 +49,7 @@ class CronRunner {
 		protected ?GroupNoticeRepository $notices = null,
 		protected bool $remind_all_groups = false,
 		protected string $bot_username = '',
+		protected ?TournamentImages $images = null,
 	) {
 	}
 
@@ -82,7 +83,11 @@ class CronRunner {
 			$this->logger->info(sprintf('purged expired draft #%d «%s»', $snap['id'], $snap['title']));
 		}
 
+		// Pictures of forms that were never saved (and files nobody uses) go away after a day.
+		$images_swept = $this->images?->sweep($this->clock->now()->getTimestamp()) ?? 0;
+
 		return [
+			'images_swept' => $images_swept,
 			'reminders' => $reminders,
 			'status_changes' => count($changed),
 			'drafts_purged' => count($purged),

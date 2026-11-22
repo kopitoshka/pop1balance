@@ -42,6 +42,20 @@ class WebAppUrl {
 		return strtolower($parts['scheme']) . '://' . $parts['host'] . $port . $dir . '/webapp/' . $file;
 	}
 
+	/**
+		Public base URL of the uploaded pictures (public/media), without a trailing slash.
+		$override (MEDIA_BASE_URL, http or https) wins; otherwise the same host and directory as
+		WEBHOOK_URL: https://host/p1/webhook.php → https://host/p1/media. Null when neither is usable.
+	*/
+	public static function mediaBase(string $webhook_url, string $override = ''): ?string {
+		$override = rtrim(trim($override), '/');
+		if ($override !== '') {
+			return preg_match('~^https?://[^\s/]+~i', $override) === 1 ? $override : null;
+		}
+		$page = self::page($webhook_url, 'x');
+		return $page === null ? null : substr($page, 0, -strlen('/webapp/x')) . '/media';
+	}
+
 	public static function pickerPage(string $webhook_url): ?string {
 		return self::page($webhook_url, self::PICKER);
 	}

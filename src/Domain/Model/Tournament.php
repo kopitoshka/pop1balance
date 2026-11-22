@@ -29,6 +29,7 @@ class Tournament {
 		public ?DateTimeImmutable $reminded_at,
 		public ?int $card_msg_id = null,
 		public ?int $card_shown_to = null,
+		public ?string $image_path = null,
 	) {
 	}
 
@@ -57,6 +58,7 @@ class Tournament {
 			DateFormat::fromDbNullable($row['reminded_at'] === null ? null : (string) $row['reminded_at']),
 			isset($row['card_msg_id']) ? (int) $row['card_msg_id'] : null,
 			isset($row['card_shown_to']) ? (int) $row['card_shown_to'] : null,
+			isset($row['image_path']) && $row['image_path'] !== '' ? (string) $row['image_path'] : null,
 		);
 	}
 

@@ -9,6 +9,7 @@ use P1Bot\Ai\Assistant;
 use P1Bot\Ai\Dispatcher;
 use P1Bot\Ai\OpenAiClient;
 use P1Bot\View\PlayersList;
+use P1Bot\View\WebAppUrl;
 use P1Bot\App\Announcer;
 use P1Bot\App\CreateAccess;
 use P1Bot\App\CreateTournamentForm;
@@ -24,6 +25,7 @@ use P1Bot\App\OrganizerTeams;
 use P1Bot\App\PendingTextGuard;
 use P1Bot\App\PlayerForm;
 use P1Bot\App\SuperAdmin;
+use P1Bot\App\TournamentImages;
 use P1Bot\App\TeamForm;
 use P1Bot\App\TeamCards;
 use P1Bot\App\PrivateGroups;
@@ -64,6 +66,7 @@ use P1Bot\Support\RandomSource;
 use P1Bot\Support\SystemRandom;
 use P1Bot\Support\Database;
 use P1Bot\Support\DialogLog;
+use P1Bot\Support\ImageStore;
 use P1Bot\Support\SuLog;
 use P1Bot\Support\Logger;
 use P1Bot\Telegram\BotApi;
@@ -123,6 +126,7 @@ class Bootstrap {
 	public PlayerAdmin $player_admin;
 	public PlayerForm $player_form;
 	public SuperAdmin $super_admin;
+	public TournamentImages $images;
 	public PlayersList $players_list;
 	public PrivateViews $private_views;
 
@@ -234,6 +238,21 @@ class Bootstrap {
 		);
 		$this->tournament_resolver = new TournamentResolver($this->tournament_repo);
 		$this->announcements = new TournamentAnnouncementRepository($db);
+		$media = (array) ($config['media'] ?? []);
+		$this->images = new TournamentImages(
+			new ImageStore(
+				(string) ($config['paths']['media'] ?? dirname(__DIR__) . '/public/media'),
+				max(1024, (int) ($media['max_bytes'] ?? 5242880)),
+			),
+			$this->tournament_repo,
+			(bool) ($media['tournament_images_enabled'] ?? true),
+			WebAppUrl::mediaBase(
+				(string) ($config['telegram']['webhook_url'] ?? ''),
+				(string) ($media['base_url'] ?? ''),
+			),
+		);
+		// A deleted draft takes its picture with it.
+		$this->tournaments->setImageDeleter(fn (?string $name) => $this->images->discard($name));
 		$this->announcer = new Announcer(
 			$this->telegram,
 			$this->tournaments,
@@ -244,6 +263,7 @@ class Bootstrap {
 			$this->chats,
 			$this->announcements,
 			$this->balances,
+			$this->images,
 		);
 		$this->listing = new TournamentListing($this->tournaments, $this->announcer);
 		$this->drafts = new DraftCards(
@@ -427,6 +447,8 @@ class Bootstrap {
 		$commands->setCreateForm($this->create_form);
 		$commands->setPlayerForm($this->player_form);
 		$this->drafts->setCreateForm($this->create_form);
+		$this->drafts->setImages($this->images);
+		$this->create_form->setImages($this->images);
 
 		$this->dispatcher = new Dispatcher(
 			$this->tournaments,
@@ -475,6 +497,7 @@ class Bootstrap {
 		);
 		$this->private_views = $views;
 		$views->setCreateForm($this->create_form);
+		$views->setImages($this->images);
 		$this->create_form->setViews($views);
 		$views->setTeamForm($this->team_form);
 		$this->team_form->setViews($views);
@@ -575,6 +598,7 @@ class Bootstrap {
 			new GroupNoticeRepository($this->db),
 			(bool) ($cron['remind_all_groups'] ?? true),
 			$this->bot->username,
+			$this->images,
 		);
 	}
 

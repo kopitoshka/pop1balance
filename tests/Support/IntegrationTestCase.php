@@ -38,7 +38,13 @@ abstract class IntegrationTestCase extends TestCase {
 
 	protected int $next_tg_id = 2000;
 
+	/**
+		Directory of the uploaded pictures of this test (removed in tearDown).
+	*/
+	protected string $media_dir = '';
+
 	protected function setUp(): void {
+		$this->media_dir = sys_get_temp_dir() . '/p1bot_media_' . bin2hex(random_bytes(6));
 		$this->db = self::freshDatabase();
 		$this->clock = new FrozenClock();
 		$this->http = new FakeHttpClient();
@@ -74,6 +80,14 @@ abstract class IntegrationTestCase extends TestCase {
 		});
 	}
 
+	protected function tearDown(): void {
+		foreach (glob($this->media_dir . '/*') ?: [] as $file) {
+			@unlink($file);
+		}
+		@rmdir($this->media_dir);
+		parent::tearDown();
+	}
+
 	/**
 		Override to capture log lines (null = logging off).
 	*/
@@ -97,6 +111,7 @@ abstract class IntegrationTestCase extends TestCase {
 				'pair_bonus_offset' => 3,
 			],
 			'cron' => ['reminder_minutes' => [60, 15], 'finish_after_hours' => 2],
+			'paths' => ['media' => $this->media_dir],
 			'random' => new FixedRandom(0),
 		];
 	}

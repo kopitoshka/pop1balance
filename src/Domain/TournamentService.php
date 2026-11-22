@@ -42,6 +42,36 @@ class TournamentService {
 	) {
 	}
 
+	/**
+		@var (callable(?string): void)|null deletes a tournament picture file by its name
+	*/
+	protected $image_deleter = null;
+
+	/**
+		@param (callable(?string): void)|null $deleter called with image_path before a tournament row is deleted
+	*/
+	public function setImageDeleter(?callable $deleter): void {
+		$this->image_deleter = $deleter;
+	}
+
+	protected function deleteTournament(Tournament $t): void {
+		$this->tournaments->delete($t->id);
+		if ($this->image_deleter !== null && $t->image_path !== null) {
+			($this->image_deleter)($t->image_path);
+		}
+	}
+
+	/**
+		Sets (or clears, with null) the picture file name of a tournament: its author or a superadmin.
+		The caller deletes the old file.
+	*/
+	public function setImage(int $actor_id, int $tournament_id, ?string $name): Tournament {
+		$t = $this->get($tournament_id);
+		$this->access->assertCanManageTournament($t, $actor_id);
+		$this->tournaments->update($t->id, ['image_path' => $name]);
+		return $this->get($t->id);
+	}
+
 	public function get(int $tournament_id): Tournament {
 		return $this->tournaments->find($tournament_id) ?? throw new NotFound('Такого турнира нет.');
 	}
@@ -202,7 +232,7 @@ class TournamentService {
 			));
 		}
 		$snap = ['id' => $t->id, 'title' => $t->title];
-		$this->tournaments->delete($t->id);
+		$this->deleteTournament($t);
 		return $snap;
 	}
 
@@ -216,7 +246,7 @@ class TournamentService {
 		$deleted = [];
 		foreach ($this->tournaments->listStartingBetween([TournamentStatus::DRAFT], $past, $now) as $t) {
 			$deleted[] = ['id' => $t->id, 'title' => $t->title];
-			$this->tournaments->delete($t->id);
+			$this->deleteTournament($t);
 		}
 		return $deleted;
 	}

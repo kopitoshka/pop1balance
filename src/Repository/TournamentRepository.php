@@ -17,6 +17,7 @@ class TournamentRepository {
 	protected const UPDATABLE = [
 		'title', 'starts_at', 'team_size', 'balance_id', 'reference_team', 'max_points',
 		'max_players', 'status', 'announce_msg_id', 'reminded_at', 'card_msg_id', 'card_shown_to',
+		'image_path',
 	];
 
 	public function __construct(protected Database $db) {
@@ -58,6 +59,19 @@ class TournamentRepository {
 	*/
 	public function delete(int $id): void {
 		$this->db->run('DELETE FROM tournaments WHERE id = :id', ['id' => $id]);
+	}
+
+	/**
+		File names of all tournament pictures in use (the sweep of public/media keeps these).
+
+		@return list<string>
+	*/
+	public function imagePaths(): array {
+		$names = [];
+		foreach ($this->db->fetchAll('SELECT image_path FROM tournaments WHERE image_path IS NOT NULL') as $row) {
+			$names[] = (string) $row['image_path'];
+		}
+		return $names;
 	}
 
 	public function update(int $id, array $fields): void {

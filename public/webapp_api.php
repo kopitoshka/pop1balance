@@ -3,8 +3,10 @@
 declare(strict_types=1);
 
 // Mini App API: player picker (bootstrap/search/submit) and the tournament form
-// (create_bootstrap/create_submit, edit_*), the team form (team_*) and the owner's player card (player_*,
-// opened by a context token or by the start_param of a Direct Mini App link). Auth is Telegram initData HMAC, not the webhook secret.
+// (create_bootstrap/create_submit, edit_*), the picture upload of that form (tournament_image:
+// multipart/form-data with the fields op, ctx, init_data and the file «image»), the team form (team_*)
+// and the owner's player card (player_*, opened by a context token or by the start_param of a Direct
+// Mini App link). Auth is Telegram initData HMAC, not the webhook secret.
 
 use P1Bot\App\CreateTournamentForm;
 use P1Bot\App\TeamForm;
@@ -42,6 +44,14 @@ function webapp_fail(int $status, string $error): void {
 }
 
 $body = webapp_read_body();
+if (str_starts_with(strtolower((string) ($_SERVER['CONTENT_TYPE'] ?? '')), 'multipart/form-data')) {
+	// A picture upload: the fields come as form fields. When the file is bigger than post_max_size
+	// PHP drops the whole body, so there is no op and no file at all.
+	if ($_POST === [] && $_FILES === []) {
+		webapp_fail(413, 'Файл слишком большой для сервера. Выбери картинку полегче.');
+	}
+	$body = $_POST + $body;
+}
 $op = (string) ($body['op'] ?? $_GET['op'] ?? '');
 $token = (string) ($body['ctx'] ?? $_GET['ctx'] ?? '');
 $init = (string) ($body['init_data'] ?? $_GET['init_data'] ?? '');
@@ -56,7 +66,7 @@ if ($op === '' || ($token === '' && !str_starts_with($op, 'player_'))) {
 		echo json_encode((new WebAppFormError(TeamForm::EXPIRED_TEXT, '', WebAppFormError::EXPIRED))->toArray(), JSON_UNESCAPED_UNICODE);
 		exit;
 	}
-	if ((str_starts_with($op, 'create_') || str_starts_with($op, 'edit_'))) {
+	if (str_starts_with($op, 'create_') || str_starts_with($op, 'edit_') || $op === 'tournament_image') {
 		http_response_code(400);
 		echo json_encode(
 			(new WebAppFormError(str_starts_with($op, 'edit_') ? CreateTournamentForm::EDIT_EXPIRED_TEXT : CreateTournamentForm::EXPIRED_TEXT, '', WebAppFormError::EXPIRED))->toArray(),
@@ -81,6 +91,13 @@ try {
 	} elseif ($op === 'edit_submit') {
 		$form = $body['form'] ?? [];
 		$result = $app->create_form->editSubmit($init, $token, is_array($form) ? $form : []);
+	} elseif ($op === 'tournament_image') {
+		$file = $_FILES['image'] ?? [];
+		$file = is_array($file) ? $file : [];
+		if (is_string($file['tmp_name'] ?? null) && $file['tmp_name'] !== '' && !is_uploaded_file($file['tmp_name'])) {
+			$file = ['error' => UPLOAD_ERR_NO_FILE];
+		}
+		$result = $app->create_form->imageUpload($init, $token, $file);
 	} elseif ($op === 'team_bootstrap') {
 		$result = $app->team_form->bootstrap($init, $token);
 	} elseif ($op === 'team_search') {

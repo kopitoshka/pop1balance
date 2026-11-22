@@ -26,6 +26,11 @@ use Throwable;
 */
 class DraftCards {
 	protected ?CreateTournamentForm $create_form = null;
+	protected ?TournamentImages $images = null;
+
+	public function setImages(?TournamentImages $images): void {
+		$this->images = $images;
+	}
 
 	public function setCreateForm(CreateTournamentForm $create_form): void {
 		$this->create_form = $create_form;
@@ -82,7 +87,9 @@ class DraftCards {
 		}
 		$text = $this->cardText($t);
 		$edit_button = $this->create_form !== null ? $this->create_form->editButton($t, $chat_id, $actor_id) : null;
-		$message_id = $this->api->sendMessage($chat_id, $text, $reply_to, TournamentCard::buttons($t->id, $edit_button));
+		// The picture of the draft shows above the card, so the author sees what will be posted.
+		$options = TournamentCard::buttons($t->id, $edit_button) + ($this->images?->previewOptions($t) ?? []);
+		$message_id = $this->api->sendMessage($chat_id, $text, $reply_to, $options);
 		$this->tournaments->setCardMessage($t->id, $message_id, $actor_id);
 
 		$history[] = ['role' => 'assistant', 'content' => self::plain($text)];

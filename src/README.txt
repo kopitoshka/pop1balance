@@ -92,7 +92,12 @@ App/ — сценарии над доменом
     CreateTournamentForm.php
         /create_tournament: предложение формы, кнопка под
         списком, Mini App создания черновика (initData HMAC)
-        и правки черновика («✏️ Поправить» на карточке)
+        и правки черновика («✏️ Поправить» на карточке);
+        загрузка картинки турнира (imageUpload)
+    TournamentImages.php
+        Картинки турниров: выключатель, публичный URL и
+        link_preview_options для сообщения об одном турнире
+        (Announcer, DraftCards, PrivateViews, /tournaments N)
     WebAppFormError.php
         Ошибка формы Mini App: поле + причина для JSON
     TeamCards.php
@@ -210,6 +215,8 @@ HttpClient, CurlHttpClient, HttpResponse, HttpError — для Telegram и OpenA
 Support/ — инфраструктура
 
 Database, Migrations, Clock / SystemClock / FixedRandom, Logger, DialogLog,
+ImageStore (файлы картинок в public/media: проверка, чистая копия в JPEG
+без метаданных, случайное имя, удаление, уборка сирот),
 SuLog (storage/logs/su.log: только операции /su), Env, DateFormat, RuPlural,
 Redact, …
 
@@ -235,9 +242,13 @@ PUBLIC/ — то, что отдает веб-сервер
 
 webhook.php     приём апдейтов Telegram
 webapp_api.php  API Mini App: уровень, форма турнира
-                (create_*, edit_*) и форма команды
+                (create_*, edit_*, tournament_image —
+                загрузка картинки, multipart) и форма команды
                 (team_bootstrap, team_search, team_submit,
                 team_contacts, team_leave, team_disband)
 webapp/         страницы Mini App (HTML/JS/CSS, без
                 сборки): picker.* уровень, create.*
                 форма /create_tournament, team.* команда
+media/          картинки турниров (создаёт и чистит бот; в git только
+                .gitignore). Веб-сервер отдаёт как статику; каталог
+                должен быть доступен на запись пользователю PHP

@@ -23,6 +23,7 @@ use P1Bot\Repository\PlayerRepository;
 use P1Bot\Repository\WebAppContextRepository;
 use P1Bot\Support\Clock;
 use P1Bot\Support\DialogLog;
+use P1Bot\Support\ImageStore;
 use P1Bot\Support\RuPlural;
 use P1Bot\Telegram\TelegramApi;
 use P1Bot\Telegram\TgUser;
@@ -99,6 +100,11 @@ class CreateTournamentForm {
 	}
 
 	protected ?PrivateViews $views = null;
+	protected ?TournamentImages $images = null;
+
+	public function setImages(?TournamentImages $images): void {
+		$this->images = $images;
+	}
 
 	public function setViews(?PrivateViews $views): void {
 		$this->views = $views;
@@ -308,6 +314,7 @@ class CreateTournamentForm {
 				'min_level' => Levels::pairBonusMinLevel(),
 				'offset' => Levels::pairBonusOffset(),
 			],
+			'images' => $this->images?->settings() ?? ['enabled' => false],
 		];
 	}
 
@@ -326,6 +333,7 @@ class CreateTournamentForm {
 			return ['ok' => true, 'close' => true, 'tournament_id' => $replay_id];
 		}
 		$create = $this->parse($input, $actor);
+		$image_plan = $this->imagePlan($input, $ctx['payload']);
 		$summary = $this->summary($create);
 		if ($this->dialogs !== null) {
 			// The card goes to the user's dialog log like any other reply.
@@ -362,6 +370,7 @@ class CreateTournamentForm {
 			} catch (DomainError $e) {
 				throw new WebAppFormError($e->getMessage());
 			}
+			$t = $this->commitImage($actor, $t, $image_plan, $token);
 			$this->announcer->renumber($t->id);
 			$this->pending->clearChat($actor->id, $ctx['chat_id']);
 			$this->drafts->show($t->id, $ctx['chat_id'], null, $actor->id, [
@@ -403,6 +412,7 @@ class CreateTournamentForm {
 			'levels' => $per_player ? $levels : [],
 			'points' => $t->max_points ?? $t->team_size * Levels::DEFAULT,
 			'max_players' => $t->max_players,
+			'image_url' => $this->images !== null && $this->images->enabled() ? $this->images->url($t->image_path) : null,
 		];
 	}
 
@@ -416,6 +426,7 @@ class CreateTournamentForm {
 	public function editSubmit(string $init_data, string $token, array $input): array {
 		[$actor, $ctx, $user, $t] = $this->authorizeEdit($init_data, $token);
 		$form = $this->parse($input, $actor, $t);
+		$image_plan = $this->imagePlan($input, $ctx['payload']);
 		$summary = $this->summary($form);
 		$level_same = $form->team_size === $t->team_size
 			&& $form->reference_team === ($t->reference_team ?? ($t->max_points !== null ? (string) $t->max_points : null));
@@ -443,6 +454,7 @@ class CreateTournamentForm {
 			} catch (DomainError $e) {
 				throw new WebAppFormError($e->getMessage());
 			}
+			$t = $this->commitImage($actor, $t, $image_plan, $token);
 			$this->announcer->renumber($t->id); // a new start time may change the order
 			$this->pending->clearChat($actor->id, $ctx['chat_id']);
 			if ($published) {
@@ -461,6 +473,132 @@ class CreateTournamentForm {
 			}
 		}
 		return ['ok' => true, 'close' => true, 'tournament_id' => $t->id];
+	}
+
+	/**
+		The picture field of a form: an upload (multipart op tournament_image) stores a processed file
+		and remembers it in the form context as pending_image. Nothing is attached to a tournament
+		until the form is saved with image = «new»; a replaced or abandoned upload is deleted.
+		Same access as the form itself: create — those who may create; edit — the author or a superadmin.
+
+		@param array<string, mixed> $file the PHP $_FILES entry: tmp_name, error, size
+		@return array{ok: true, url: string}
+	*/
+	public function imageUpload(string $init_data, string $token, array $file): array {
+		[$actor] = $this->authorizeImage($init_data, $token);
+		if ($this->images === null || !$this->images->enabled()) {
+			throw new WebAppFormError(TournamentImages::DISABLED_TEXT, 'image');
+		}
+		$limit = $this->images->store()->maxBytes();
+		$error = (int) ($file['error'] ?? UPLOAD_ERR_NO_FILE);
+		if ($error === UPLOAD_ERR_INI_SIZE || $error === UPLOAD_ERR_FORM_SIZE) {
+			throw new WebAppFormError(sprintf(
+				'Файл не прошёл по размеру. Выбери картинку полегче (до %s).',
+				ImageStore::megabytes($limit),
+			), 'image');
+		}
+		if ($error === UPLOAD_ERR_NO_FILE) {
+			throw new WebAppFormError('Файл не выбран.', 'image');
+		}
+		$path = (string) ($file['tmp_name'] ?? '');
+		if ($error !== UPLOAD_ERR_OK || $path === '' || !is_file($path)) {
+			throw new WebAppFormError('Не получилось загрузить файл. Попробуй ещё раз.', 'image');
+		}
+		// One byte more than the limit is enough to tell that the file is too big.
+		$bytes = (string) file_get_contents($path, false, null, 0, $limit + 1);
+		try {
+			$name = $this->images->save($bytes);
+		} catch (WebAppFormError $e) {
+			throw $e;
+		} catch (DomainError $e) {
+			throw new WebAppFormError($e->getMessage(), 'image');
+		}
+		$current = $this->contexts->find(trim($token), $this->clock->now());
+		$payload = $current['payload'] ?? [];
+		$previous = is_string($payload['pending_image'] ?? null) ? $payload['pending_image'] : null;
+		$payload['pending_image'] = $name;
+		$this->contexts->updatePayload(trim($token), $payload);
+		if ($previous !== null && $previous !== $name) {
+			$this->images->discard($previous);
+		}
+		return ['ok' => true, 'url' => (string) $this->images->url($name)];
+	}
+
+	/**
+		Create or edit context of the token, whichever it is, with that form's own access check.
+
+		@return array{0: Player, 1: array{token: string, actor_player_id: int, chat_id: int, action: string, payload: array<string, mixed>}}
+	*/
+	protected function authorizeImage(string $init_data, string $token): array {
+		$token = trim($token);
+		$peek = preg_match('/^[a-f0-9]{32}$/', $token) === 1 ? $this->contexts->find($token, $this->clock->now()) : null;
+		if ($peek !== null && $peek['action'] === self::ACTION_EDIT) {
+			[$actor, $ctx] = $this->authorizeEdit($init_data, $token);
+		} else {
+			[$actor, $ctx] = $this->authorize($init_data, $token);
+		}
+		return [$actor, $ctx];
+	}
+
+	/**
+		What the saved form asks for the picture: «keep» (default), «new» (the pending upload) or «remove».
+		Checked before anything is saved. With pictures off the field is ignored.
+
+		@param array<string, mixed> $input
+		@param array<string, mixed> $payload context payload
+		@return array{action: string}
+	*/
+	protected function imagePlan(array $input, array $payload): array {
+		if ($this->images === null || !$this->images->enabled()) {
+			return ['action' => 'keep'];
+		}
+		$choice = (string) ($input['image'] ?? 'keep');
+		if (!in_array($choice, ['new', 'remove'], true)) {
+			return ['action' => 'keep'];
+		}
+		if ($choice === 'new' && !$this->images->store()->exists(is_string($payload['pending_image'] ?? null) ? $payload['pending_image'] : null)) {
+			throw new WebAppFormError(TournamentImages::STALE_TEXT, 'image');
+		}
+		return ['action' => $choice];
+	}
+
+	/**
+		Applies the plan after the tournament is saved: attaches the pending upload (deleting the old
+		file) or clears the picture; an unused upload is deleted.
+
+		@param array{action: string} $plan
+	*/
+	protected function commitImage(Player $actor, Tournament $t, array $plan, string $token): Tournament {
+		if ($this->images === null) {
+			return $t;
+		}
+		$token = trim($token);
+		$current = $this->contexts->find($token, $this->clock->now());
+		$payload = $current['payload'] ?? [];
+		$pending = is_string($payload['pending_image'] ?? null) ? $payload['pending_image'] : null;
+		$old = $t->image_path;
+		try {
+			if ($plan['action'] === 'new' && $pending !== null) {
+				$t = $this->tournaments->setImage($actor->id, $t->id, $pending);
+				$pending = null;
+				if ($old !== null) {
+					$this->images->discard($old);
+				}
+			} elseif ($plan['action'] === 'remove') {
+				$t = $this->tournaments->setImage($actor->id, $t->id, null);
+				$this->images->discard($old);
+			}
+		} catch (PermissionDenied $e) {
+			throw new WebAppFormError($e->getMessage(), '', WebAppFormError::FORBIDDEN);
+		}
+		if ($pending !== null) {
+			$this->images->discard($pending);
+		}
+		if ($current !== null && isset($payload['pending_image'])) {
+			unset($payload['pending_image']);
+			$this->contexts->updatePayload($token, $payload);
+		}
+		return $t;
 	}
 
 	/**

@@ -97,7 +97,7 @@ class EditTournamentFormTest extends IntegrationTestCase {
 		self::assertSame('edit', $boot['mode']);
 		self::assertSame([
 			'id' => 1, 'number' => 1, 'title' => 'Кубок <тест>', 'date' => '2026-11-23', 'time' => '20:07',
-			'team_size' => 3, 'level_mode' => 'players', 'levels' => [3, 4, 5], 'points' => 13, 'max_players' => 30,
+			'team_size' => 3, 'level_mode' => 'players', 'levels' => [3, 4, 5], 'points' => 13, 'max_players' => 30, 'image_url' => null,
 		], $boot['tournament']);
 	}
 

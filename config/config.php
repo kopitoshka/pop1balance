@@ -63,6 +63,16 @@ return [
 		'pair_bonus_min_level' => 4,
 		'pair_bonus_offset' => 3,
 	],
+	// Tournament pictures (Mini App upload, shown as a link preview above one-tournament messages).
+	'media' => [
+		// 1/0: off hides the picture field in the forms and sends no previews
+		'tournament_images_enabled' => Env::bool('TOURNAMENT_IMAGES_ENABLED', true),
+		// Public URL of the public/media directory. Empty = derived from WEBHOOK_URL (same host and
+		// directory + /media). Set it when the pictures are served from another host or path.
+		'base_url' => Env::get('MEDIA_BASE_URL', ''),
+		// Largest upload in bytes (the PHP upload_max_filesize / post_max_size must allow it)
+		'max_bytes' => max(1024, Env::int('MEDIA_MAX_BYTES', 5242880)),
+	],
 	'admins_cache_minutes'     => Env::int('ADMINS_CACHE_MINUTES', 10),
 	'conversation_ttl_minutes' => Env::int('CONVERSATION_TTL_MINUTES', 30),
 	// The bot's name for the AI (she speaks in the feminine gender); empty = no name
@@ -82,6 +92,8 @@ return [
 		'logs'   => $root . '/storage/logs',
 		'prompt' => __DIR__ . '/prompts/system.md',
 		'runtime' => $root . '/storage/runtime',
+		// Processed tournament pictures; the web server serves it as <MEDIA_BASE_URL>/<file>
+		'media'  => $root . '/public/media',
 	],
 	// MTProto @username resolve (Telethon). Python binary is NOT an .env key.
 	'tg_api_id' => Env::int('TG_API_ID', 0),

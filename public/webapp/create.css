@@ -72,3 +72,12 @@ footer { position: sticky; bottom: 0; padding: 4px 0 env(safe-area-inset-bottom)
 /* Published tournament with registrations: team size and level are locked. */
 #level-lock:disabled { opacity: 0.55; }
 .lock-hint { margin: 0 0 10px; }
+
+/* Tournament picture (experimental, hidden when the feature is off). */
+.img-preview { margin: 0 0 8px; border-radius: 10px; overflow: hidden; background: var(--sec); }
+.img-preview img { display: block; width: 100%; max-height: 240px; object-fit: cover; }
+.img-actions { display: flex; gap: 8px; }
+.img-button { flex: 1; padding: 11px; border: 0; border-radius: 10px; background: var(--sec); color: var(--link); font-size: 15px; cursor: pointer; }
+.img-button:disabled { opacity: .5; cursor: default; }
+.img-remove { flex: 0 0 auto; color: var(--hint); }
+.sr-file { position: absolute; width: 1px; height: 1px; opacity: 0; overflow: hidden; pointer-events: none; }

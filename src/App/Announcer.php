@@ -37,7 +37,18 @@ class Announcer {
 		protected ?ChatRepository $chats = null,
 		protected ?TournamentAnnouncementRepository $announcements = null,
 		protected ?BalanceService $balances = null,
+		protected ?TournamentImages $images = null,
 	) {
+	}
+
+	/**
+		Extra sendMessage / editMessageText options of ONE tournament message: its picture as a
+		link preview above the text (nothing without a picture or with pictures off).
+
+		@return array<string, mixed>
+	*/
+	public function previewOptions(Tournament $t): array {
+		return $this->images !== null ? $this->images->previewOptions($t) : [];
 	}
 
 	/**
@@ -70,7 +81,7 @@ class Announcer {
 	public function publish(int $tournament_id): int {
 		$t = $this->tournaments->get($tournament_id);
 		$text = $this->text($t);
-		$markup = $this->markup($t);
+		$markup = $this->markup($t) + $this->previewOptions($t);
 		$messages = [];
 		$primary = 0;
 		$groups = $this->chats !== null ? $this->chats->listActiveGroups() : [];
@@ -108,7 +119,8 @@ class Announcer {
 				return;
 			}
 			$text = $this->text($t);
-			$markup = $this->markup($t);
+			// The preview is passed on every edit: without it Telegram would drop the picture.
+			$markup = $this->markup($t) + $this->previewOptions($t);
 			foreach ($targets as $chat_id => $message_id) {
 				try {
 					$this->api->editMessageText($chat_id, $message_id, $text, $markup);

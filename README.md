@@ -98,6 +98,9 @@ server {
     location /webapp/ {
         try_files $uri =404;
     }
+    location /media/ {              # tournament pictures (static files, no PHP)
+        try_files $uri =404;
+    }
     location / { return 404; }
 }
 ```
@@ -118,6 +121,17 @@ Apache (`/etc/httpd/conf.d/pop1bot.conf`, php-fpm via the default Remi handler):
 </VirtualHost>
 ```
 
+**Tournament pictures** (optional, see Usage → Tournament pictures) need three things from the web server:
+`public/media/` must be writable by the PHP user (`chown`/`chmod`, on SELinux also
+`chcon -R -t httpd_sys_rw_content_t public/media`); the web server must serve `public/media/` as plain static
+files at `https://<host>[/<dir>]/media/` (Apache with `DocumentRoot public/` does it by default, nginx needs the
+`location /media/` above); and PHP must accept the upload: `upload_max_filesize` and `post_max_size` at least as
+big as `MEDIA_MAX_BYTES` (default 5 MB; PHP's own default `upload_max_filesize` is 2M). The Mini App shrinks big
+photos in the browser to 1280 px first, so a phone photo is usually well below 1 MB anyway. Optional hardening:
+no PHP in that directory (Apache: `<Directory .../public/media> php_admin_flag engine off` or
+`RemoveHandler .php`; nginx: it already serves only static files there). Uploaded files are re-encoded to JPEG,
+never run as PHP.
+
 Telegram needs HTTPS with a valid certificate (e.g. `certbot --nginx -d pop1.example.com`).
 If SELinux is enforcing: `sudo chcon -R -t httpd_sys_rw_content_t /var/www/pop1bot/storage`
 and `sudo setsebool -P httpd_can_network_connect 1` (the bot calls Telegram and OpenAI).
@@ -135,6 +149,11 @@ and `sudo setsebool -P httpd_can_network_connect 1` (the bot calls Telegram and 
 | `OPENAI_MODEL` | default `gpt-6-luna` |
 | `OPENAI_REASONING_EFFORT` | default `low` |
 | `DB_HOST`, `DB_PORT`, `DB_NAME`, `DB_USER`, `DB_PASSWORD` | database (or `DB_DSN` with a full PDO DSN) |
+
+Tournament pictures (all optional): `TOURNAMENT_IMAGES_ENABLED` (1; 0 = feature off: no field in the form, no
+previews, uploads refused), `MEDIA_BASE_URL` (empty = derived from `WEBHOOK_URL`: same host and directory +
+`/media`; set it only when the pictures are served from another URL, no trailing slash), `MEDIA_MAX_BYTES`
+(5242880 = 5 MB). Defaults live in `config/config.php`.
 
 Optional: `DEFAULT_MAX_PLAYERS` (24), `ANYONE_CAN_CREATE_TOURNAMENT` (0), `ADMINS_CACHE_MINUTES` (10),
 `CONVERSATION_TTL_MINUTES` (30), `REMINDER_MINUTES` (`60,15`), `FINISH_AFTER_HOURS` (2), `OPENAI_TIMEOUT` (30),
@@ -327,6 +346,24 @@ Creating:
   The form creates a **draft** (optional origin `chat_id` for history) and shows its card **in private**
   ending with «Публикуем или что-то поправить?» and the buttons «✅ Публикуем» / «✏️ Поправить». On a
   clear confirmation the announcement goes into **every** active group. The form never publishes.
+- **Tournament pictures** (experiment, `TOURNAMENT_IMAGES_ENABLED`, migration 022 `tournaments.image_path`).
+  The create and edit forms have a «Картинка турнира» block: choose a file (JPEG, PNG or WebP, up to
+  `MEDIA_MAX_BYTES`), preview, «Заменить», «Убрать». The browser shrinks big photos to 1280 px, then the file
+  goes to `webapp_api.php` op `tournament_image` (multipart; initData HMAC + the form's context token: for
+  create anyone who may create, for edit only the tournament's author or a superadmin). The server checks the
+  type and the pixel count, turns the photo upright (EXIF), scales it to at most 1280×1920, flattens it on white
+  and writes a clean JPEG (no EXIF/GPS) as `public/media/<32 random hex>.jpg`: the name has no tournament id
+  and nothing else. Without the GD extension the original is stored as is (type still checked, metadata stays).
+  The upload only waits in the form context; it is attached when the form is saved with «Создать» / «Сохранить».
+  The old file is deleted on replace, on «Убрать», when a draft is deleted or expires; files nobody uses
+  (a form that was never saved) are removed by cron after a day. Every upload has a new random name because
+  Telegram caches link previews per URL.
+  Where it shows: every message about ONE tournament that has a picture — the group announcement (and its
+  edits), `/tournaments <N>`, the private tournament card (first message) and the draft card — is sent with
+  `link_preview_options {url: picture, prefer_large_media, show_above_text}` and no link in the text, so the
+  picture appears above the text. Lists with several tournaments, reminders and messages without a picture keep
+  the preview disabled. With the switch off nothing is shown or uploaded; the stored files and
+  `image_path` stay and show up again when it is turned on.
 - «✏️ Поправить» on a draft card opens the same form in edit mode (`create.html?ctx=…&mode=edit`,
   ops `edit_bootstrap` / `edit_submit`): prefilled, heading «Правка турнира», button «Сохранить».
   It saves through `TournamentService::edit` (author or owner) and sends the updated card.

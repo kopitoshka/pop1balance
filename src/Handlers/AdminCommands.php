@@ -282,7 +282,8 @@ class AdminCommands {
 		[$id] = self::splitId($args);
 		if ($id !== null) {
 			$t = $this->resolver->resolve($this->resolveScope($ctx), $id, TournamentStatus::infoable());
-			return $this->sendAllButLast($ctx, $this->announcer->infoMessages($t));
+			// One tournament: its picture is the preview of the first message. Lists below get none.
+			return $this->sendAllButLast($ctx, $this->announcer->infoMessages($t), $this->announcer->previewOptions($t));
 		}
 		if ($ctx->isPrivate() && $this->groups !== null) {
 			$groups = $this->groups->all();
@@ -320,11 +321,16 @@ class AdminCommands {
 		Sends all messages but the last one (as replies); the last one is returned for handle().
 
 		@param list<string> $messages
+		@param array<string, mixed> $first_options extra sendMessage options of the first message (a link preview)
 	*/
-	protected function sendAllButLast(Context $ctx, array $messages): string {
+	protected function sendAllButLast(Context $ctx, array $messages, array $first_options = []): string {
 		$last = (string) array_pop($messages);
-		foreach ($messages as $message) {
-			$this->api->sendMessage($ctx->chatId(), $message, $ctx->message->message_id);
+		foreach ($messages as $i => $message) {
+			$this->api->sendMessage($ctx->chatId(), $message, $ctx->message->message_id, $i === 0 ? $first_options : []);
+		}
+		if ($messages === []) {
+			// A single message goes out through handle(), with these options.
+			$this->reply_extra = $first_options + $this->reply_extra;
 		}
 		return $last;
 	}

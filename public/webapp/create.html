@@ -90,6 +90,17 @@
 					<p id="max_players-error" class="error" hidden></p>
 					<p id="teams-hint" class="hint"></p>
 				</section>
+				<section id="image-section" hidden>
+					<p class="label">Картинка турнира</p>
+					<div id="image-preview" class="img-preview" hidden><img id="image-img" alt="Картинка турнира"></div>
+					<div class="img-actions">
+						<button type="button" id="image-pick" class="img-button">Выбрать картинку</button>
+						<button type="button" id="image-remove" class="img-button img-remove" hidden>Убрать</button>
+					</div>
+					<input id="image-file" class="sr-file" type="file" accept="image/jpeg,image/png,image/webp" tabindex="-1" aria-label="Файл картинки">
+					<p id="image-hint" class="hint"></p>
+					<p id="image-error" class="error" hidden></p>
+				</section>
 			</fieldset>
 		</main>
 		<footer><button id="submit" type="submit" disabled>Создать черновик</button></footer>

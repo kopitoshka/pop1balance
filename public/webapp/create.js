@@ -27,6 +27,9 @@
 	var submitted = false;
 	var busy = false;
 	var closed = false;
+	// The tournament picture: keep = as it is, new = an uploaded file waits in the form context,
+	// remove = delete it on save. image_url is what the preview shows now.
+	var image = { action: 'keep', existing: '', url: '', uploading: false };
 	var view = { year: 0, month: 0 };
 
 	function $(id) {
@@ -71,6 +74,13 @@
 		sum_hint: $('sum-hint'),
 		max_players: $('max-players'),
 		teams_hint: $('teams-hint'),
+		image_section: $('image-section'),
+		image_preview: $('image-preview'),
+		image_img: $('image-img'),
+		image_pick: $('image-pick'),
+		image_remove: $('image-remove'),
+		image_file: $('image-file'),
+		image_hint: $('image-hint'),
 		submit: $('submit')
 	};
 
@@ -331,6 +341,7 @@
 		showFieldError('team_size', el.team_size, shown.team_size);
 		showFieldError('level', mode === 'sum' ? el.points : null, shown.level);
 		showFieldError('max_players', el.max_players, shown.max_players);
+		showFieldError('image', null, server_errors.image || image.error || '');
 
 		// Registration closes REGISTRATION_CLOSE_MINUTES before the start.
 		var start = parseMsk(el.date.value, el.time.value);
@@ -380,8 +391,150 @@
 		});
 
 		var ok = Object.keys(errors).length === 0;
-		el.submit.disabled = closed ? !tg : (busy || !ok);
+		el.submit.disabled = closed ? !tg : (busy || image.uploading || !ok);
 	}
+
+	// ---- tournament picture ----
+
+	function imagesOn() {
+		return !!(boot && boot.images && boot.images.enabled);
+	}
+
+	function renderImage() {
+		if (!imagesOn()) {
+			el.image_section.hidden = true;
+			return;
+		}
+		el.image_section.hidden = false;
+		el.image_preview.hidden = !image.url;
+		if (image.url && el.image_img.getAttribute('src') !== image.url) {
+			el.image_img.src = image.url;
+		}
+		el.image_pick.textContent = image.uploading ? 'Загружаю…' : (image.url ? 'Заменить' : 'Выбрать картинку');
+		el.image_pick.disabled = image.uploading;
+		el.image_remove.hidden = !image.url;
+		el.image_remove.disabled = image.uploading;
+		el.image_hint.textContent = 'JPEG, PNG или WebP, до ' + boot.images.max_text
+			+ '. Картинка покажется над турниром в группе.';
+	}
+
+	function setImageError(message) {
+		image.error = message || '';
+		delete server_errors.image;
+		render();
+	}
+
+	// Big photos are shrunk in the browser first: the upload is faster and fits the server limits.
+	function shrinkImage(file) {
+		var max_w = boot.images.max_width;
+		return new Promise(function (resolve) {
+			var url = URL.createObjectURL(file);
+			var img = new Image();
+			img.onload = function () {
+				URL.revokeObjectURL(url);
+				var w = img.naturalWidth;
+				var h = img.naturalHeight;
+				if (!w || (w <= max_w && file.size <= boot.images.max_bytes)) {
+					resolve(file);
+					return;
+				}
+				var scale = Math.min(1, max_w / w);
+				var canvas = document.createElement('canvas');
+				canvas.width = Math.max(1, Math.round(w * scale));
+				canvas.height = Math.max(1, Math.round(h * scale));
+				var c = canvas.getContext('2d');
+				c.fillStyle = '#fff';
+				c.fillRect(0, 0, canvas.width, canvas.height);
+				c.drawImage(img, 0, 0, canvas.width, canvas.height);
+				if (!canvas.toBlob) {
+					resolve(file);
+					return;
+				}
+				canvas.toBlob(function (blob) {
+					resolve(blob && (blob.size < file.size || file.size > boot.images.max_bytes) ? blob : file);
+				}, 'image/jpeg', 0.85);
+			};
+			img.onerror = function () {
+				URL.revokeObjectURL(url);
+				resolve(file);
+			};
+			img.src = url;
+		});
+	}
+
+	function uploadImage(file) {
+		var types = ['image/jpeg', 'image/png', 'image/webp'];
+		if (file.type && types.indexOf(file.type) === -1) {
+			setImageError('Подойдут только JPEG, PNG и WebP.');
+			return;
+		}
+		image.uploading = true;
+		image.error = '';
+		delete server_errors.image;
+		renderImage();
+		render();
+		shrinkImage(file).then(function (blob) {
+			if (blob.size > boot.images.max_bytes) {
+				throw Object.assign(new Error('Картинка тяжелее ' + boot.images.max_text + '. Выбери файл поменьше.'), { data: {} });
+			}
+			var body = new FormData();
+			body.append('op', 'tournament_image');
+			body.append('ctx', ctx);
+			body.append('init_data', tg ? tg.initData : '');
+			body.append('image', blob, blob === file ? (file.name || 'image') : 'image.jpg');
+			return fetch(API_URL, { method: 'POST', body: body }).then(function (res) {
+				return res.json().catch(function () {
+					return { ok: false, error: 'Не получилось загрузить картинку. Попробуй файл поменьше.' };
+				}).then(function (data) {
+					if (!res.ok || !data || data.ok === false) {
+						var err = new Error((data && data.error) || 'Не получилось загрузить картинку.');
+						err.data = data || {};
+						throw err;
+					}
+					return data;
+				});
+			}, function () {
+				var err = new Error('Нет связи. Проверь интернет и попробуй ещё раз.');
+				err.data = {};
+				throw err;
+			});
+		}).then(function (data) {
+			image.uploading = false;
+			image.action = 'new';
+			image.url = data.url;
+			renderImage();
+			render();
+		}).catch(function (err) {
+			image.uploading = false;
+			var reason = (err.data || {}).reason;
+			if (reason === 'expired' || reason === 'forbidden' || reason === 'not_draft') {
+				lockForm(err.message);
+				return;
+			}
+			renderImage();
+			setImageError(err.message);
+		});
+	}
+
+	el.image_pick.addEventListener('click', function () {
+		el.image_file.value = '';
+		el.image_file.click();
+	});
+	el.image_file.addEventListener('change', function () {
+		var file = el.image_file.files && el.image_file.files[0];
+		if (file) {
+			uploadImage(file);
+		}
+	});
+	el.image_remove.addEventListener('click', function () {
+		// A saved picture is deleted on save; a fresh upload that was never saved is just dropped.
+		image.action = image.existing ? 'remove' : 'keep';
+		image.url = '';
+		el.image_img.removeAttribute('src');
+		image.error = '';
+		renderImage();
+		render();
+	});
 
 	function renderSlots() {
 		el.slots.innerHTML = '';
@@ -500,6 +653,9 @@
 			data.levels = levels.slice();
 		}
 		data.opening_id = opening_id;
+		if (imagesOn()) {
+			data.image = image.action;
+		}
 		return data;
 	}
 
@@ -588,6 +744,11 @@
 				el.title.value = data.default_title;
 			}
 		}
+		if (form_mode === 'edit' && t && t.image_url) {
+			image.existing = t.image_url;
+			image.url = t.image_url;
+		}
+		renderImage();
 		fitTeamSize();
 		if (form_mode === 'edit' && t) {
 			setMode(t.level_mode);

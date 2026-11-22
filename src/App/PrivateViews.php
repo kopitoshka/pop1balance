@@ -37,6 +37,12 @@ class PrivateViews {
 		$this->create_form = $create_form;
 	}
 
+	public function setImages(?TournamentImages $images): void {
+		$this->images = $images;
+	}
+
+	protected ?TournamentImages $images = null;
+
 	/**
 		Sends the full tournament view; the last message carries the buttons.
 
@@ -51,7 +57,9 @@ class PrivateViews {
 		$message_id = 0;
 		foreach ($messages as $i => $text) {
 			$last = $i === count($messages) - 1;
-			$message_id = $this->api->sendMessage($chat_id, $text, $reply_to, $last ? $this->buttons($t, $player) : []);
+			// The picture is the preview of the first message only.
+			$options = ($last ? $this->buttons($t, $player) : []) + ($i === 0 ? $this->announcer->previewOptions($t) : []);
+			$message_id = $this->api->sendMessage($chat_id, $text, $reply_to, $options);
 		}
 		return $message_id;
 	}
