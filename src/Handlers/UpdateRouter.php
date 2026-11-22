@@ -167,7 +167,7 @@ class UpdateRouter {
 		$command = $message->command();
 		$is_our_command = $command !== null
 			&& ($command['bot'] === null || mb_strtolower($command['bot']) === mb_strtolower($this->bot->username))
-			&& $this->commands->supports($command['name']);
+			&& $this->commands->supportsFor($command['name'], $actor);
 		if (!$is_our_command && !$message->isAddressedTo($this->bot->username, $this->bot->bot_id)) {
 			if ($command !== null && $command['bot'] !== null && mb_strtolower($command['bot']) !== mb_strtolower($this->bot->username)) {
 				$reason = sprintf('ignored: command /%s@%s is for another bot', $command['name'], $command['bot']);
@@ -186,9 +186,11 @@ class UpdateRouter {
 			$message,
 			$actor,
 			$this->access->isChatAdmin($message->chat_id, $actor->id),
-			$this->access->isOwner($actor->id),
+			$this->access->isSuper($actor->id),
 			$message->chat_id,
 			$message->chat_title,
+			$this->access->hasSuRight($actor->id),
+			$this->access->canManageSu($actor->id),
 		);
 		$cmd = $is_our_command && $command !== null
 			? ['name' => mb_strtolower($command['name']), 'args' => $command['args']]

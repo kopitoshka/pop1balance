@@ -15,6 +15,7 @@ use P1Bot\App\PrivateGroups;
 use P1Bot\App\PendingTextGuard;
 use P1Bot\App\PlayerForm;
 use P1Bot\App\PlayerResolver;
+use P1Bot\App\SuperAdmin;
 use P1Bot\App\TournamentListing;
 use P1Bot\App\TournamentResolver;
 use P1Bot\Domain\AccessPolicy;
@@ -56,9 +57,15 @@ class AdminCommands {
 	protected const ADMIN = ['create_tournament', 'open'];
 
 	/**
-		Owner only for now (scales are hidden from users, see AccessPolicy::LEVELS_OWNER_ONLY).
+		Superadmins only: the bot owner, or a player with the /su right and the mode on
+		(scales are hidden from users, see AccessPolicy::LEVELS_OWNER_ONLY).
 	*/
 	protected const OWNER = ['players_import'];
+
+	/**
+		Hidden command: exists only for players with the /su right (see supportsFor).
+	*/
+	protected const SU = 'su';
 
 	protected const LEVEL_ALL_LIMIT = 80;
 
@@ -94,6 +101,7 @@ class AdminCommands {
 		protected ?PendingActionRepository $pending = null,
 		protected ?PlayersImport $players_import = null,
 		protected ?PlayersList $players_list = null,
+		protected ?SuperAdmin $super_admin = null,
 	) {
 	}
 
@@ -122,16 +130,27 @@ class AdminCommands {
 			|| in_array($command, self::OWNER, true);
 	}
 
+	/**
+		Like supports(), for a known author: /su exists only for those with the right. For everyone
+		else it is an unknown command, exactly like any other word.
+	*/
+	public function supportsFor(string $command, Player $actor): bool {
+		if ($command === self::SU) {
+			return $this->super_admin !== null && $this->super_admin->hasRight($actor);
+		}
+		return $this->supports($command);
+	}
+
 	public function handle(Context $ctx, string $command, string $args): void {
 		try {
-			if (in_array($command, self::OWNER, true) && !$ctx->is_owner) {
+			if (in_array($command, self::OWNER, true) && !$ctx->is_super) {
 				throw new PermissionDenied(AccessPolicy::OWNER_ONLY);
 			}
 			// /create_tournament: CreateAccess (shared group with owner, or ANYONE_CAN_CREATE). Manage: author|owner only.
 			if (in_array($command, self::CREATE, true)) {
 				if ($this->create_access !== null) {
 					$this->create_access->assertCanCreate($ctx->actor->id);
-				} elseif (!$ctx->is_admin && !$ctx->is_owner) {
+				} elseif (!$ctx->is_admin && !$ctx->is_super) {
 					throw new PermissionDenied(CreateAccess::REFUSAL);
 				}
 			}
@@ -167,7 +186,7 @@ class AdminCommands {
 			case 'help':
 			case 'start':
 				if ($ctx->isPrivate()) {
-					return Texts::help($this->bot->username, $this->canCreate($ctx), $ctx->is_owner);
+					return Texts::help($this->bot->username, $this->canCreate($ctx), $ctx->is_super, $ctx->can_su, $ctx->can_manage_su);
 				}
 				$this->reply_extra = DeepLink::button(
 					Messages::GROUP_REDIRECT_BUTTON,
@@ -198,8 +217,65 @@ class AdminCommands {
 				return $this->levelCommand($ctx, $args);
 			case 'nick':
 				return $this->nickCommand($ctx, $args);
+			case self::SU:
+				return $this->suCommand($ctx, $args);
 		}
 		return '';
+	}
+
+	/**
+		/su | /su on | /su off | /su grant @ник | /su revoke @ник | /su list. Works in groups and in private.
+		Without the right the command does not exist (supportsFor); this guard is a second lock.
+	*/
+	protected function suCommand(Context $ctx, string $args): string {
+		if ($this->super_admin === null || !$this->super_admin->hasRight($ctx->actor)) {
+			return 'Такой команды я не знаю 🤔 Подсказка: /help';
+		}
+		$args = trim($args);
+		if ($args === '') {
+			return $this->super_admin->status($ctx->actor);
+		}
+		$parts = preg_split('/\s+/u', $args, 2) ?: [];
+		$rest = trim($parts[1] ?? '');
+		switch (mb_strtolower($parts[0])) {
+			case 'on':
+				return $this->super_admin->setMode($ctx->actor, true);
+			case 'off':
+				return $this->super_admin->setMode($ctx->actor, false);
+			case 'list':
+				return $this->super_admin->listRights($ctx->actor);
+			case 'grant':
+				return $this->super_admin->grant($ctx->actor, $this->suTarget($ctx, $rest));
+			case 'revoke':
+				return $this->super_admin->revoke($ctx->actor, $this->suTarget($ctx, $rest));
+		}
+		return $this->super_admin->usage($ctx->actor);
+	}
+
+	/**
+		The player for /su grant|revoke: a mention, a reply, an @username or an in-game nick.
+	*/
+	protected function suTarget(Context $ctx, string $reference): Player {
+		$mentions = $ctx->message->mentionedUsers($this->bot->username);
+		try {
+			if ($mentions !== []) {
+				$first = $mentions[0];
+				return isset($first['user'])
+					? $this->player_resolver->fromUser($first['user'])
+					: $this->player_resolver->fromReference('@' . $first['username'], $ctx->actor);
+			}
+			if ($reference !== '') {
+				return $this->player_resolver->fromReference($reference, $ctx->actor);
+			}
+		} catch (PlayerSuggestError $e) {
+			// DomainError messages are escaped by handle(): plain text here.
+			$names = array_map(static fn (Player $p): string => $p->plainLabel(), $e->suggestions);
+			throw new ValidationError('Не нашла такого игрока среди знакомых. Похожие: ' . implode(', ', $names) . '. Напиши точнее.');
+		}
+		if ($ctx->message->reply_to_from !== null && !$ctx->message->reply_to_from->is_bot) {
+			return $this->player_resolver->fromUser($ctx->message->reply_to_from);
+		}
+		throw new ValidationError('Укажи игрока: /su grant @ник или /su revoke @ник.');
 	}
 
 	protected function listTournaments(Context $ctx, string $args = ''): string {
@@ -210,9 +286,9 @@ class AdminCommands {
 		}
 		if ($ctx->isPrivate() && $this->groups !== null) {
 			$groups = $this->groups->all();
-			$messages = $this->listing->privateMessages($groups, $ctx->actor->id, $ctx->is_owner);
+			$messages = $this->listing->privateMessages($groups, $ctx->actor->id, $ctx->is_super);
 			$this->reply_extra = $this->withCreateButton(TournamentListing::openButtons(
-				$this->listing->privateTournaments($groups, $ctx->actor->id, $ctx->is_owner),
+				$this->listing->privateTournaments($groups, $ctx->actor->id, $ctx->is_super),
 				$groups,
 			), $ctx);
 			if ($messages === []) {
@@ -433,7 +509,7 @@ class AdminCommands {
 		who tries to change their own level gets a shorter refusal.
 	*/
 	protected function assertCanSetLevel(Context $ctx, Player $player): void {
-		if ($ctx->is_owner) {
+		if ($ctx->is_super) {
 			return;
 		}
 		if ($player->id === $ctx->actor->id) {
@@ -501,18 +577,18 @@ class AdminCommands {
 				? sprintf('Твой уровень: %s (%d)', Levels::name($explicit), $explicit)
 				: sprintf('%s — %s (%d)', Html::e($player->plainLabel()), Levels::name($explicit), $explicit);
 		}
-		return $body . $this->levelFooter($ctx->is_owner, $ctx->isPrivate());
+		return $body . $this->levelFooter($ctx->is_super, $ctx->isPrivate());
 	}
 
 	protected function listAllLevels(Context $ctx): string {
 		$scale_id = $this->balances->viewScaleId();
 		$scale = $scale_id !== null ? $this->balances->findDefault() : null;
 		if ($scale === null) {
-			return 'Пока никому уровень не ставили 🙂' . $this->levelFooter($ctx->is_owner, $ctx->isPrivate());
+			return 'Пока никому уровень не ставили 🙂' . $this->levelFooter($ctx->is_super, $ctx->isPrivate());
 		}
 		$ratings = $this->balances->effectiveRatings($scale->id);
 		if ($ratings === []) {
-			return 'Пока никому уровень не ставили 🙂' . $this->levelFooter($ctx->is_owner, $ctx->isPrivate());
+			return 'Пока никому уровень не ставили 🙂' . $this->levelFooter($ctx->is_super, $ctx->isPrivate());
 		}
 		$rows = [];
 		foreach ($ratings as $player_id => $rating) {
@@ -541,12 +617,12 @@ class AdminCommands {
 		if ($total > self::LEVEL_ALL_LIMIT) {
 			$lines[] = sprintf('<i>…и ещё %d</i>', $total - self::LEVEL_ALL_LIMIT);
 		}
-		return implode("\n", $lines) . $this->levelFooter($ctx->is_owner, $ctx->isPrivate());
+		return implode("\n", $lines) . $this->levelFooter($ctx->is_super, $ctx->isPrivate());
 	}
 
-	protected function levelFooter(bool $is_owner, bool $is_private): string {
+	protected function levelFooter(bool $is_super, bool $is_private): string {
 		$footer = "\n\nКак устроены уровни — /help_level, все игроки — /players";
-		if ($is_owner && $is_private) {
+		if ($is_super && $is_private) {
 			$footer .= "\nПоставить: /level @ник 4";
 		}
 		return $footer;
@@ -560,7 +636,7 @@ class AdminCommands {
 			$this->reply_extra,
 			$ctx->actor,
 			$ctx->chatId(),
-			$ctx->is_owner,
+			$ctx->is_super,
 		);
 	}
 
@@ -623,7 +699,7 @@ class AdminCommands {
 		}
 
 		if ($owner_form && $target !== null && $rest !== '') {
-			if (!$ctx->is_owner) {
+			if (!$ctx->is_super) {
 				throw new PermissionDenied(AccessPolicy::OWNER_ONLY);
 			}
 			$result = $this->nicks->assignByOwner($ctx->actor->id, $target->id, $rest);
@@ -672,7 +748,7 @@ class AdminCommands {
 		if ($own) {
 			$text .= "\nСменить: <code>/nick игровой_ник</code>";
 		}
-		if ($ctx->is_owner && $own) {
+		if ($ctx->is_super && $own) {
 			$text .= "\nПоставить другому: /nick @user НикВИгре";
 		}
 		return $text;
@@ -743,7 +819,7 @@ class AdminCommands {
 		if ($this->create_access !== null) {
 			return $this->create_access->canCreate($ctx->actor->id);
 		}
-		return $ctx->is_admin || $ctx->is_owner;
+		return $ctx->is_admin || $ctx->is_super;
 	}
 
 	/**
@@ -806,9 +882,9 @@ class AdminCommands {
 			return 'Пока я не знаю ни одного игрока 🙂';
 		}
 		$chunks = $this->players_list->messages(
-			$ctx->is_owner,
+			$ctx->is_super,
 			$ctx->isPrivate(),
-			$this->players_list->editLinkCallback($ctx->is_owner, $ctx->isPrivate()),
+			$this->players_list->editLinkCallback($ctx->is_super, $ctx->isPrivate()),
 		);
 		$last = (string) array_pop($chunks);
 		foreach ($chunks as $chunk) {
@@ -875,7 +951,7 @@ class AdminCommands {
 			);
 			return;
 		}
-		if (!$ctx->is_owner) {
+		if (!$ctx->is_super) {
 			$this->api->sendMessage($ctx->chatId(), AccessPolicy::OWNER_ONLY, $ctx->message->message_id);
 			return;
 		}
@@ -944,7 +1020,7 @@ class AdminCommands {
 		}
 		$args = trim($args);
 		if ($args !== '') {
-			if (!$ctx->is_owner && !$this->canCreate($ctx)) {
+			if (!$ctx->is_super && !$this->canCreate($ctx)) {
 				throw new PermissionDenied('Добавлять игроков по имени могут только создатели турниров и главный админ.');
 			}
 			if ($this->nicks === null) {

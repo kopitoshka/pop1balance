@@ -85,7 +85,7 @@ class NickService {
 		@return array{player: Player, previous_holder: ?Player}
 	*/
 	public function assignByOwner(int $owner_id, int $target_id, string $raw): array {
-		$this->access->assertOwner($owner_id);
+		$this->access->assertSuper($owner_id);
 		[$ign, $norm] = self::parse($raw);
 		return $this->db->transactional(function () use ($owner_id, $target_id, $ign, $norm): array {
 			$holder = $this->players->findByIgnNorm($norm);
@@ -105,7 +105,7 @@ class NickService {
 		goes to the history.
 	*/
 	public function setByOwner(int $owner_id, int $target_id, ?string $raw): Player {
-		$this->access->assertOwner($owner_id);
+		$this->access->assertSuper($owner_id);
 		if ($raw === null || trim($raw) === '') {
 			return $this->db->transactional(function () use ($owner_id, $target_id): Player {
 				$this->clear($target_id, $owner_id);

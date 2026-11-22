@@ -16,14 +16,19 @@ class Context {
 		@param int|null $group_id the group whose tournaments this message is about; in a group it is
 			the group itself, in a private chat the group chosen for the player (null = not chosen)
 		@param string $group_title title of that group (for the AI context in private)
+		@param bool $is_super the bot-owner abilities are on (AccessPolicy::isSuper)
+		@param bool $can_su the player has the /su right (shown in /help)
+		@param bool $can_manage_su the player may /su grant, revoke and list
 	*/
 	public function __construct(
 		public Message $message,
 		public Player $actor,
 		public bool $is_admin,
-		public bool $is_owner = false,
+		public bool $is_super = false,
 		public ?int $group_id = null,
 		public string $group_title = '',
+		public bool $can_su = false,
+		public bool $can_manage_su = false,
 	) {
 	}
 

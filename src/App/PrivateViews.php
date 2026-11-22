@@ -123,16 +123,16 @@ class PrivateViews {
 
 		@return int id of the last message
 	*/
-	public function list(int $chat_id, Player $player, bool $is_owner, string $intro = ''): int {
+	public function list(int $chat_id, Player $player, bool $is_super, string $intro = ''): int {
 		$groups = $this->groups->all();
-		$messages = $this->listing->privateMessages($groups, $player->id, $is_owner);
+		$messages = $this->listing->privateMessages($groups, $player->id, $is_super);
 		if ($messages === []) {
 			$messages = [($intro !== '' ? $intro . "\n\n" : '') . 'Сейчас активных турниров нет. Как только появятся — анонс будет в группе.'];
 		} elseif ($intro !== '') {
 			array_unshift($messages, $intro);
 		}
 		$buttons = TournamentListing::openButtons(
-			$this->listing->privateTournaments($groups, $player->id, $is_owner),
+			$this->listing->privateTournaments($groups, $player->id, $is_super),
 			$groups,
 		);
 		if ($this->create_form !== null) {

@@ -17,6 +17,8 @@ class Player {
 		public ?string $ign = null,
 		public ?string $ign_norm = null,
 		public ?string $deleted_at = null,
+		public bool $can_su = false,
+		public ?bool $su_mode = null,
 	) {
 	}
 
@@ -34,6 +36,8 @@ class Player {
 				? (string) $row['ign_norm']
 				: null,
 			isset($row['deleted_at']) && $row['deleted_at'] !== '' ? (string) $row['deleted_at'] : null,
+			!empty($row['can_su']),
+			isset($row['su_mode']) && $row['su_mode'] !== '' ? (bool) $row['su_mode'] : null,
 		);
 	}
 

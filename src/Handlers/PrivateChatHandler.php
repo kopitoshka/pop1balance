@@ -130,7 +130,7 @@ class PrivateChatHandler {
 				}
 				return ['kind' => self::START] + $decision;
 			}
-			if (!$this->commands->supports($name)) {
+			if (!$this->commands->supportsFor($name, $actor)) {
 				return ['kind' => self::UNKNOWN_COMMAND] + $decision;
 			}
 			return ['kind' => self::COMMAND] + $decision;
@@ -192,7 +192,7 @@ class PrivateChatHandler {
 		) {
 			$this->pending_guard->abortOnCommand($actor->id, $chat_id);
 		}
-		$is_owner = $this->access->isOwner($actor->id);
+		$is_super = $this->access->isSuper($actor->id);
 		$first_name = $message->from !== null ? $message->from->first_name : '';
 		switch ($decision['kind']) {
 			case self::START_TOURNAMENT:
@@ -200,7 +200,7 @@ class PrivateChatHandler {
 				return;
 			case self::START_GROUP:
 				$this->groups->choose($actor->id, (int) $decision['group']);
-				$this->views->list($chat_id, $actor, $is_owner, Texts::welcome($first_name));
+				$this->views->list($chat_id, $actor, $is_super, Texts::welcome($first_name));
 				return;
 			case self::START:
 				if (
@@ -218,7 +218,7 @@ class PrivateChatHandler {
 				// Deep links and first-open /start stay handled; a bare /start shows help, not the list.
 				$this->api->sendMessage(
 					$chat_id,
-					Texts::help($this->bot->username, $this->canCreate($actor), $is_owner),
+					Texts::help($this->bot->username, $this->canCreate($actor), $is_super, ...$this->suHelp($actor)),
 				);
 				return;
 			case self::UNKNOWN_COMMAND:
@@ -228,7 +228,7 @@ class PrivateChatHandler {
 				$ctx = $this->context($message, $actor);
 				$this->api->sendMessage(
 					$chat_id,
-					Texts::help($this->bot->username, $this->canCreate($actor), $is_owner),
+					Texts::help($this->bot->username, $this->canCreate($actor), $is_super, ...$this->suHelp($actor)),
 				);
 				return;
 			case self::LEVELS:
@@ -236,7 +236,7 @@ class PrivateChatHandler {
 				$this->api->sendMessage($chat_id, Texts::levels(), $message->message_id);
 				return;
 			case self::TOURNAMENTS:
-				$this->views->list($chat_id, $actor, $is_owner);
+				$this->views->list($chat_id, $actor, $is_super);
 				return;
 			case self::COMMAND:
 				$this->commands->handle(
@@ -260,7 +260,7 @@ class PrivateChatHandler {
 		manage rights are still author|owner per tournament.
 	*/
 	public function context(Message $message, Player $actor): Context {
-		$is_owner = $this->access->isOwner($actor->id);
+		$is_super = $this->access->isSuper($actor->id);
 		$group_id = $this->groups->current($actor->id);
 		if ($group_id !== null) {
 			$this->admin_sync->syncIfStale($group_id);
@@ -269,10 +269,20 @@ class PrivateChatHandler {
 			$message,
 			$actor,
 			$this->canCreate($actor),
-			$is_owner,
+			$is_super,
 			$group_id,
 			$group_id !== null ? $this->groups->title($group_id) : '',
+			...$this->suHelp($actor),
 		);
+	}
+
+	/**
+		What /help shows about /su: [has the right, may grant/revoke/list].
+
+		@return array{0: bool, 1: bool}
+	*/
+	protected function suHelp(Player $actor): array {
+		return [$this->access->hasSuRight($actor->id), $this->access->canManageSu($actor->id)];
 	}
 
 	protected function canCreate(Player $actor): bool {
@@ -305,7 +315,7 @@ class PrivateChatHandler {
 	protected function startTournament(Message $message, Player $actor, int $tournament_id): void {
 		$chat_id = $message->chat_id;
 		$first_name = $message->from !== null ? $message->from->first_name : '';
-		$is_owner = $this->access->isOwner($actor->id);
+		$is_super = $this->access->isSuper($actor->id);
 		try {
 			$t = $this->tournaments->get($tournament_id);
 		} catch (DomainError $e) {
@@ -319,7 +329,7 @@ class PrivateChatHandler {
 			$this->views->list(
 				$chat_id,
 				$actor,
-				$is_owner,
+				$is_super,
 				Texts::welcome($first_name) . "\n\nЭтот турнир уже не активен. Вот что есть сейчас:",
 			);
 			return;

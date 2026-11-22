@@ -29,7 +29,7 @@ class PlayersList {
 		@param (callable(int): ?string)|null $edit_link player id → Mini App URL, or null for no pencils
 		@return list<string>
 	*/
-	public function messages(bool $is_owner, bool $is_private, ?callable $edit_link = null): array {
+	public function messages(bool $is_super, bool $is_private, ?callable $edit_link = null): array {
 		$scale = $this->balances->viewScaleId() !== null ? $this->balances->findDefault() : null;
 		$ratings = $scale !== null ? $this->balances->effectiveRatings($scale->id) : [];
 		$by_level = [6 => [], 5 => [], 4 => [], 3 => [], 2 => [], 1 => [], 0 => []];
@@ -42,7 +42,7 @@ class PlayersList {
 		if ($total === 0) {
 			return ['Пока я не знаю ни одного игрока 🙂'];
 		}
-		$edit = $edit_link !== null && $is_owner && $is_private;
+		$edit = $edit_link !== null && $is_super && $is_private;
 		$lines = ['📋 <b>Игроки</b> — ' . $total];
 		foreach ($by_level as $level => $list) {
 			if ($list === []) {
@@ -66,7 +66,7 @@ class PlayersList {
 		if ($edit) {
 			$footer .= "\n✏️ — карточка игрока: ник, уровень, @username, объединить дубли, удалить";
 		}
-		if ($is_owner && $is_private) {
+		if ($is_super && $is_private) {
 			$footer .= "\nПоставить уровень: /level @ник 4, ник: /nick @ник НикВИгре";
 		} elseif (!$is_private) {
 			$footer .= "\nПоставить свой ник можно у меня в личке.";
@@ -82,8 +82,8 @@ class PlayersList {
 
 		@return (callable(int): ?string)|null
 	*/
-	public function editLinkCallback(bool $is_owner, bool $is_private): ?callable {
-		if (!$is_owner || !$is_private || $this->player_form === null || !$this->player_form->canLink()) {
+	public function editLinkCallback(bool $is_super, bool $is_private): ?callable {
+		if (!$is_super || !$is_private || $this->player_form === null || !$this->player_form->canLink()) {
 			return null;
 		}
 		$form = $this->player_form;

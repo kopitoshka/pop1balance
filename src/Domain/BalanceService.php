@@ -5,7 +5,6 @@ declare(strict_types=1);
 namespace P1Bot\Domain;
 
 use P1Bot\Domain\Exception\NotFound;
-use P1Bot\Domain\Exception\PermissionDenied;
 use P1Bot\Domain\Exception\ValidationError;
 use P1Bot\Domain\Model\Balance;
 use P1Bot\Repository\BalanceRepository;
@@ -60,7 +59,7 @@ class BalanceService {
 	*/
 	public function create(int $chat_id, int $actor_id, string $name, ?int $based_on_id = null): Balance {
 		// Owner only for now: see AccessPolicy::LEVELS_OWNER_ONLY.
-		$this->access->assertOwner($actor_id);
+		$this->access->assertSuper($actor_id);
 		$name = trim($name);
 		if ($name === '' || mb_strlen($name) > 128) {
 			throw new ValidationError('Название шкалы должно быть от 1 до 128 символов.');
@@ -73,7 +72,7 @@ class BalanceService {
 
 	/**
 		Sets a player's level. Without $balance_id the actor's own scale is used; an admin who has
-		no scale yet gets one inheriting from the default scale. Only the owner may edit a scale.
+		no scale yet gets one inheriting from the default scale. Only a superadmin may edit a scale (every superadmin may edit any).
 	*/
 	public function setLevel(
 		int $chat_id,
@@ -84,7 +83,7 @@ class BalanceService {
 	): Balance {
 		Levels::assertValid($level);
 		// Owner only for now: see AccessPolicy::LEVELS_OWNER_ONLY.
-		$this->access->assertOwner($actor_id, AccessPolicy::LEVELS_OWNER_ONLY);
+		$this->access->assertSuper($actor_id, AccessPolicy::LEVELS_OWNER_ONLY);
 		if ($this->players->find($player_id) === null) {
 			throw new NotFound('Такого игрока я не знаю.');
 		}
@@ -94,12 +93,7 @@ class BalanceService {
 			$balance = $balance_id === null
 				? ($this->findDefault() ?? $this->ownScaleFor($actor_id))
 				: $this->get($balance_id);
-			if ($balance->owner_id !== $actor_id) {
-				throw new PermissionDenied(sprintf(
-					'Шкала «%s» принадлежит другому админу, её менять нельзя.',
-					$balance->name,
-				));
-			}
+			// Every superadmin edits the shared scale, whoever created it (assertSuper above).
 			$this->balances->setRating($balance->id, $player_id, $level, $actor_id, $this->clock->now());
 			return $balance;
 		});
@@ -109,14 +103,8 @@ class BalanceService {
 		Removes the rating from the actor's scale so the inherited (or default) level applies again.
 	*/
 	public function resetLevel(int $chat_id, int $actor_id, int $player_id, int $balance_id): void {
-		$this->access->assertOwner($actor_id, AccessPolicy::LEVELS_OWNER_ONLY);
-		$balance = $this->get($balance_id);
-		if ($balance->owner_id !== $actor_id) {
-			throw new PermissionDenied(sprintf(
-				'Шкала «%s» принадлежит другому админу, её менять нельзя.',
-				$balance->name,
-			));
-		}
+		$this->access->assertSuper($actor_id, AccessPolicy::LEVELS_OWNER_ONLY);
+		$this->get($balance_id);
 		$this->balances->deleteRating($balance_id, $player_id);
 	}
 

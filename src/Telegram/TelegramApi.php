@@ -58,4 +58,17 @@ interface TelegramApi {
 	*/
 	public function setWebhook(string $url, string $secret_token, array $allowed_updates): void;
 
+	/**
+		@param list<array{command: string, description: string}> $commands
+		@param array<string, mixed>|null $scope BotCommandScope, e.g. ['type' => 'chat', 'chat_id' => 1]
+	*/
+	public function setMyCommands(array $commands, ?array $scope = null): void;
+
+	/**
+		Drops the menu of that scope; Telegram then falls back to the next wider scope.
+
+		@param array<string, mixed>|null $scope
+	*/
+	public function deleteMyCommands(?array $scope = null): void;
+
 }

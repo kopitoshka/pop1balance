@@ -78,7 +78,7 @@ class GroupChat {
 		$message = $ctx->message;
 		if ($command !== null) {
 			$name = mb_strtolower($command['name']);
-			if (in_array($name, ['help', 'help_level', 'start', 'tournaments', 'info', 'level', 'players', 'create_tournament'], true)) {
+			if (in_array($name, ['help', 'help_level', 'start', 'tournaments', 'info', 'level', 'players', 'create_tournament', 'su'], true)) {
 				if ($name === 'level' && preg_match('/^all\b/ui', $command['args'])) {
 					$this->redirectManage($message, 'level');
 					return;

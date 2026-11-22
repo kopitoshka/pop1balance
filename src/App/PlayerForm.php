@@ -23,9 +23,10 @@ use P1Bot\View\Html;
 use P1Bot\View\WebAppUrl;
 
 /**
-	The owner's player card (public/webapp/player.html): nick, level, @username, preferred team
-	name, merge a duplicate, delete. Owner only, everywhere: every API call checks the initData
-	user against BOT_OWNER_TG_ID, a link or a token never grants access by itself.
+	The superadmin's player card (public/webapp/player.html): nick, level, @username, preferred team
+	name, the «Может включать /su» right, merge a duplicate, delete. Superadmins only (the bot owner,
+	or a /su right with the mode on), everywhere: every API call checks the initData user, a link or
+	a token never grants access by itself.
 
 	Two ways in, both end on the same page and the same API:
 	- Direct Mini App link t.me/<bot>/<short name>?startapp=p<player id> (TELEGRAM_MINIAPP_SHORT_NAME,
@@ -58,6 +59,7 @@ class PlayerForm {
 		protected string $webhook_url,
 		protected string $bot_username,
 		protected string $miniapp_short_name = '',
+		protected ?SuperAdmin $super_admin = null,
 	) {
 	}
 
@@ -92,7 +94,7 @@ class PlayerForm {
 		if (preg_match('/^' . self::DEEP_LINK_PREFIX . '(\d+)$/D', $payload, $m) !== 1) {
 			return false;
 		}
-		if (!$this->access->isOwner($actor->id)) {
+		if (!$this->access->isSuper($actor->id)) {
 			$this->api->sendMessage($chat_id, Html::e(AccessPolicy::OWNER_ONLY), $reply_to);
 			return true;
 		}
@@ -120,7 +122,7 @@ class PlayerForm {
 		@return array<string, mixed>
 	*/
 	public function bootstrap(string $init_data, string $token): array {
-		[, $player] = $this->authorize($init_data, $token);
+		[$actor, $player] = $this->authorize($init_data, $token);
 		$scale_id = $this->balances->viewScaleId();
 		$explicit = $scale_id === null ? null : $this->balances->explicitLevel($scale_id, $player->id);
 		$levels = [];
@@ -141,8 +143,11 @@ class PlayerForm {
 				'tg_bound' => $player->tg_user_id !== null,
 				'tg_id' => $player->tg_user_id,
 				'dm_ok' => $player->tg_user_id !== null && $this->players->dmOk($player->id),
-				'is_owner' => $this->access->isOwner($player->id),
+				'is_owner' => $this->access->isBotOwner($player->id),
+				'can_su' => $this->access->hasSuRight($player->id),
 			],
+			// The checkbox follows the same rule as /su grant and revoke.
+			'can_manage_su' => $this->super_admin !== null && $this->access->canManageSu($actor->id),
 			'levels' => $levels,
 			'default_level' => Levels::DEFAULT,
 			'default_level_name' => Levels::name(Levels::DEFAULT),
@@ -189,10 +194,19 @@ class PlayerForm {
 	*/
 	public function save(string $init_data, string $token, array $form): array {
 		[$actor, $player] = $this->authorize($init_data, $token);
+		$can_su = array_key_exists('can_su', $form) ? (bool) $form['can_su'] : null;
+		unset($form['can_su']);
 		try {
 			$this->admin->save($actor->id, $player->id, $form);
 		} catch (FieldError $e) {
 			throw new WebAppFormError($e->getMessage(), $e->field, WebAppFormError::INVALID, $e->fields);
+		}
+		if ($can_su !== null && $this->super_admin !== null) {
+			// A fresh row: the form may have just unbound Telegram from this card.
+			$fresh = $this->players->find($player->id);
+			if ($fresh !== null) {
+				$this->super_admin->setRight($actor, $fresh, $can_su);
+			}
 		}
 		return $this->done($token);
 	}
@@ -237,7 +251,7 @@ class PlayerForm {
 		$this->contexts->purgeExpired($this->clock->now());
 		$parsed = WebAppInitData::parse($init_data, $this->bot_token, $this->clock->now()->getTimestamp());
 		$actor = $this->players->findByTelegramId($parsed['user_id']);
-		if ($actor === null || !$this->access->isOwner($actor->id)) {
+		if ($actor === null || !$this->access->isSuper($actor->id)) {
 			throw new WebAppFormError(AccessPolicy::OWNER_ONLY, '', WebAppFormError::FORBIDDEN);
 		}
 		$player_id = 0;

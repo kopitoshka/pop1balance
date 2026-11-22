@@ -60,7 +60,7 @@ class PendingPlayerRunner {
 			return;
 		}
 		$action = $row['action'];
-		if (!empty($action['owner_only']) && !$this->access->isOwner($actor->id)) {
+		if (!empty($action['owner_only']) && !$this->access->isSuper($actor->id)) {
 			$this->api->answerCallbackQuery($callback_id, AccessPolicy::OWNER_ONLY, true);
 			return;
 		}
@@ -106,7 +106,7 @@ class PendingPlayerRunner {
 					: sprintf('%s — %s (%d)', Html::e($chosen->plainLabel()), Levels::name($explicit), $explicit);
 
 			case 'level_set':
-				if (!$this->access->isOwner($actor->id)) {
+				if (!$this->access->isSuper($actor->id)) {
 					throw new PermissionDenied(
 						$chosen->id === $actor->id ? AccessPolicy::LEVEL_SELF : AccessPolicy::LEVELS_OWNER_ONLY,
 					);
@@ -136,7 +136,7 @@ class PendingPlayerRunner {
 				if ($this->nicks === null) {
 					throw new ValidationError('Ники пока недоступны.');
 				}
-				if (!$this->access->isOwner($actor->id)) {
+				if (!$this->access->isSuper($actor->id)) {
 					throw new PermissionDenied(AccessPolicy::OWNER_ONLY);
 				}
 				$result = $this->nicks->assignByOwner($actor->id, $chosen->id, (string) ($action['ign'] ?? ''));
@@ -191,8 +191,8 @@ class PendingPlayerRunner {
 				$ctx = new Context(
 					$msg,
 					$actor,
-					$this->access->isOwner($actor->id),
-					$this->access->isOwner($actor->id),
+					$this->access->isSuper($actor->id),
+					$this->access->isSuper($actor->id),
 					null,
 					'',
 				);

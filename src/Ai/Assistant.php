@@ -205,7 +205,7 @@ class Assistant {
 	}
 
 	protected static function role(Context $ctx): string {
-		if ($ctx->is_owner) {
+		if ($ctx->is_super) {
 			return 'главный админ: создавать турниры и ставить уровни и ники он может командами и формами, не через тебя. Только он меняет уровни игроков.';
 		}
 		if ($ctx->is_admin) {

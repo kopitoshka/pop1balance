@@ -176,7 +176,7 @@ class PlayersImport {
 		}
 	*/
 	public function apply(int $actor_id, int $chat_id, string $text): array {
-		if (!$this->access->isOwner($actor_id)) {
+		if (!$this->access->isSuper($actor_id)) {
 			throw new PermissionDenied(AccessPolicy::OWNER_ONLY);
 		}
 		$parsed = self::parse($text);

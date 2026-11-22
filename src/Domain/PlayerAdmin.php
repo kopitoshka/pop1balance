@@ -64,7 +64,7 @@ class PlayerAdmin {
 		@param array<string, mixed> $form
 	*/
 	public function save(int $actor_id, int $player_id, array $form): Player {
-		$this->access->assertOwner($actor_id);
+		$this->access->assertSuper($actor_id);
 		$player = $this->get($player_id);
 		$changes = $this->validate($player, $form);
 		return $this->db->transactional(function () use ($actor_id, $player, $changes): Player {
@@ -140,7 +140,7 @@ class PlayerAdmin {
 			$current = $player->username !== null && $player->username !== '' ? $player->username : '';
 			if ($username !== $current) {
 				$bound = $player->tg_user_id !== null;
-				if ($this->access->isOwner($player->id)) {
+				if ($this->access->isBotOwner($player->id)) {
 					$errors['username'] = 'У главного админа @username не меняю: он подтягивается из Telegram.';
 				} elseif ($username === '') {
 					if ($bound) {
@@ -213,7 +213,7 @@ class PlayerAdmin {
 		@return list<string>
 	*/
 	public function deleteBlockers(int $player_id): array {
-		if ($this->access->isOwner($player_id)) {
+		if ($this->access->isBotOwner($player_id)) {
 			return ['это главный админ: его карточку удалять нельзя'];
 		}
 		$uses = $this->players->activeUses($player_id);
@@ -240,7 +240,7 @@ class PlayerAdmin {
 		Soft delete (see the class comment). Refused while deleteBlockers() is not empty.
 	*/
 	public function delete(int $actor_id, int $player_id): void {
-		$this->access->assertOwner($actor_id);
+		$this->access->assertSuper($actor_id);
 		$player = $this->get($player_id);
 		$this->db->transactional(function () use ($actor_id, $player): void {
 			$blockers = $this->deleteBlockers($player->id);
@@ -267,7 +267,7 @@ class PlayerAdmin {
 		if ($from->id === $into->id) {
 			return 'Выбери другого игрока: сам в себя карточку не слить.';
 		}
-		if ($this->access->isOwner($from->id)) {
+		if ($this->access->isBotOwner($from->id)) {
 			return 'Карточку главного админа в другую не сливаю. Влей другую карточку в неё.';
 		}
 		if ($from->tg_user_id !== null && $into->tg_user_id !== null) {
@@ -291,7 +291,7 @@ class PlayerAdmin {
 		PlayerRepository::absorb) and soft-deletes the duplicate.
 	*/
 	public function merge(int $actor_id, int $from_id, int $into_id): Player {
-		$this->access->assertOwner($actor_id);
+		$this->access->assertSuper($actor_id);
 		$from = $this->get($from_id);
 		$into = $this->get($into_id);
 		return $this->db->transactional(function () use ($actor_id, $from, $into): Player {

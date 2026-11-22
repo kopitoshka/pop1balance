@@ -64,7 +64,7 @@ class MessageHandler {
 		if (!empty($reply['help'])) {
 			$message_id = $this->api->sendMessage(
 				$chat_id,
-				Texts::help($this->bot->username, $ctx->is_admin, $ctx->is_owner),
+				Texts::help($this->bot->username, $ctx->is_admin, $ctx->is_super, $ctx->can_su, $ctx->can_manage_su),
 				$reply_to,
 			);
 		}
@@ -130,9 +130,9 @@ class MessageHandler {
 		$message_id = null;
 		if ($ctx->isPrivate() && $this->groups !== null) {
 			$groups = $this->groups->all();
-			$messages = $this->listing->privateMessages($groups, $ctx->actor->id, $ctx->is_owner);
+			$messages = $this->listing->privateMessages($groups, $ctx->actor->id, $ctx->is_super);
 			$buttons = TournamentListing::openButtons(
-				$this->listing->privateTournaments($groups, $ctx->actor->id, $ctx->is_owner),
+				$this->listing->privateTournaments($groups, $ctx->actor->id, $ctx->is_super),
 				$groups,
 			);
 			foreach ($messages as $i => $list) {
@@ -157,8 +157,8 @@ class MessageHandler {
 	*/
 	protected function sendPlayers(Context $ctx): ?int {
 		$message_id = null;
-		$link = $this->players_list->editLinkCallback($ctx->is_owner, $ctx->isPrivate());
-		foreach ($this->players_list->messages($ctx->is_owner, $ctx->isPrivate(), $link) as $chunk) {
+		$link = $this->players_list->editLinkCallback($ctx->is_super, $ctx->isPrivate());
+		foreach ($this->players_list->messages($ctx->is_super, $ctx->isPrivate(), $link) as $chunk) {
 			$message_id = $this->api->sendMessage($ctx->chatId(), $chunk, $ctx->message->message_id);
 		}
 		return $message_id;

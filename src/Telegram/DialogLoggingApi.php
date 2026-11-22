@@ -61,4 +61,12 @@ class DialogLoggingApi implements TelegramApi {
 		$this->api->setWebhook($url, $secret_token, $allowed_updates);
 	}
 
+	public function setMyCommands(array $commands, ?array $scope = null): void {
+		$this->api->setMyCommands($commands, $scope);
+	}
+
+	public function deleteMyCommands(?array $scope = null): void {
+		$this->api->deleteMyCommands($scope);
+	}
+
 }

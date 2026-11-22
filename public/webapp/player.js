@@ -43,6 +43,10 @@
 		unbind_row: $('unbind-row'),
 		unbind: $('unbind'),
 		unbind_error: $('unbind-error'),
+		su_section: $('su-section'),
+		can_su: $('can-su'),
+		su_hint: $('su-hint'),
+		su_error: $('can-su-error'),
 		team: $('team'),
 		team_error: $('team-error'),
 		search: $('search'),
@@ -66,7 +70,8 @@
 		level: el.level_error,
 		username: el.username_error,
 		confirm_unbind: el.unbind_error,
-		preferred_team_name: el.team_error
+		preferred_team_name: el.team_error,
+		can_su: el.su_error
 	};
 
 	function node(tag, cls, text) {
@@ -144,7 +149,13 @@
 		return normSpaces(el.ign.value) !== initial.ign
 			|| level !== initial.level
 			|| usernameChanged()
-			|| normSpaces(el.team.value) !== initial.team;
+			|| normSpaces(el.team.value) !== initial.team
+			|| (suEditable() && el.can_su.checked !== initial.can_su);
+	}
+
+	// «Может включать /su»: shown to those who may grant and revoke; the bot owner always has it.
+	function suEditable() {
+		return !!boot.can_manage_su && !boot.player.is_owner && boot.player.tg_bound;
 	}
 
 	function render() {
@@ -214,7 +225,8 @@
 			ign: p.ign || '',
 			username: p.username || '',
 			level: p.level,
-			team: p.preferred_team_name || ''
+			team: p.preferred_team_name || '',
+			can_su: !!(p.can_su || p.is_owner)
 		};
 		level = p.level;
 		el.heading.textContent = p.title;
@@ -229,6 +241,14 @@
 		var status = tgStatus(p);
 		el.tg_dot.className = 'dot' + (status[0] ? ' ' + status[0] : '');
 		el.tg_text.textContent = status[1];
+		el.su_section.hidden = !data.can_manage_su;
+		el.can_su.checked = initial.can_su;
+		el.can_su.disabled = !suEditable();
+		el.su_hint.textContent = p.is_owner
+			? 'У главного админа это право есть всегда, его не забрать.'
+			: (p.tg_bound
+				? 'Право отдельное от режима: сам игрок включает его командой /su on.'
+				: 'Право привязывается к Telegram-аккаунту: пусть игрок сначала напишет мне.');
 		el.team.value = initial.team;
 		el.team.maxLength = data.limits.team_name_max;
 		el.del.hidden = false;
@@ -300,13 +320,18 @@
 	}
 
 	function formData() {
-		return {
+		var data = {
 			ign: normSpaces(el.ign.value),
 			level: level,
 			username: normUsername(el.username.value),
 			preferred_team_name: normSpaces(el.team.value),
 			confirm_unbind: el.unbind.checked
 		};
+		// Only when changed: an untouched box must not fight with an unbind in the same save.
+		if (suEditable() && el.can_su.checked !== initial.can_su) {
+			data.can_su = el.can_su.checked;
+		}
+		return data;
 	}
 
 	function openSheet(opts) {
@@ -400,6 +425,10 @@
 	});
 	el.unbind.addEventListener('change', function () {
 		setError(el.unbind_error, '');
+		render();
+	});
+	el.can_su.addEventListener('change', function () {
+		setError(el.su_error, '');
 		render();
 	});
 	el.search.addEventListener('input', function () {

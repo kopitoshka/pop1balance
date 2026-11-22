@@ -142,7 +142,7 @@ class DraftCards {
 		Who may confirm a draft card: the author (organizer) or the bot owner.
 	*/
 	public function canConfirm(Tournament $t, int $actor_id): bool {
-		return $t->organizer_id === $actor_id || $this->access->isOwner($actor_id);
+		return $t->organizer_id === $actor_id || $this->access->isSuper($actor_id);
 	}
 
 	/**

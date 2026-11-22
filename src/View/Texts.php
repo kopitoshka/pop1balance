@@ -40,7 +40,13 @@ class Texts {
 		/help in private: commands, including /help_level.
 		Tournament numbers (№N) are global — the same in every group.
 	*/
-	public static function help(string $bot_username, bool $is_admin, bool $is_owner = false): string {
+	public static function help(
+		string $bot_username,
+		bool $is_admin,
+		bool $is_super = false,
+		bool $can_su = false,
+		bool $can_manage_su = false,
+	): string {
 		unset($bot_username);
 		$text = "Я помогаю записываться на турниры по Population: One. Записаться соло, собрать "
 			. "или поправить команду — кнопками на карточке турнира (/tournaments).\n\n"
@@ -55,7 +61,11 @@ class Texts {
 			. "/addplayer — добавить игроков через выбор в Telegram (до 10 за раз)\n"
 			. "/help — эта подсказка\n"
 			. '/help_level — Как считаются уровни и сила команды';
-		if ($is_admin || $is_owner) {
+		if ($can_su) {
+			// Only for those who have the right (the bot owner included); everyone else never sees /su.
+			$text .= "\n/su — режим суперадмина: <code>/su on</code>, <code>/su off</code>; без параметра — статус";
+		}
+		if ($is_admin || $is_super) {
 			$text .= "\n\n<b>Управление турнирами</b>\n"
 				. "/create_tournament — создать турнир через форму\n"
 				. "<code>/addplayer @username НикВИгре</code> — добавить игрока, который ещё не писал мне "
@@ -67,8 +77,8 @@ class Texts {
 				. "опубликованный турнир — кнопками «✏️ Изменить турнир» и «❌ Отменить турнир» на карточке турнира. "
 				. 'Это могут только автор турнира и главный админ.';
 		}
-		if ($is_owner) {
-			// Owner only for now (see AccessPolicy::LEVELS_OWNER_ONLY); not shown to anyone else.
+		if ($is_super) {
+			// Superadmins only (the bot owner, or the /su mode on); not shown to anyone else.
 			$text .= "\n\n<b>Только для главного админа</b>\n"
 				. "/level @user 4 — поставить уровень игроку (1–6 или название: начальный, начальный+, средний, средний+, высокий, высокий+; «танк» = высокий)\n"
 				. "<code>/level НикВИгре 4</code> — то же по игровому нику (и для игроков без Telegram)\n"
@@ -76,6 +86,13 @@ class Texts {
 				. "<code>/nick \"Старый ник\" Новый ник</code> — сменить ник игроку без Telegram\n"
 				. "/players_import — добавить или обновить игроков списком (ник или @username, в конце уровень 1–6). "
 				. "Без аргументов жду список следующим сообщением (или отправь его с командой)";
+		}
+		if ($can_manage_su) {
+			$text .= "\n\n<b>Суперадмины</b>\n"
+				. "/su grant @ник — дать право суперадмина\n"
+				. "/su revoke @ник — забрать право (и выключить ему режим)\n"
+				. "/su list — у кого есть право\n"
+				. 'То же — галочка «Может включать /su» на карточке игрока (из /players).';
 		}
 		return $text;
 	}

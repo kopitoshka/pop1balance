@@ -682,9 +682,40 @@ class PlayerRepository {
 	*/
 	public function unbindTelegram(int $player_id): void {
 		$this->db->run(
-			'UPDATE players SET tg_user_id = NULL, dm_ok = 0, dm_started_at = NULL WHERE id = :id',
+			'UPDATE players SET tg_user_id = NULL, dm_ok = 0, dm_started_at = NULL,
+					can_su = 0, su_mode = NULL
+				WHERE id = :id',
 			['id' => $player_id],
 		);
+	}
+
+	/**
+		Superadmin right and stored mode of a card (the bot owner's implicit right is in AccessPolicy).
+		The right belongs to the Telegram account: it is cleared when the card is unbound or deleted.
+		The mode is 1 on, 0 off, NULL the default.
+	*/
+	public function setSuRight(int $player_id, bool $can_su): void {
+		// Taking the right also turns the mode off.
+		$sql = $can_su
+			? 'UPDATE players SET can_su = 1 WHERE id = :id'
+			: 'UPDATE players SET can_su = 0, su_mode = 0 WHERE id = :id';
+		$this->db->run($sql, ['id' => $player_id]);
+	}
+
+	public function setSuMode(int $player_id, bool $on): void {
+		$this->db->run('UPDATE players SET su_mode = :m WHERE id = :id', ['m' => (int) $on, 'id' => $player_id]);
+	}
+
+	/**
+		Players that have the right (the bot owner's implicit right is not listed here).
+
+		@return list<Player>
+	*/
+	public function listWithSuRight(): array {
+		$rows = $this->db->fetchAll(
+			'SELECT * FROM players WHERE can_su = 1 AND deleted_at IS NULL ORDER BY id',
+		);
+		return array_map([Player::class, 'fromRow'], $rows);
 	}
 
 	public function preferredTeamName(int $player_id): ?string {
@@ -709,7 +740,8 @@ class PlayerRepository {
 		$this->db->run(
 			'UPDATE players SET deleted_at = :t, tg_user_id = NULL, username = NULL, display_name = \'\',
 					ign = NULL, ign_norm = NULL, preferred_team_name = NULL,
-					dm_ok = 0, dm_started_at = NULL, dm_group_id = NULL
+					dm_ok = 0, dm_started_at = NULL, dm_group_id = NULL,
+					can_su = 0, su_mode = NULL
 				WHERE id = :id',
 			['t' => DateFormat::toDb($now), 'id' => $player_id],
 		);

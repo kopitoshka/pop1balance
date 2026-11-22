@@ -126,6 +126,13 @@ class BotApi implements TelegramApi {
 	}
 
 	/**
+		@param array<string, mixed>|null $scope
+	*/
+	public function deleteMyCommands(?array $scope = null): void {
+		$this->call('deleteMyCommands', $scope !== null ? ['scope' => $scope] : []);
+	}
+
+	/**
 		@param array<string, mixed> $params
 		@return array<string, mixed>
 	*/

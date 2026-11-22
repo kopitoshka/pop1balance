@@ -14,8 +14,8 @@ class Tools {
 	/**
 		@return list<array<string, mixed>>
 	*/
-	public static function definitions(bool $is_admin = false, bool $is_owner = false): array {
-		unset($is_admin, $is_owner);
+	public static function definitions(bool $is_admin = false, bool $is_super = false): array {
+		unset($is_admin, $is_super);
 		$tid = self::tournamentId();
 		$player = [
 			'type' => 'string',
@@ -82,10 +82,10 @@ class Tools {
 	/**
 		@return list<string>
 	*/
-	public static function names(bool $is_admin = false, bool $is_owner = false): array {
+	public static function names(bool $is_admin = false, bool $is_super = false): array {
 		return array_map(static function (array $tool): string {
 			return (string) $tool['name'];
-		}, self::definitions($is_admin, $is_owner));
+		}, self::definitions($is_admin, $is_super));
 	}
 
 	/**

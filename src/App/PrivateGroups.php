@@ -91,7 +91,7 @@ class PrivateGroups {
 		if ($this->create_access !== null) {
 			return $this->create_access->canCreate($player_id);
 		}
-		return $this->anyone_can_create || $this->access->isOwner($player_id);
+		return $this->anyone_can_create || $this->access->isSuper($player_id);
 	}
 
 	/**
@@ -111,7 +111,7 @@ class PrivateGroups {
 		Admin of at least one group (legacy helpers).
 	*/
 	public function isAdminSomewhere(int $player_id): bool {
-		if ($this->access->isOwner($player_id)) {
+		if ($this->access->isSuper($player_id)) {
 			return true;
 		}
 		foreach (array_keys($this->all()) as $chat_id) {

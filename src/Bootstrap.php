@@ -23,6 +23,7 @@ use P1Bot\App\PendingPlayerRunner;
 use P1Bot\App\OrganizerTeams;
 use P1Bot\App\PendingTextGuard;
 use P1Bot\App\PlayerForm;
+use P1Bot\App\SuperAdmin;
 use P1Bot\App\TeamForm;
 use P1Bot\App\TeamCards;
 use P1Bot\App\PrivateGroups;
@@ -63,6 +64,7 @@ use P1Bot\Support\RandomSource;
 use P1Bot\Support\SystemRandom;
 use P1Bot\Support\Database;
 use P1Bot\Support\DialogLog;
+use P1Bot\Support\SuLog;
 use P1Bot\Support\Logger;
 use P1Bot\Telegram\BotApi;
 use P1Bot\Telegram\BotIdentity;
@@ -120,6 +122,7 @@ class Bootstrap {
 	public TeamForm $team_form;
 	public PlayerAdmin $player_admin;
 	public PlayerForm $player_form;
+	public SuperAdmin $super_admin;
 	public PlayersList $players_list;
 	public PrivateViews $private_views;
 
@@ -371,6 +374,12 @@ class Bootstrap {
 			$clock,
 			$this->logger,
 		);
+		$this->super_admin = new SuperAdmin(
+			$this->access,
+			$this->players,
+			$this->telegram,
+			new SuLog($this->suLogDir(), $clock),
+		);
 		$this->player_form = new PlayerForm(
 			$this->webapp_contexts,
 			$this->players,
@@ -383,6 +392,7 @@ class Bootstrap {
 			(string) ($config['telegram']['webhook_url'] ?? ''),
 			$this->bot->username,
 			trim((string) ($config['telegram']['miniapp_short_name'] ?? '')),
+			$this->super_admin,
 		);
 		$this->players_list = new PlayersList(
 			$this->players,
@@ -412,6 +422,7 @@ class Bootstrap {
 			$pending_actions,
 			$this->players_import,
 			$this->players_list,
+			$this->super_admin,
 		);
 		$commands->setCreateForm($this->create_form);
 		$commands->setPlayerForm($this->player_form);
@@ -596,6 +607,14 @@ class Bootstrap {
 			return null;
 		}
 		return (string) ($this->config['paths']['dialogs'] ?? $logs . '/dialogs');
+	}
+
+	/**
+		storage/logs, where su.log (the /su audit trail) goes; null (off) without a logs path (tests).
+	*/
+	protected function suLogDir(): ?string {
+		$logs = (string) ($this->config['paths']['logs'] ?? '');
+		return $logs === '' ? null : $logs;
 	}
 
 	protected function systemPrompt(): string {

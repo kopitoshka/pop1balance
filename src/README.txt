@@ -97,6 +97,9 @@ App/ — сценарии над доменом
         Ошибка формы Mini App: поле + причина для JSON
     TeamCards.php
         Карточка команды в личке
+    SuperAdmin.php
+        /su: режим суперадмина, grant / revoke / list, галочка на
+        карточке игрока, обновление меню команд
     WebhookGate.php
         Проверка секрета webhook
     Diagnostics.php
@@ -121,7 +124,9 @@ Domain/ — бизнес-правила
     Lineup.php
         Основной состав / запас
     AccessPolicy.php
-        Owner / admin / manage
+        Права: isSuper (владелец или /su-режим, единая проверка для
+        всего, что раньше было «только владелец»), canManageSu,
+        isBotOwner (только личность), admin / manage
     MoscowTime.php
         Время МСК
     CreateTournament.php / EditTournament.php
@@ -178,6 +183,8 @@ Telegram/ — клиент Telegram Bot API
         Обёртка API + лог диалога
     BotIdentity.php
         id / username бота, owner
+    CommandMenu.php
+        Меню команд «/»: общее, личка, личное меню суперадмина
     ChatAdminSync.php
         Кэш админов группы
     TelegramError.php
@@ -202,8 +209,9 @@ HttpClient, CurlHttpClient, HttpResponse, HttpError — для Telegram и OpenA
 
 Support/ — инфраструктура
 
-Database, Migrations, Clock / SystemClock / FixedRandom, Logger, DialogLog, Env,
-DateFormat, RuPlural, Redact, …
+Database, Migrations, Clock / SystemClock / FixedRandom, Logger, DialogLog,
+SuLog (storage/logs/su.log: только операции /su), Env, DateFormat, RuPlural,
+Redact, …
 
 Корень src/
 

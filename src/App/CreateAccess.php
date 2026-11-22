@@ -46,7 +46,7 @@ class CreateAccess {
 	}
 
 	public function canCreate(int $player_id): bool {
-		if ($this->anyone_can_create || $this->access->isOwner($player_id)) {
+		if ($this->anyone_can_create || $this->access->isSuper($player_id)) {
 			return true;
 		}
 		return $this->originChatId($player_id) !== null;
@@ -68,7 +68,7 @@ class CreateAccess {
 		if ($groups === []) {
 			return null;
 		}
-		if ($this->anyone_can_create || $this->access->isOwner($player_id)) {
+		if ($this->anyone_can_create || $this->access->isSuper($player_id)) {
 			return (int) array_key_first($groups);
 		}
 		if ($this->owner_tg_id === 0) {

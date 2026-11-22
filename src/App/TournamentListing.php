@@ -60,13 +60,13 @@ class TournamentListing {
 	public function privateMessages(
 		array $groups,
 		int $player_id,
-		bool $is_owner,
+		bool $is_super,
 		int $limit = AnnouncementView::MESSAGE_LIMIT,
 	): array {
 		unset($groups);
 		$block_limit = $limit - mb_strlen(self::SEPARATOR);
 		$items = [];
-		foreach ($this->privateTournaments([], $player_id, $is_owner) as $t) {
+		foreach ($this->privateTournaments([], $player_id, $is_super) as $t) {
 			$footer = $t->status === TournamentStatus::DRAFT ? sprintf(self::PRIVATE_DRAFT, (int) $t->number) : '';
 			$items[] = [$t, $footer];
 		}
@@ -77,14 +77,14 @@ class TournamentListing {
 		@param array<int, string> $groups unused (tournaments are global)
 		@return list<Tournament>
 	*/
-	public function privateTournaments(array $groups, int $player_id, bool $is_owner): array {
+	public function privateTournaments(array $groups, int $player_id, bool $is_super): array {
 		unset($groups);
 		$result = [];
 		foreach ($this->tournaments->listAllActive() as $t) {
 			$result[] = $this->announcer->number($t);
 		}
 		foreach ($this->tournaments->listAllByStatus([TournamentStatus::DRAFT]) as $t) {
-			if ($is_owner || $t->organizer_id === $player_id) {
+			if ($is_super || $t->organizer_id === $player_id) {
 				$result[] = $this->announcer->number($t);
 			}
 		}

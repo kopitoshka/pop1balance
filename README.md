@@ -130,7 +130,7 @@ and `sudo setsebool -P httpd_can_network_connect 1` (the bot calls Telegram and 
 | `TELEGRAM_BOT_USERNAME` | bot username without `@` |
 | `TELEGRAM_WEBHOOK_SECRET` | random string, only `A-Z a-z 0-9 _ -`, e.g. `openssl rand -hex 32` |
 | `WEBHOOK_URL` | `https://<subdomain>/webhook.php` |
-| `BOT_OWNER_TG_ID` | your numeric Telegram id (ask @userinfobot); owner = admin everywhere, owns the default balance |
+| `BOT_OWNER_TG_ID` | your numeric Telegram id (ask @userinfobot); owner = admin everywhere (while the `/su` mode is on, it is on by default), owns the default balance |
 | `OPENAI_API_KEY` | OpenAI key; empty = AI off |
 | `OPENAI_MODEL` | default `gpt-6-luna` |
 | `OPENAI_REASONING_EFFORT` | default `low` |
@@ -185,7 +185,7 @@ crontab -e -u apache     # same user as php-fpm
 
 ### Logs
 
-`storage/logs/bot-YYYY-MM-DD.log`, `storage/logs/cron.log`. Timestamps are Moscow time (`MSK`), one file per Moscow day.
+`storage/logs/bot-YYYY-MM-DD.log`, `storage/logs/cron.log`, `storage/logs/su.log` (only `/su` operations, below). Timestamps are Moscow time (`MSK`), one file per Moscow day.
 The directory must be writable by the php-fpm user; if it is not, lines go to the PHP `error_log` (php-fpm log) with a `[p1bot]` prefix.
 
 `LOG_LEVEL` in `.env`:
@@ -311,7 +311,7 @@ group (legacy), but creating a tournament no longer asks which group it is for.
   cache. Or anyone if `ANYONE_CAN_CREATE_TOURNAMENT=1` (override, key kept). Refusal (feminine):
   «Создавать турниры могут только участники групп, где есть организатор P1. Записаться на турнир при этом можно 🙂».
 - **Manage** (card buttons «✏️ Поправить» / «✏️ Изменить турнир» / «🗑 Удалить» / «❌ Отменить турнир», `/open`, publish): only the tournament's **author** (organizer) and
-  the bot **owner** (`BOT_OWNER_TG_ID`). Group admins have no special rights to manage someone else's tournament.
+  the bot **owner** (`BOT_OWNER_TG_ID`) or any superadmin (`/su`, below). Group admins have no special rights to manage someone else's tournament.
 
 Creating:
 - `/create_tournament` (private only: in the private and owner command menus, not in groups, and as «➕ Создать турнир» under the
@@ -392,6 +392,24 @@ Owner only (`BOT_OWNER_TG_ID`, shown in `/help` to the owner only):
 - `/players_import` — bulk add or update players (private only). Each line is an in-game nick or `@username`; the last space-separated token, if it is a number 1–6, is the level (digits outside 1–6 are an error). A new player without a level gets 3; an existing player without a level on the line is skipped; a given level is set (the same level is skipped). Last duplicate line wins, cap 300 lines, one transaction (error lines are reported, they do not abort the rest). Bare command waits for the next message with «✖️ Отмена». Reply lists added and updated players separately, then skip/error counts, and is split if longer than a Telegram message.
 - `/level @user 4 [balance]`, `/balance [id]`. Scales stay hidden from users; only the owner sets levels,
   via `/level` (or the player card), not via the AI.
+
+**Superadmin mode (`/su`).** «Owner only» above really means «superadmin»: one gate, `AccessPolicy::isSuper` — the bot
+owner with the mode on, or a player with the right «суперадмин» (`players.can_su`) and the mode on (`players.su_mode`).
+The mode gives every owner ability (levels, ✏️ and the player card, `/players_import`, `/addplayer`, editing and
+cancelling any tournament, card buttons, admin hints). It works everywhere (private and groups), stays until switched off
+(no expiry) and starts **off** for everyone with a right; for the owner it defaults to **on**, so nothing changes for him.
+- `/su` — «Режим суперадмина: включён/выключен» and the parameters; `/su on`, `/su off` — switch your own mode.
+- `/su grant @ник`, `/su revoke @ник`, `/su list` (the ✅ «Может включать /su» checkbox on the player card does the same):
+  the owner **always**, even with his own mode off; other superadmins only while their own mode is on («Сначала включи
+  режим суперадмина: /su on.» otherwise). Revoking also turns that player's mode off; re-granting does not turn it on.
+  The owner's own right cannot be revoked. The right is tied to the Telegram account (needs one; it is dropped when the
+  account is unbound or the player is deleted).
+- Visibility: without the right `/su` is an unknown command («Такой команды я не знаю 🤔 Подсказка: /help» in private,
+  silence in groups). `/su` is in `/help` and in the personal «/» menu (`setMyCommands`, scope `chat`) only for those with
+  the right; the menu is refreshed on grant, revoke and `/su on|off` (a refusal from Telegram is ignored).
+- Log: `storage/logs/su.log`, one line per `on` / `off` / `grant` / `revoke` with who, target and Moscow time. Nothing else
+  goes there (status, `list` and refused calls are not logged).
+- The player card needs the mode on (the owner with the mode off sees the bot as a player, but still has `/su grant|revoke|list`).
 
 **Scales are hidden for now** (temporary product decision): cards, announcements, lists, `/help`, `/players`,
 the AI prompt and tool descriptions never mention rating scales. Only the owner changes player levels and a

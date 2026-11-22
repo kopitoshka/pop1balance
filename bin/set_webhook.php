@@ -7,6 +7,7 @@ declare(strict_types=1);
 
 use P1Bot\Http\CurlHttpClient;
 use P1Bot\Telegram\BotApi;
+use P1Bot\Telegram\CommandMenu;
 use P1Bot\Telegram\Update;
 
 require dirname(__DIR__) . '/autoload.php';
@@ -38,39 +39,18 @@ try {
 	$api->setWebhook($url, $secret, Update::ALLOWED_UPDATES);
 	fwrite(STDOUT, "Webhook set: $url\n");
 	fwrite(STDOUT, "allowed_updates: " . implode(", ", Update::ALLOWED_UPDATES) . "\n");
-	$common = [
-		['command' => 'tournaments', 'description' => 'Активные турниры'],
-		['command' => 'level', 'description' => 'Свой или чужой уровень'],
-		['command' => 'players', 'description' => 'Все игроки: уровень и ник'],
-		['command' => 'help', 'description' => 'Справка по командам'],
-		['command' => 'help_level', 'description' => 'Как считаются уровни и сила команды'],
-	];
-	// Private: no /start (Telegram has Start); no /history|/info in menu; /addplayer for the owner only.
-	$private = [
-		['command' => 'tournaments', 'description' => 'Активные турниры'],
-		['command' => 'create_tournament', 'description' => 'Создать турнир через форму'],
-		['command' => 'team', 'description' => 'Карточка твоей команды'],
-		['command' => 'level', 'description' => 'Свой или чужой уровень'],
-		['command' => 'nick', 'description' => 'Свой игровой ник'],
-		['command' => 'players', 'description' => 'Все игроки: уровень и ник'],
-		['command' => 'help', 'description' => 'Справка по командам'],
-		['command' => 'help_level', 'description' => 'Как считаются уровни и сила команды'],
-	];
+	$common = CommandMenu::common();
 	$api->setMyCommands($common);
 	$api->setMyCommands($common, ['type' => 'all_group_chats']);
-	$api->setMyCommands($private, ['type' => 'all_private_chats']);
+	$api->setMyCommands(CommandMenu::privateChats(), ['type' => 'all_private_chats']);
 	$owner_tg_id = (int) ($config['owner_tg_id'] ?? 0);
 	if ($owner_tg_id > 0) {
-		// The owner's private menu also shows /addplayer.
-		$owner = $private;
-		array_splice($owner, count($owner) - 1, 0, [
-			['command' => 'addplayer', 'description' => 'Добавить игроков из контактов Telegram'],
-			['command' => 'players_import', 'description' => 'Добавить игроков списком с уровнями'],
-		]);
-		$api->setMyCommands($owner, ['type' => 'chat', 'chat_id' => $owner_tg_id]);
-		fwrite(STDOUT, "Owner private commands refreshed with /addplayer and /players_import (chat {$owner_tg_id})\n");
+		// The owner's private menu also shows /addplayer, /players_import and /su. Other /su holders
+		// get theirs when the right is granted or revoked and when they switch the mode.
+		$api->setMyCommands(CommandMenu::forPrivateChat(true, true), CommandMenu::chatScope($owner_tg_id));
+		fwrite(STDOUT, "Owner private commands refreshed with /addplayer, /players_import and /su (chat {$owner_tg_id})\n");
 	}
-	fwrite(STDOUT, "Bot commands updated (menus without /start|/history|/info; /help_level added; /addplayer and /players_import only for the owner)\n");
+	fwrite(STDOUT, "Bot commands updated (menus without /start|/history|/info; /help_level added; /addplayer, /players_import and /su only for superadmins)\n");
 } catch (Throwable $e) {
 	fwrite(STDERR, 'Error: ' . $e->getMessage() . "\n");
 	exit(1);

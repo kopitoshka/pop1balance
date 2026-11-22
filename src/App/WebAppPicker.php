@@ -185,7 +185,7 @@ class WebAppPicker {
 			throw new ValidationError('Такого игрока я не знаю.');
 		}
 		if ($level !== null) {
-			if (!$can_set || !$this->access->isOwner($actor->id)) {
+			if (!$can_set || !$this->access->isSuper($actor->id)) {
 				throw new DomainError(
 					$player->id === $actor->id ? AccessPolicy::LEVEL_SELF : AccessPolicy::LEVELS_OWNER_ONLY,
 				);
@@ -221,7 +221,7 @@ class WebAppPicker {
 				? sprintf('Твой уровень: %s (%d)', Levels::name($explicit), $explicit)
 				: sprintf('%s — %s (%d)', Html::e($player->plainLabel()), Levels::name($explicit), $explicit);
 		}
-		if ($can_set && $this->access->isOwner($actor->id)) {
+		if ($can_set && $this->access->isSuper($actor->id)) {
 			$text .= "\nПоставить: /level " . Html::e($player->mention()) . ' 4';
 		}
 		$this->api->sendMessage($chat_id, $text);
