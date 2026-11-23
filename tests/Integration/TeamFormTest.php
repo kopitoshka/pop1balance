@@ -119,7 +119,6 @@ class TeamFormTest extends IntegrationTestCase {
 			self::assertSame(['organizer', false, true], [$b['role'], $b['readonly'], $b['can_letter']]);
 			$taken = array_column(array_filter($b['letters'], static fn (array $l): bool => $l['taken']), 'letter');
 			self::assertSame(['B'], array_values($taken), 'another team holds B; own A is free to keep');
-			self::assertSame(TeamForm::LETTER_HINT, $b['letter_hint']);
 		}
 		self::assertSame('B', $this->app->teams->get($other->team->id)->team->letter);
 

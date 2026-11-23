@@ -5,9 +5,11 @@ declare(strict_types=1);
 namespace P1Bot\Handlers;
 
 use P1Bot\Ai\Assistant;
+use P1Bot\App\Announcer;
 use P1Bot\App\Confirmation;
 use P1Bot\App\DraftCards;
 use P1Bot\App\PrivateGroups;
+use P1Bot\App\PrivateViews;
 use P1Bot\App\TournamentListing;
 use P1Bot\Domain\Exception\DomainError;
 use P1Bot\Domain\TournamentService;
@@ -37,6 +39,18 @@ class MessageHandler {
 		protected ?PrivateGroups $groups = null,
 		protected ?PlayersList $players_list = null,
 	) {
+	}
+
+	protected ?PrivateViews $views = null;
+
+	protected ?Announcer $announcer = null;
+
+	public function setViews(?PrivateViews $views): void {
+		$this->views = $views;
+	}
+
+	public function setAnnouncer(?Announcer $announcer): void {
+		$this->announcer = $announcer;
 	}
 
 	public function handle(Context $ctx): void {
@@ -127,22 +141,27 @@ class MessageHandler {
 		@return int|null id of the last message sent
 	*/
 	protected function sendList(Context $ctx): ?int {
-		$message_id = null;
-		if ($ctx->isPrivate() && $this->groups !== null) {
-			$groups = $this->groups->all();
-			$messages = $this->listing->privateMessages($groups, $ctx->actor->id, $ctx->is_super);
-			$buttons = TournamentListing::openButtons(
-				$this->listing->privateTournaments($groups, $ctx->actor->id, $ctx->is_super),
-				$groups,
+		if ($ctx->isPrivate() && $this->views !== null) {
+			return $this->views->list(
+				$ctx->chatId(),
+				$ctx->actor,
+				$ctx->is_super,
+				'',
+				$ctx->message->message_id,
 			);
+		}
+		$message_id = null;
+		$active = $this->tournaments !== null ? $this->tournaments->listAllActive() : [];
+		if (count($active) === 1 && $this->announcer !== null) {
+			$t = $this->announcer->number($active[0]);
+			$messages = $this->announcer->infoMessages($t);
+			$preview = $this->announcer->previewOptions($t);
+			$buttons = TournamentListing::deepLinkButtons([$t], $this->bot->username);
 			foreach ($messages as $i => $list) {
+				$first = $i === 0;
 				$last = $i === count($messages) - 1;
-				$message_id = $this->api->sendMessage(
-					$ctx->chatId(),
-					$list,
-					$ctx->message->message_id,
-					$last ? $buttons : [],
-				);
+				$options = ($first ? $preview : []) + ($last ? $buttons : []);
+				$message_id = $this->api->sendMessage($ctx->chatId(), $list, $ctx->message->message_id, $options);
 			}
 			return $message_id;
 		}

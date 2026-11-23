@@ -5,8 +5,8 @@
 	<meta name="viewport" content="width=device-width, initial-scale=1">
 	<title>Команда</title>
 	<script src="https://telegram.org/js/telegram-web-app.js"></script>
-	<link rel="stylesheet" href="create.css">
-	<link rel="stylesheet" href="team.css">
+	<link rel="stylesheet" href="create.css?v=2">
+	<link rel="stylesheet" href="team.css?v=1">
 </head>
 <body>
 	<form id="form" novalidate>
@@ -17,9 +17,8 @@
 			<p id="loading" class="hint">Открываю форму…</p>
 			<fieldset id="fields" disabled hidden>
 				<section id="letter-section">
-					<p class="label" id="letter-label">Буква в игре</p>
-					<div id="letters" class="letters" role="radiogroup" aria-labelledby="letter-label" hidden></div>
-					<p id="letter-hint" class="hint" hidden></p>
+					<label class="label" for="letter" id="letter-label">Буква в игре</label>
+					<select id="letter" name="letter" hidden></select>
 					<p id="letter-error" class="error" hidden></p>
 				</section>
 				<section>
@@ -59,6 +58,6 @@
 			<button type="submit" id="submit" disabled hidden>Сохранить</button>
 		</footer>
 	</form>
-	<script src="team.js"></script>
+	<script src="team.js?v=1"></script>
 </body>
 </html>

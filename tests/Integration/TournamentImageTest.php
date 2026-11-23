@@ -467,8 +467,15 @@ class TournamentImageTest extends IntegrationTestCase {
 
 		$this->http->reset();
 		$this->dispatch($this->privateMessage($this->owner, '/tournaments'));
+		$messages = $this->http->sent('sendMessage');
+		self::assertNotSame([], $messages);
+		self::assertSame(self::BASE . $name, $this->previewOf($messages[0])['url'], 'one active tournament shows the card with its picture');
+
+		$this->newDraft($this->owner, '24.11 21:00 | Второй | 2 | 3,3');
+		$this->http->reset();
+		$this->dispatch($this->privateMessage($this->owner, '/tournaments'));
 		foreach ($this->http->sent('sendMessage') as $m) {
-			self::assertSame(['is_disabled' => true], $this->previewOf($m), 'a list has no picture');
+			self::assertSame(['is_disabled' => true], $this->previewOf($m), 'a multi-tournament list has no picture');
 		}
 	}
 

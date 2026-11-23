@@ -61,7 +61,6 @@ class TeamForm {
 	public const CONTACTS_BUTTON = '👤 Выбрать из Telegram';
 
 	public const NAME_HINT = 'Подставила последнее название твоей команды, можно поменять.';
-	public const LETTER_HINT = 'Зачёркнутые уже у других команд. Назначает только организатор.';
 	public const EXPIRED_TEXT = 'Форма устарела. Закрой её и открой заново с карточки турнира или команды.';
 	public const UNAVAILABLE_TEXT = 'Форма команды сейчас недоступна. Попробуй чуть позже.';
 	public const STRANGER_TEXT = 'Эту команду правят капитан и организатор турнира, а ты в ней не играешь.';
@@ -282,7 +281,6 @@ class TeamForm {
 			'name_hint' => $name_hint ? self::NAME_HINT : null,
 			'name_max' => TeamService::MAX_NAME_LENGTH,
 			'letters' => $letters,
-			'letter_hint' => self::LETTER_HINT,
 			'pending' => $pending,
 			'default_level' => Levels::DEFAULT,
 			'pair_bonus' => [

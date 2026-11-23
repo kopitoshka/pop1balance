@@ -148,7 +148,7 @@ class PrivateChatTest extends IntegrationTestCase {
 		$reply = $this->say($this->player('vasya'), '/start t_999');
 		self::assertStringContainsString('уже не активен', $reply);
 		self::assertStringContainsString('Субботний кубок', $reply);
-		self::assertSame(['popen:1'], $this->lastButtons());
+		self::assertSame(['pteam:1', 'psolo:1'], $this->lastButtons());
 	}
 
 	public function testPlainStartShowsHelp(): void {
@@ -202,7 +202,7 @@ class PrivateChatTest extends IntegrationTestCase {
 		self::assertStringContainsString('Субботний кубок', $reply);
 		self::assertStringNotContainsString('Черновик владельца', $reply, 'drafts are hidden from others');
 		self::assertStringNotContainsString('Группа', $reply, 'one group: no group header');
-		self::assertSame(['popen:1'], $this->lastButtons());
+		self::assertSame(['pteam:1', 'psolo:1'], $this->lastButtons(), 'one active tournament: the full card');
 
 		$owner_reply = $this->say($this->owner, '/tournaments');
 		self::assertStringContainsString('Черновик владельца', $owner_reply);

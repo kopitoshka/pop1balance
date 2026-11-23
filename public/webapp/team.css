@@ -1,12 +1,15 @@
 :root { --ok: #2e9e4f; }
 .tsub { color: var(--hint); font-size: 13px; margin: -12px 4px 14px; }
 .label .ro { text-transform: none; letter-spacing: 0; }
-.letters { display: grid; grid-template-columns: repeat(9, 1fr); gap: 5px; }
-.letters button { height: 34px; padding: 0; border: 0; border-radius: 8px; background: var(--sec); color: var(--fg); font-weight: 600; font-size: 15px; cursor: pointer; }
-.letters button.on { background: var(--btn); color: var(--btn-fg); }
-.letters button:disabled { color: var(--hint); opacity: .55; text-decoration: line-through; font-weight: 400; cursor: default; }
-.letters button.none { font-weight: 400; color: var(--hint); }
-.letters button.none.on { color: var(--btn-fg); }
+#letter {
+	appearance: none;
+	-webkit-appearance: none;
+	background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'><path fill='%238a8a8e' d='M1.2 1.2 6 6l4.8-4.8' stroke='none'/></svg>");
+	background-repeat: no-repeat;
+	background-position: right 12px center;
+	padding-right: 36px;
+}
+#letter option:disabled { color: var(--hint); }
 .pl { display: flex; align-items: center; gap: 10px; background: var(--sec); border-radius: 10px; padding: 9px 10px; margin-bottom: 6px; }
 .av { width: 34px; height: 34px; border-radius: 50%; display: flex; align-items: center; justify-content: center; color: #fff; font-weight: 600; flex: 0 0 34px; }
 .meta { flex: 1; min-width: 0; }

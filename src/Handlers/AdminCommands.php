@@ -12,6 +12,7 @@ use P1Bot\App\WebAppPicker;
 use P1Bot\App\DraftCards;
 use P1Bot\App\NeedGroupChoice;
 use P1Bot\App\PrivateGroups;
+use P1Bot\App\PrivateViews;
 use P1Bot\App\PendingTextGuard;
 use P1Bot\App\PlayerForm;
 use P1Bot\App\PlayerResolver;
@@ -122,6 +123,12 @@ class AdminCommands {
 
 	public function setPlayerForm(?PlayerForm $player_form): void {
 		$this->player_form = $player_form;
+	}
+
+	protected ?PrivateViews $private_views = null;
+
+	public function setPrivateViews(?PrivateViews $private_views): void {
+		$this->private_views = $private_views;
 	}
 
 	public function supports(string $command): bool {
@@ -287,9 +294,15 @@ class AdminCommands {
 		}
 		if ($ctx->isPrivate() && $this->groups !== null) {
 			$groups = $this->groups->all();
+			$listed = $this->listing->privateTournaments($groups, $ctx->actor->id, $ctx->is_super);
+			$single = TournamentListing::soleActive($listed);
+			if ($single !== null && $this->private_views !== null) {
+				$this->private_views->tournament($ctx->chatId(), $single, $ctx->actor, $ctx->message->message_id);
+				return '';
+			}
 			$messages = $this->listing->privateMessages($groups, $ctx->actor->id, $ctx->is_super);
 			$this->reply_extra = $this->withCreateButton(TournamentListing::openButtons(
-				$this->listing->privateTournaments($groups, $ctx->actor->id, $ctx->is_super),
+				$listed,
 				$groups,
 			), $ctx);
 			if ($messages === []) {
@@ -298,6 +311,19 @@ class AdminCommands {
 			return $this->sendAllButLast($ctx, $messages);
 		}
 		// The group list never shows drafts: drafts live in the organizer's private chat.
+		$active = $this->tournaments->listAllActive();
+		if (count($active) === 1) {
+			$t = $this->announcer->number($active[0]);
+			$this->reply_extra = $this->withCreateButton(TournamentListing::deepLinkButtons(
+				[$t],
+				$this->bot->username,
+			), $ctx);
+			return $this->sendAllButLast(
+				$ctx,
+				$this->announcer->infoMessages($t),
+				$this->announcer->previewOptions($t),
+			);
+		}
 		$messages = $this->listing->messages($ctx->groupId(), false);
 		$this->reply_extra = $this->withCreateButton(TournamentListing::deepLinkButtons(
 			$this->listing->privateTournaments([], $ctx->actor->id, false),

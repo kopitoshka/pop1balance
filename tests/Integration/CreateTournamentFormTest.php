@@ -194,16 +194,28 @@ class CreateTournamentFormTest extends IntegrationTestCase {
 			self::assertStringContainsString('Сейчас активных турниров нет', implode("\n", array_column($this->http->sent('sendMessage'), 'text')), $text);
 		}
 
-		// Non-empty list: the button comes after the «open» buttons.
+		// One published tournament: the private list is the full card, without the create button.
 		$this->openTournament(3);
+		$this->http->reset();
+		$this->dispatch($this->privateMessage($this->owner, '/tournaments'));
+		self::assertNull($this->findButton('➕ Создать турнир'));
+		foreach ($this->http->sent('sendMessage') as $message) {
+			foreach ($this->buttonsOf($message) as $btn) {
+				self::assertStringStartsNotWith('popen:', (string) ($btn['callback_data'] ?? ''));
+			}
+		}
+
+		// With a draft as well, the organizer sees the compact list; the button comes after the «open» buttons.
+		self::assertNull($this->newDraft($this->owner, '24.11 21:00 | Второй | 2 | 3,3'));
 		$this->http->reset();
 		$this->dispatch($this->privateMessage($this->owner, '/tournaments'));
 		$sent = $this->http->sent('sendMessage');
 		$rows = end($sent)['reply_markup']['inline_keyboard'];
 		self::assertSame('popen:1', $rows[0][0]['callback_data']);
+		self::assertSame('popen:2', $rows[1][0]['callback_data']);
 		self::assertSame('➕ Создать турнир', end($rows)[0]['text']);
 
-		// Group list: a deep link into the private chat, never a web_app button.
+		// Group list (drafts hidden, one active): the card plus a deep link into the private chat, never a web_app button.
 		$this->http->reset();
 		$this->dispatch($this->groupMessage($this->owner, '/tournaments'));
 		$btn = $this->findButton('➕ Создать турнир');

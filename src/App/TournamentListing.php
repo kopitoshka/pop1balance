@@ -92,6 +92,20 @@ class TournamentListing {
 	}
 
 	/**
+		The only item in a list, if it is an active (published) tournament.
+		Then the caller shows the full card instead of the compact list.
+
+		@param list<Tournament> $tournaments
+	*/
+	public static function soleActive(array $tournaments): ?Tournament {
+		if (count($tournaments) !== 1) {
+			return null;
+		}
+		$t = $tournaments[0];
+		return in_array($t->status, TournamentStatus::active(), true) ? $t : null;
+	}
+
+	/**
 		Recent finished/cancelled tournaments, newest first. Number (= id) stays so /tournaments N works.
 
 		@return list<string> HTML messages; empty when there is nothing to show
@@ -133,15 +147,6 @@ class TournamentListing {
 	}
 
 	/**
-		Inline buttons «№N Title» that open a tournament in private (callback popen:<id>).
-
-		@param list<Tournament> $tournaments
-		@param array<int, string> $groups
-		@return array<string, mixed>
-	*/
-
-	
-	/**
 		Group list: URL buttons into the private tournament view (popen does not work in groups).
 
 		@param list<Tournament> $tournaments
@@ -159,6 +164,13 @@ class TournamentListing {
 		return $rows === [] ? [] : ['reply_markup' => ['inline_keyboard' => $rows]];
 	}
 
+	/**
+		Inline buttons «№N Title» that open a tournament in private (callback popen:<id>).
+
+		@param list<Tournament> $tournaments
+		@param array<int, string> $groups
+		@return array<string, mixed>
+	*/
 	public static function openButtons(array $tournaments, array $groups): array {
 		unset($groups);
 		$rows = [];
@@ -180,7 +192,7 @@ class TournamentListing {
 
 		$plain = [];
 		foreach ($items as [$t, $footer]) {
-			$plain[] = $this->announcer->listBlock($t, $block_limit, $footer, false);
+			$plain[] = $this->announcer->listBlock($t, $block_limit, $footer, true);
 		}
 
 		$groups = [];
@@ -201,15 +213,9 @@ class TournamentListing {
 
 		$messages = [];
 		foreach ($groups as $idxs) {
-			$collapse = count($idxs) > 1;
 			$parts = [];
 			foreach ($idxs as $i) {
-				if (!$collapse) {
-					$parts[] = $plain[$i];
-					continue;
-				}
-				[$t, $footer] = $items[$i];
-				$parts[] = $this->announcer->listBlock($t, $block_limit, $footer, true);
+				$parts[] = $plain[$i];
 			}
 			$messages[] = implode(self::SEPARATOR, $parts);
 		}

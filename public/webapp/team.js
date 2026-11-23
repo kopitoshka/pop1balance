@@ -35,8 +35,7 @@
 		heading: $('heading'),
 		subtitle: $('subtitle'),
 		letter_label: $('letter-label'),
-		letters: $('letters'),
-		letter_hint: $('letter-hint'),
+		letter: $('letter'),
 		letter_error: $('letter-error'),
 		name: $('name'),
 		name_hint: $('name-hint'),
@@ -212,35 +211,25 @@
 
 	function renderLetters() {
 		var label = 'Буква в игре';
-		el.letters.textContent = '';
+		el.letter.textContent = '';
 		if (boot.can_letter && !readonly()) {
 			el.letter_label.textContent = label;
-			el.letters.hidden = false;
-			el.letter_hint.hidden = false;
-			el.letter_hint.textContent = boot.letter_hint;
-			boot.letters.concat([{ letter: null, taken: false }]).forEach(function (item) {
-				var b = node('button', item.letter === null ? 'none' : '', item.letter === null ? '—' : item.letter);
-				b.type = 'button';
-				b.setAttribute('role', 'radio');
-				b.setAttribute('aria-checked', item.letter === letter ? 'true' : 'false');
-				if (item.letter === null) {
-					b.setAttribute('aria-label', 'Без буквы');
-				}
-				if (item.letter === letter) {
-					b.classList.add('on');
-				}
-				b.disabled = item.taken;
-				b.addEventListener('click', function () {
-					letter = item.letter;
-					letter_touched = true;
-					renderLetters();
-				});
-				el.letters.appendChild(b);
+			el.letter.hidden = false;
+			var none = document.createElement('option');
+			none.value = '';
+			none.textContent = '—';
+			el.letter.appendChild(none);
+			(boot.letters || []).forEach(function (item) {
+				var opt = document.createElement('option');
+				opt.value = item.letter;
+				opt.textContent = item.taken ? item.letter + ' — занята' : item.letter;
+				opt.disabled = !!item.taken;
+				el.letter.appendChild(opt);
 			});
+			el.letter.value = letter || '';
 			return;
 		}
-		el.letters.hidden = true;
-		el.letter_hint.hidden = true;
+		el.letter.hidden = true;
 		el.letter_label.textContent = '';
 		el.letter_label.appendChild(document.createTextNode(label + ' '));
 		el.letter_label.appendChild(node('span', 'ro', letter ? '· ' + letter : '· назначит организатор'));
@@ -621,6 +610,12 @@
 		el.name.classList.remove('bad');
 		el.name_hint.hidden = true;
 		render();
+	});
+	el.letter.addEventListener('change', function () {
+		letter = el.letter.value === '' ? null : el.letter.value;
+		letter_touched = true;
+		setError(el.letter_error, '');
+		el.letter.classList.remove('bad');
 	});
 	el.search.addEventListener('input', function () {
 		clearTimeout(search_timer);

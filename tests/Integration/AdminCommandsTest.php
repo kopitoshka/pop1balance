@@ -303,12 +303,23 @@ class AdminCommandsTest extends IntegrationTestCase {
 		self::assertStringContainsString("🙋 <b>Ищут команду:</b>", $text);
 		self::assertStringContainsString("@solo</a>", $text);
 		self::assertStringNotContainsString('Черновой', $text, 'players do not see drafts');
+		self::assertStringNotContainsString('blockquote expandable', $text, 'one active: the full card, teams open');
+		$buttons = [];
+		foreach ($this->http->sent('sendMessage') as $msg) {
+			foreach ($msg['reply_markup']['inline_keyboard'] ?? [] as $row) {
+				foreach ($row as $b) {
+					$buttons[] = $b['callback_data'] ?? '';
+				}
+			}
+		}
+		self::assertContains('pteam:1', $buttons);
+		self::assertContains('psolo:1', $buttons);
 
 		$this->dispatch($this->privateMessage($this->owner, '/tournaments'));
 		$text = $this->http->lastText();
 		self::assertStringContainsString("➖➖➖➖➖\n\n🏆 <b>Черновой</b> · №2", $text);
 		self::assertStringContainsString('Черновик, его видишь только ты. Опубликовать: /open 2', $text);
-		self::assertStringContainsString('<blockquote expandable>', $text, 'several tournaments: teams collapse');
+		self::assertStringContainsString('<blockquote expandable>', $text, 'the multi-tournament list always collapses teams');
 		self::assertStringNotContainsString('📋 <b>Турниры</b>', $text);
 	}
 
@@ -343,12 +354,7 @@ class AdminCommandsTest extends IntegrationTestCase {
 		foreach ($sent as $message) {
 			$text = $message['text'];
 			self::assertSame(substr_count($text, '<blockquote'), substr_count($text, '</blockquote>'));
-			$tournaments = substr_count($text, '🏆 <b>');
-			if ($tournaments > 1) {
-				self::assertStringContainsString('<blockquote expandable>', $text);
-			} else {
-				self::assertStringNotContainsString('blockquote expandable', $text);
-			}
+			self::assertStringContainsString('<blockquote expandable>', $text, 'the list always collapses teams');
 		}
 	}
 
@@ -447,12 +453,15 @@ class AdminCommandsTest extends IntegrationTestCase {
 			'Игрок, которому ещё не поставили уровень, считается БТР (3).',
 			'⚖️ <b>Макс. уровень</b>',
 			'Макс. уровень: 11',
-			'К сумме я добавляю бонус',
+			'К сумме я добавляю бонус за каждую пару игроков 4-го уровня и выше',
+			'Так 5+4+2 даёт 12, а 5+3+3 остаётся 11.',
 			'📊 <b>Уровни игроков</b>',
-			'Старые названия',
 		] as $needle) {
 			self::assertStringContainsString($needle, $levels);
 		}
+		self::assertStringNotContainsString('Вертолёт) и выше', $levels);
+		self::assertStringNotContainsString('(Вертолёт)', $levels);
+		self::assertStringNotContainsString('Старые названия', $levels);
 
 		$this->everyoneIsGroupMember();
 		$this->dispatch($this->groupMessage($vasya, '/help'));

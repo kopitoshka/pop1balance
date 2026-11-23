@@ -501,6 +501,9 @@ class Bootstrap {
 		$this->create_form->setViews($views);
 		$views->setTeamForm($this->team_form);
 		$this->team_form->setViews($views);
+		$commands->setPrivateViews($views);
+		$messages->setViews($views);
+		$messages->setAnnouncer($this->announcer);
 		$this->group_chat = new GroupChat(
 			$this->telegram,
 			$this->bot,

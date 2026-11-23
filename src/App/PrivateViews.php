@@ -128,21 +128,27 @@ class PrivateViews {
 
 	/**
 		The list of all groups' tournaments with «open» buttons; $intro goes first (greeting).
+		One active tournament and nothing else in the list: the full card (same as /tournaments N).
 
 		@return int id of the last message
 	*/
-	public function list(int $chat_id, Player $player, bool $is_super, string $intro = ''): int {
+	public function list(int $chat_id, Player $player, bool $is_super, string $intro = '', ?int $reply_to = null): int {
 		$groups = $this->groups->all();
+		$listed = $this->listing->privateTournaments($groups, $player->id, $is_super);
+		$single = TournamentListing::soleActive($listed);
+		if ($single !== null) {
+			if ($intro !== '') {
+				$this->api->sendMessage($chat_id, $intro, $reply_to);
+			}
+			return $this->tournament($chat_id, $single, $player, $reply_to);
+		}
 		$messages = $this->listing->privateMessages($groups, $player->id, $is_super);
 		if ($messages === []) {
 			$messages = [($intro !== '' ? $intro . "\n\n" : '') . 'Сейчас активных турниров нет. Как только появятся — анонс будет в группе.'];
 		} elseif ($intro !== '') {
 			array_unshift($messages, $intro);
 		}
-		$buttons = TournamentListing::openButtons(
-			$this->listing->privateTournaments($groups, $player->id, $is_super),
-			$groups,
-		);
+		$buttons = TournamentListing::openButtons($listed, $groups);
 		if ($this->create_form !== null) {
 			// «➕ Создать турнир» opens the Mini App form; only for those who may create.
 			$buttons = $this->create_form->appendListButton($buttons, $player, true);
@@ -150,7 +156,7 @@ class PrivateViews {
 		$message_id = 0;
 		foreach ($messages as $i => $text) {
 			$last = $i === count($messages) - 1;
-			$message_id = $this->api->sendMessage($chat_id, $text, null, $last ? $buttons : []);
+			$message_id = $this->api->sendMessage($chat_id, $text, $reply_to, $last ? $buttons : []);
 		}
 		return $message_id;
 	}
